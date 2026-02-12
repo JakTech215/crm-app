@@ -12,6 +12,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -29,7 +37,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,6 +51,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ArrowLeft,
   Plus,
@@ -62,6 +70,8 @@ interface Contact {
   phone: string | null;
   company: string | null;
   status: string;
+  email_notifications_enabled: boolean;
+  sms_notifications_enabled: boolean;
   created_at: string;
 }
 
@@ -73,6 +83,14 @@ interface Note {
   author_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface ContactTask {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  due_date: string | null;
 }
 
 interface StatusOption {
@@ -103,6 +121,7 @@ export default function ContactDetailPage() {
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [contactTasks, setContactTasks] = useState<ContactTask[]>([]);
   const [statuses, setStatuses] = useState<StatusOption[]>(FALLBACK_STATUSES);
   const [loading, setLoading] = useState(true);
   const [noteOpen, setNoteOpen] = useState(false);
@@ -122,10 +141,15 @@ export default function ContactDetailPage() {
     phone: "",
     company: "",
     status: "lead",
+    email_notifications_enabled: true,
+    sms_notifications_enabled: false,
   });
 
   // Delete state
   const [deleting, setDeleting] = useState(false);
+  const [deleteCheckOpen, setDeleteCheckOpen] = useState(false);
+  const [linkedProjects, setLinkedProjects] = useState<{ id: string; name: string }[]>([]);
+  const [linkedTasks, setLinkedTasks] = useState<{ id: string; title: string }[]>([]);
 
   const fetchContact = async () => {
     const { data } = await supabase
@@ -146,6 +170,15 @@ export default function ContactDetailPage() {
     setNotes(data || []);
   };
 
+  const fetchContactTasks = async () => {
+    const { data } = await supabase
+      .from("tasks")
+      .select("id, title, status, priority, due_date")
+      .eq("contact_id", contactId)
+      .order("created_at", { ascending: false });
+    setContactTasks(data || []);
+  };
+
   const fetchStatuses = async () => {
     const { data } = await supabase
       .from("contact_statuses")
@@ -159,6 +192,7 @@ export default function ContactDetailPage() {
   useEffect(() => {
     fetchContact();
     fetchNotes();
+    fetchContactTasks();
     fetchStatuses();
   }, [contactId]);
 
@@ -225,6 +259,8 @@ export default function ContactDetailPage() {
       phone: contact.phone || "",
       company: contact.company || "",
       status: contact.status,
+      email_notifications_enabled: contact.email_notifications_enabled ?? true,
+      sms_notifications_enabled: contact.sms_notifications_enabled ?? false,
     });
     setEditOpen(true);
   };
@@ -241,6 +277,8 @@ export default function ContactDetailPage() {
         phone: editForm.phone || null,
         company: editForm.company || null,
         status: editForm.status,
+        email_notifications_enabled: editForm.email_notifications_enabled,
+        sms_notifications_enabled: editForm.sms_notifications_enabled,
       })
       .eq("id", contactId);
 
@@ -251,10 +289,24 @@ export default function ContactDetailPage() {
     setSavingEdit(false);
   };
 
+  const checkDependenciesAndDelete = async () => {
+    const [{ data: projects }, { data: tasks }] = await Promise.all([
+      supabase.from("projects").select("id, name").eq("contact_id", contactId),
+      supabase.from("tasks").select("id, title").eq("contact_id", contactId),
+    ]);
+    setLinkedProjects(projects || []);
+    setLinkedTasks(tasks || []);
+    setDeleteCheckOpen(true);
+  };
+
   const handleDeleteContact = async () => {
     setDeleting(true);
-    // Delete notes first
-    await supabase.from("notes").delete().eq("contact_id", contactId);
+    // Unlink projects and tasks, then delete notes and contact
+    await Promise.all([
+      supabase.from("projects").update({ contact_id: null }).eq("contact_id", contactId),
+      supabase.from("tasks").update({ contact_id: null }).eq("contact_id", contactId),
+      supabase.from("notes").delete().eq("contact_id", contactId),
+    ]);
     const { error } = await supabase.from("contacts").delete().eq("id", contactId);
     if (!error) {
       router.push("/dashboard/contacts");
@@ -308,19 +360,48 @@ export default function ContactDetailPage() {
             <Pencil className="mr-2 h-4 w-4" />
             Edit
           </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={deleting}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                {deleting ? "Deleting..." : "Delete"}
-              </Button>
-            </AlertDialogTrigger>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={deleting}
+            onClick={checkDependenciesAndDelete}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+          <AlertDialog open={deleteCheckOpen} onOpenChange={setDeleteCheckOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Contact</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete &quot;{contact.name}&quot;? This will also
-                  remove all associated notes. This action cannot be undone.
+                <AlertDialogDescription asChild>
+                  <div className="space-y-2">
+                    <p>
+                      Are you sure you want to delete &quot;{contact.name}&quot;? This action cannot be undone.
+                    </p>
+                    {linkedProjects.length > 0 && (
+                      <div>
+                        <p className="font-medium text-foreground">Linked Projects ({linkedProjects.length}):</p>
+                        <ul className="list-disc pl-4 text-sm">
+                          {linkedProjects.map((p) => (
+                            <li key={p.id}>{p.name}</li>
+                          ))}
+                        </ul>
+                        <p className="text-xs mt-1">These projects will be unlinked from this contact.</p>
+                      </div>
+                    )}
+                    {linkedTasks.length > 0 && (
+                      <div>
+                        <p className="font-medium text-foreground">Linked Tasks ({linkedTasks.length}):</p>
+                        <ul className="list-disc pl-4 text-sm">
+                          {linkedTasks.map((t) => (
+                            <li key={t.id}>{t.title}</li>
+                          ))}
+                        </ul>
+                        <p className="text-xs mt-1">These tasks will be unlinked from this contact.</p>
+                      </div>
+                    )}
+                    <p className="text-xs">All notes for this contact will be permanently deleted.</p>
+                  </div>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -405,6 +486,29 @@ export default function ContactDetailPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>Notification Preferences</Label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={editForm.email_notifications_enabled}
+                    onCheckedChange={(checked) =>
+                      setEditForm({ ...editForm, email_notifications_enabled: !!checked })
+                    }
+                  />
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Email notifications</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={editForm.sms_notifications_enabled}
+                    onCheckedChange={(checked) =>
+                      setEditForm({ ...editForm, sms_notifications_enabled: !!checked })
+                    }
+                  />
+                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">SMS notifications</span>
+                </label>
+              </div>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={savingEdit}>
@@ -419,6 +523,7 @@ export default function ContactDetailPage() {
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="notes">Notes ({notes.length})</TabsTrigger>
+          <TabsTrigger value="tasks">Tasks ({contactTasks.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="details">
@@ -598,6 +703,85 @@ export default function ContactDetailPage() {
                     </div>
                   ))}
                 </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="tasks">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Tasks</CardTitle>
+                <CardDescription>
+                  Tasks linked to this contact.
+                </CardDescription>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => router.push(`/dashboard/tasks?contact=${contactId}`)}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Task
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {contactTasks.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  No tasks linked to this contact yet.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Task</TableHead>
+                      <TableHead>Priority</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Due Date</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {contactTasks.map((task) => (
+                      <TableRow
+                        key={task.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
+                      >
+                        <TableCell className="font-medium">{task.title}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="secondary"
+                            className={`capitalize ${
+                              task.priority === "urgent" ? "bg-red-100 text-red-800" :
+                              task.priority === "high" ? "bg-orange-100 text-orange-800" :
+                              task.priority === "medium" ? "bg-blue-100 text-blue-800" :
+                              "bg-slate-100 text-slate-800"
+                            }`}
+                          >
+                            {task.priority}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="secondary"
+                            className={`capitalize ${
+                              task.status === "completed" ? "bg-green-100 text-green-800" :
+                              task.status === "in_progress" ? "bg-blue-100 text-blue-800" :
+                              "bg-yellow-100 text-yellow-800"
+                            }`}
+                          >
+                            {task.status.replace("_", " ")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {task.due_date
+                            ? new Date(task.due_date).toLocaleDateString()
+                            : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               )}
             </CardContent>
           </Card>

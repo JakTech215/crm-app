@@ -38,7 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Mail, MessageSquare } from "lucide-react";
 
 interface Contact {
   id: string;
@@ -47,6 +47,8 @@ interface Contact {
   phone: string | null;
   company: string | null;
   status: string;
+  email_notifications_enabled: boolean;
+  sms_notifications_enabled: boolean;
   created_at: string;
 }
 
@@ -267,13 +269,14 @@ export default function ContactsPage() {
                 <TableHead>Email</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Company</TableHead>
+                <TableHead>Notifications</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
+                  <TableCell colSpan={6} className="text-center py-8">
                     Loading...
                   </TableCell>
                 </TableRow>
@@ -285,7 +288,7 @@ export default function ContactsPage() {
               }).length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="text-center text-muted-foreground py-8"
                   >
                     No contacts yet. Click &quot;Add Contact&quot; to create one.
@@ -309,6 +312,12 @@ export default function ContactsPage() {
                     <TableCell>{contact.email || "—"}</TableCell>
                     <TableCell>{contact.phone || "—"}</TableCell>
                     <TableCell>{contact.company || "—"}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Mail className={`h-4 w-4 ${contact.email_notifications_enabled ? "text-primary" : "text-muted-foreground/30"}`} />
+                        <MessageSquare className={`h-4 w-4 ${contact.sms_notifications_enabled ? "text-primary" : "text-muted-foreground/30"}`} />
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Badge
                         variant="secondary"

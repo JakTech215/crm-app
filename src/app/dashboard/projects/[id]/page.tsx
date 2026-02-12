@@ -36,7 +36,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,7 +49,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, Plus } from "lucide-react";
 
 interface Contact {
   id: string;
@@ -144,6 +143,7 @@ export default function ProjectDetailPage() {
 
   // Delete state
   const [deleting, setDeleting] = useState(false);
+  const [deleteCheckOpen, setDeleteCheckOpen] = useState(false);
 
   const fetchProject = async () => {
     const { data, error } = await supabase
@@ -297,19 +297,36 @@ export default function ProjectDetailPage() {
             <Pencil className="mr-2 h-4 w-4" />
             Edit
           </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={deleting}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                {deleting ? "Deleting..." : "Delete"}
-              </Button>
-            </AlertDialogTrigger>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={deleting}
+            onClick={() => setDeleteCheckOpen(true)}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+          <AlertDialog open={deleteCheckOpen} onOpenChange={setDeleteCheckOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Project</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete &quot;{project.name}&quot;? Tasks linked
-                  to this project will be unlinked but not deleted. This action cannot be undone.
+                <AlertDialogDescription asChild>
+                  <div className="space-y-2">
+                    <p>
+                      Are you sure you want to delete &quot;{project.name}&quot;? This action cannot be undone.
+                    </p>
+                    {tasks.length > 0 && (
+                      <div>
+                        <p className="font-medium text-foreground">Linked Tasks ({tasks.length}):</p>
+                        <ul className="list-disc pl-4 text-sm">
+                          {tasks.map((t) => (
+                            <li key={t.id}>{t.title}</li>
+                          ))}
+                        </ul>
+                        <p className="text-xs mt-1">These tasks will be unlinked but not deleted.</p>
+                      </div>
+                    )}
+                  </div>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -486,11 +503,20 @@ export default function ProjectDetailPage() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Linked Tasks</CardTitle>
-            <CardDescription>
-              Tasks associated with this project ({tasks.length})
-            </CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Linked Tasks</CardTitle>
+              <CardDescription>
+                Tasks associated with this project ({tasks.length})
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => router.push(`/dashboard/tasks?project=${projectId}`)}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Task
+            </Button>
           </CardHeader>
           <CardContent>
             {tasks.length === 0 ? (
@@ -512,9 +538,13 @@ export default function ProjectDetailPage() {
                     <TableRow
                       key={task.id}
                       className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
                     >
-                      <TableCell className="font-medium">{task.title}</TableCell>
+                      <TableCell
+                        className="font-medium"
+                        onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
+                      >
+                        {task.title}
+                      </TableCell>
                       <TableCell>
                         <Badge
                           variant="secondary"
@@ -524,14 +554,32 @@ export default function ProjectDetailPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={`capitalize ${statusColors[task.status] || ""}`}
+                        <Select
+                          value={task.status}
+                          onValueChange={async (value) => {
+                            await supabase
+                              .from("tasks")
+                              .update({ status: value })
+                              .eq("id", task.id);
+                            fetchTasks();
+                          }}
                         >
-                          {task.status.replace("_", " ")}
-                        </Badge>
+                          <SelectTrigger className="h-8 w-32">
+                            <Badge
+                              variant="secondary"
+                              className={`capitalize ${statusColors[task.status] || ""}`}
+                            >
+                              {task.status.replace("_", " ")}
+                            </Badge>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="in_progress">In Progress</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </TableCell>
-                      <TableCell>{task.due_date || "—"}</TableCell>
+                      <TableCell>{task.due_date ? new Date(task.due_date).toLocaleDateString() : "—"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

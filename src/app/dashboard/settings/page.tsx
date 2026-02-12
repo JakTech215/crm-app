@@ -31,7 +31,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, Pencil, Trash2, Mail, MessageSquare } from "lucide-react";
 
 // ---------- Types ----------
 
@@ -48,6 +49,10 @@ interface TaskTemplate {
   description: string | null;
   default_priority: string;
   default_due_days: number | null;
+  due_amount: number | null;
+  due_unit: string | null;
+  send_email_reminder: boolean;
+  send_sms_reminder: boolean;
   category: string | null;
 }
 
@@ -346,7 +351,10 @@ function TaskTemplatesSection() {
     name: "",
     description: "",
     default_priority: "medium",
-    default_due_days: "",
+    due_amount: "",
+    due_unit: "days",
+    send_email_reminder: false,
+    send_sms_reminder: false,
     category: "",
   });
 
@@ -361,7 +369,7 @@ function TaskTemplatesSection() {
   useEffect(() => { fetch(); }, []);
 
   const resetForm = () => {
-    setForm({ name: "", description: "", default_priority: "medium", default_due_days: "", category: "" });
+    setForm({ name: "", description: "", default_priority: "medium", due_amount: "", due_unit: "days", send_email_reminder: false, send_sms_reminder: false, category: "" });
     setEditing(null);
     setOpen(false);
   };
@@ -369,11 +377,16 @@ function TaskTemplatesSection() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    const dueAmount = form.due_amount ? parseInt(form.due_amount) : null;
     const payload = {
       name: form.name,
       description: form.description || null,
       default_priority: form.default_priority,
-      default_due_days: form.default_due_days ? parseInt(form.default_due_days) : null,
+      default_due_days: dueAmount && form.due_unit === "days" ? dueAmount : null,
+      due_amount: dueAmount,
+      due_unit: dueAmount ? form.due_unit : null,
+      send_email_reminder: form.send_email_reminder,
+      send_sms_reminder: form.send_sms_reminder,
       category: form.category || null,
     };
     if (editing) {
@@ -392,7 +405,10 @@ function TaskTemplatesSection() {
       name: t.name,
       description: t.description || "",
       default_priority: t.default_priority,
-      default_due_days: t.default_due_days?.toString() || "",
+      due_amount: t.due_amount?.toString() || t.default_due_days?.toString() || "",
+      due_unit: t.due_unit || "days",
+      send_email_reminder: t.send_email_reminder || false,
+      send_sms_reminder: t.send_sms_reminder || false,
       category: t.category || "",
     });
     setOpen(true);
@@ -438,23 +454,54 @@ function TaskTemplatesSection() {
                   <Label htmlFor="tt-desc">Description</Label>
                   <Textarea id="tt-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
                 </div>
+                <div className="grid gap-2">
+                  <Label>Default Priority</Label>
+                  <Select value={form.default_priority} onValueChange={(v) => setForm({ ...form, default_priority: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <Label>Default Priority</Label>
-                    <Select value={form.default_priority} onValueChange={(v) => setForm({ ...form, default_priority: v })}>
+                    <Label htmlFor="tt-due-amount">Due In</Label>
+                    <Input id="tt-due-amount" type="number" min="1" placeholder="e.g. 7" value={form.due_amount} onChange={(e) => setForm({ ...form, due_amount: e.target.value })} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Unit</Label>
+                    <Select value={form.due_unit} onValueChange={(v) => setForm({ ...form, due_unit: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="urgent">Urgent</SelectItem>
+                        <SelectItem value="hours">Hours</SelectItem>
+                        <SelectItem value="days">Days</SelectItem>
+                        <SelectItem value="weeks">Weeks</SelectItem>
+                        <SelectItem value="months">Months</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="tt-days">Default Due Days</Label>
-                    <Input id="tt-days" type="number" min="1" placeholder="e.g. 7" value={form.default_due_days} onChange={(e) => setForm({ ...form, default_due_days: e.target.value })} />
-                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Reminders</Label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={form.send_email_reminder}
+                      onCheckedChange={(checked) => setForm({ ...form, send_email_reminder: !!checked })}
+                    />
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Send email reminder</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={form.send_sms_reminder}
+                      onCheckedChange={(checked) => setForm({ ...form, send_sms_reminder: !!checked })}
+                    />
+                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Send SMS reminder</span>
+                  </label>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="tt-cat">Category</Label>
@@ -476,14 +523,22 @@ function TaskTemplatesSection() {
             {templates.map((t) => (
               <div key={t.id} className="flex items-center justify-between rounded-lg border p-3">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{t.name}</span>
                     <Badge className={priorityColors[t.default_priority] || ""} variant="secondary">
                       {t.default_priority}
                     </Badge>
                     {t.category && <Badge variant="outline">{t.category}</Badge>}
-                    {t.default_due_days && (
+                    {t.due_amount && t.due_unit ? (
+                      <span className="text-xs text-muted-foreground">{t.due_amount} {t.due_unit}</span>
+                    ) : t.default_due_days ? (
                       <span className="text-xs text-muted-foreground">{t.default_due_days} days</span>
+                    ) : null}
+                    {t.send_email_reminder && (
+                      <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                    {t.send_sms_reminder && (
+                      <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
                     )}
                   </div>
                   {t.description && <p className="text-sm text-muted-foreground">{t.description}</p>}

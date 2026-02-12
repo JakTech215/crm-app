@@ -57,70 +57,75 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const [contactsRes, projectsRes, tasksRes, employeesRes] = await Promise.all([
-        supabase.from("contacts").select("id", { count: "exact", head: true }),
-        supabase.from("projects").select("id", { count: "exact", head: true }),
-        supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"),
-        supabase.from("employees").select("id", { count: "exact", head: true }).eq("status", "active"),
-      ]);
+      try {
+        const [contactsRes, projectsRes, tasksRes, employeesRes] = await Promise.all([
+          supabase.from("contacts").select("id", { count: "exact", head: true }),
+          supabase.from("projects").select("id", { count: "exact", head: true }),
+          supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"),
+          supabase.from("employees").select("id", { count: "exact", head: true }).eq("status", "active"),
+        ]);
 
-      setStats([
-        { title: "Total Contacts", value: contactsRes.count ?? 0, description: "Active contacts", icon: Users },
-        { title: "Projects", value: projectsRes.count ?? 0, description: "Active projects", icon: FolderKanban },
-        { title: "Tasks", value: tasksRes.count ?? 0, description: "Pending tasks", icon: CheckSquare },
-        { title: "Employees", value: employeesRes.count ?? 0, description: "Team members", icon: UserCog },
-      ]);
+        setStats([
+          { title: "Total Contacts", value: contactsRes.count ?? 0, description: "Active contacts", icon: Users },
+          { title: "Projects", value: projectsRes.count ?? 0, description: "Active projects", icon: FolderKanban },
+          { title: "Tasks", value: tasksRes.count ?? 0, description: "Pending tasks", icon: CheckSquare },
+          { title: "Employees", value: employeesRes.count ?? 0, description: "Team members", icon: UserCog },
+        ]);
 
-      // Recent activity: last 5 items across contacts, projects, tasks
-      const [recentContacts, recentProjects, recentTasks] = await Promise.all([
-        supabase.from("contacts").select("id, name, created_at").order("created_at", { ascending: false }).limit(3),
-        supabase.from("projects").select("id, name, created_at").order("created_at", { ascending: false }).limit(3),
-        supabase.from("tasks").select("id, title, created_at").order("created_at", { ascending: false }).limit(3),
-      ]);
+        // Recent activity: last 5 items across contacts, projects, tasks
+        const [recentContacts, recentProjects, recentTasks] = await Promise.all([
+          supabase.from("contacts").select("id, name, created_at").order("created_at", { ascending: false }).limit(3),
+          supabase.from("projects").select("id, name, created_at").order("created_at", { ascending: false }).limit(3),
+          supabase.from("tasks").select("id, title, created_at").order("created_at", { ascending: false }).limit(3),
+        ]);
 
-      const items: RecentItem[] = [
-        ...(recentContacts.data || []).map((c) => ({
-          id: c.id,
-          label: c.name,
-          type: "Contact",
-          date: c.created_at,
-          href: `/dashboard/contacts/${c.id}`,
-        })),
-        ...(recentProjects.data || []).map((p) => ({
-          id: p.id,
-          label: p.name,
-          type: "Project",
-          date: p.created_at,
-          href: `/dashboard/projects/${p.id}`,
-        })),
-        ...(recentTasks.data || []).map((t) => ({
-          id: t.id,
-          label: t.title,
-          type: "Task",
-          date: t.created_at,
-          href: `/dashboard/tasks/${t.id}`,
-        })),
-      ];
-      items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setRecent(items.slice(0, 5));
+        const items: RecentItem[] = [
+          ...(recentContacts.data || []).map((c) => ({
+            id: c.id,
+            label: c.name,
+            type: "Contact",
+            date: c.created_at,
+            href: `/dashboard/contacts/${c.id}`,
+          })),
+          ...(recentProjects.data || []).map((p) => ({
+            id: p.id,
+            label: p.name,
+            type: "Project",
+            date: p.created_at,
+            href: `/dashboard/projects/${p.id}`,
+          })),
+          ...(recentTasks.data || []).map((t) => ({
+            id: t.id,
+            label: t.title,
+            type: "Task",
+            date: t.created_at,
+            href: `/dashboard/tasks/${t.id}`,
+          })),
+        ];
+        items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setRecent(items.slice(0, 5));
 
-      // Upcoming tasks: due in the next 14 days
-      const today = new Date().toISOString().split("T")[0];
-      const twoWeeks = new Date();
-      twoWeeks.setDate(twoWeeks.getDate() + 14);
-      const futureDate = twoWeeks.toISOString().split("T")[0];
+        // Upcoming tasks: due in the next 14 days
+        const today = new Date().toISOString().split("T")[0];
+        const twoWeeks = new Date();
+        twoWeeks.setDate(twoWeeks.getDate() + 14);
+        const futureDate = twoWeeks.toISOString().split("T")[0];
 
-      const { data: upcomingTasks } = await supabase
-        .from("tasks")
-        .select("id, title, due_date, priority")
-        .neq("status", "completed")
-        .gte("due_date", today)
-        .lte("due_date", futureDate)
-        .order("due_date", { ascending: true })
-        .limit(5);
+        const { data: upcomingTasks } = await supabase
+          .from("tasks")
+          .select("id, title, due_date, priority")
+          .neq("status", "completed")
+          .gte("due_date", today)
+          .lte("due_date", futureDate)
+          .order("due_date", { ascending: true })
+          .limit(5);
 
-      setUpcoming(upcomingTasks || []);
-      setLoading(false);
+        setUpcoming(upcomingTasks || []);
+      } catch (err) {
+        console.error("Failed to fetch dashboard data:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchData();

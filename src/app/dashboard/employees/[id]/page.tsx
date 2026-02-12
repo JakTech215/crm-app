@@ -27,7 +27,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -74,6 +73,8 @@ export default function EmployeeDetailPage() {
 
   // Delete state
   const [deleting, setDeleting] = useState(false);
+  const [deleteCheckOpen, setDeleteCheckOpen] = useState(false);
+  const [assignedTasks, setAssignedTasks] = useState<{ id: string; title: string }[]>([]);
 
   const fetchEmployee = async () => {
     const { data } = await supabase
@@ -123,9 +124,27 @@ export default function EmployeeDetailPage() {
     setSavingEdit(false);
   };
 
+  const checkDependenciesAndDelete = async () => {
+    const { data: assignments } = await supabase
+      .from("task_assignees")
+      .select("task_id")
+      .eq("employee_id", employeeId);
+
+    if (assignments && assignments.length > 0) {
+      const taskIds = assignments.map((a: { task_id: string }) => a.task_id);
+      const { data: tasks } = await supabase
+        .from("tasks")
+        .select("id, title")
+        .in("id", taskIds);
+      setAssignedTasks(tasks || []);
+    } else {
+      setAssignedTasks([]);
+    }
+    setDeleteCheckOpen(true);
+  };
+
   const handleDeleteEmployee = async () => {
     setDeleting(true);
-    // Remove task assignments first
     await supabase.from("task_assignees").delete().eq("employee_id", employeeId);
     const { error } = await supabase.from("employees").delete().eq("id", employeeId);
     if (!error) {
@@ -178,19 +197,36 @@ export default function EmployeeDetailPage() {
             <Pencil className="mr-2 h-4 w-4" />
             Edit
           </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={deleting}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                {deleting ? "Deleting..." : "Delete"}
-              </Button>
-            </AlertDialogTrigger>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={deleting}
+            onClick={checkDependenciesAndDelete}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+          <AlertDialog open={deleteCheckOpen} onOpenChange={setDeleteCheckOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Employee</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete &quot;{employee.name}&quot;? This will also
-                  remove all their task assignments. This action cannot be undone.
+                <AlertDialogDescription asChild>
+                  <div className="space-y-2">
+                    <p>
+                      Are you sure you want to delete &quot;{employee.name}&quot;? This action cannot be undone.
+                    </p>
+                    {assignedTasks.length > 0 && (
+                      <div>
+                        <p className="font-medium text-foreground">Assigned Tasks ({assignedTasks.length}):</p>
+                        <ul className="list-disc pl-4 text-sm">
+                          {assignedTasks.map((t) => (
+                            <li key={t.id}>{t.title}</li>
+                          ))}
+                        </ul>
+                        <p className="text-xs mt-1">This employee will be unassigned from these tasks.</p>
+                      </div>
+                    )}
+                  </div>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

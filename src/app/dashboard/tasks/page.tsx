@@ -59,11 +59,17 @@ interface TaskAssignee {
   employees: Employee;
 }
 
+interface ContactOption {
+  id: string;
+  name: string;
+}
+
 interface Task {
   id: string;
   title: string;
   description: string | null;
   project_id: string | null;
+  contact_id: string | null;
   priority: string;
   status: string;
   start_date: string | null;
@@ -71,6 +77,7 @@ interface Task {
   is_milestone: boolean;
   created_at: string;
   task_assignees: TaskAssignee[];
+  contacts: ContactOption | null;
 }
 
 interface ProjectOption {
@@ -84,6 +91,8 @@ interface TaskTemplate {
   description: string | null;
   default_priority: string;
   default_due_days: number | null;
+  due_amount: number | null;
+  due_unit: string | null;
   category: string | null;
 }
 
@@ -93,6 +102,7 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -104,6 +114,7 @@ export default function TasksPage() {
     title: "",
     description: "",
     project_id: "",
+    contact_id: "",
     priority: "medium",
     status: "pending",
     start_date: "",
@@ -114,7 +125,7 @@ export default function TasksPage() {
   const fetchTasks = async () => {
     const { data, error } = await supabase
       .from("tasks")
-      .select("*")
+      .select("*, contacts:contact_id(id, name)")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -166,6 +177,14 @@ export default function TasksPage() {
     setProjects(data || []);
   };
 
+  const fetchContacts = async () => {
+    const { data } = await supabase
+      .from("contacts")
+      .select("id, name")
+      .order("name");
+    setContacts(data || []);
+  };
+
   const fetchTemplates = async () => {
     const { data } = await supabase
       .from("task_templates")
@@ -178,6 +197,7 @@ export default function TasksPage() {
     fetchTasks();
     fetchEmployees();
     fetchProjects();
+    fetchContacts();
     fetchTemplates();
   }, []);
 
@@ -186,9 +206,14 @@ export default function TasksPage() {
     if (!tmpl) return;
 
     let dueDate = "";
-    if (tmpl.default_due_days) {
+    const amount = tmpl.due_amount || tmpl.default_due_days;
+    const unit = tmpl.due_unit || "days";
+    if (amount) {
       const d = new Date();
-      d.setDate(d.getDate() + tmpl.default_due_days);
+      if (unit === "hours") d.setHours(d.getHours() + amount);
+      else if (unit === "days") d.setDate(d.getDate() + amount);
+      else if (unit === "weeks") d.setDate(d.getDate() + amount * 7);
+      else if (unit === "months") d.setMonth(d.getMonth() + amount);
       dueDate = d.toISOString().split("T")[0];
     }
 
@@ -223,6 +248,7 @@ export default function TasksPage() {
         title: form.title,
         description: form.description || null,
         project_id: form.project_id || null,
+        contact_id: form.contact_id || null,
         priority: form.priority,
         status: form.status,
         start_date: form.start_date || null,
@@ -260,6 +286,7 @@ export default function TasksPage() {
       title: "",
       description: "",
       project_id: "",
+      contact_id: "",
       priority: "medium",
       status: "pending",
       start_date: "",
@@ -293,6 +320,26 @@ export default function TasksPage() {
     completed: "bg-green-100 text-green-800",
   };
 
+  const formatRelativeTime = (dateStr: string) => {
+    const due = new Date(dateStr);
+    const now = new Date();
+    const diffMs = due.getTime() - now.getTime();
+    const absDiffMs = Math.abs(diffMs);
+    const hours = Math.floor(absDiffMs / (1000 * 60 * 60));
+    const days = Math.floor(hours / 24);
+    const isOverdue = diffMs < 0;
+
+    let text: string;
+    if (days > 30) text = `${Math.floor(days / 30)}mo`;
+    else if (days > 0) text = `${days}d`;
+    else if (hours > 0) text = `${hours}h`;
+    else text = "<1h";
+
+    return isOverdue
+      ? { text: `${text} overdue`, className: "text-red-600" }
+      : { text: `in ${text}`, className: "text-muted-foreground" };
+  };
+
   const filterTasks = (filter: string) => {
     let filtered = tasks;
     if (filter === "milestones") filtered = tasks.filter((t) => t.is_milestone);
@@ -312,24 +359,24 @@ export default function TasksPage() {
       <TableHeader>
         <TableRow>
           <TableHead>Task</TableHead>
+          <TableHead>Contact</TableHead>
           <TableHead>Assigned To</TableHead>
           <TableHead>Priority</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead>Start Date</TableHead>
           <TableHead>Due Date</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {loading ? (
           <TableRow>
-            <TableCell colSpan={6} className="text-center py-8">
+            <TableCell colSpan={7} className="text-center py-8">
               Loading...
             </TableCell>
           </TableRow>
         ) : filteredTasks.length === 0 ? (
           <TableRow>
             <TableCell
-              colSpan={6}
+              colSpan={7}
               className="text-center text-muted-foreground py-8"
             >
               No tasks found.
@@ -368,6 +415,9 @@ export default function TasksPage() {
                 </div>
               </TableCell>
               <TableCell>
+                {task.contacts?.name || "—"}
+              </TableCell>
+              <TableCell>
                 {task.task_assignees?.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {task.task_assignees.map((a) => (
@@ -400,8 +450,17 @@ export default function TasksPage() {
                   {task.status.replace("_", " ")}
                 </Badge>
               </TableCell>
-              <TableCell>{task.start_date || "—"}</TableCell>
-              <TableCell>{task.due_date || "—"}</TableCell>
+              <TableCell>
+                {task.due_date ? (
+                  <div>
+                    <div className="text-sm">{new Date(task.due_date).toLocaleDateString()}</div>
+                    {task.status !== "completed" && (() => {
+                      const rel = formatRelativeTime(task.due_date);
+                      return <div className={`text-xs ${rel.className}`}>{rel.text}</div>;
+                    })()}
+                  </div>
+                ) : "—"}
+              </TableCell>
             </TableRow>
           ))
         )}
@@ -515,6 +574,32 @@ export default function TasksPage() {
                     </Select>
                   </div>
                 )}
+                {contacts.length > 0 && (
+                  <div className="grid gap-2">
+                    <Label>
+                      Contact{" "}
+                      <span className="text-muted-foreground font-normal">(optional)</span>
+                    </Label>
+                    <Select
+                      value={form.contact_id || "none"}
+                      onValueChange={(value) =>
+                        setForm({ ...form, contact_id: value === "none" ? "" : value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="No contact" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No contact</SelectItem>
+                        {contacts.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="priority">Priority</Label>
@@ -569,16 +654,43 @@ export default function TasksPage() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="due_date">Due Date</Label>
+                    <Label htmlFor="due_date">Due Date & Time</Label>
                     <Input
                       id="due_date"
-                      type="date"
+                      type="datetime-local"
                       value={form.due_date}
                       onChange={(e) =>
                         setForm({ ...form, due_date: e.target.value })
                       }
                     />
                   </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-xs text-muted-foreground self-center">Quick set:</span>
+                  {[
+                    { label: "4h", hours: 4 },
+                    { label: "1d", hours: 24 },
+                    { label: "3d", hours: 72 },
+                    { label: "1w", hours: 168 },
+                    { label: "2w", hours: 336 },
+                    { label: "1m", hours: 720 },
+                  ].map((q) => (
+                    <Button
+                      key={q.label}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs px-2"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setHours(d.getHours() + q.hours);
+                        const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                        setForm({ ...form, due_date: local });
+                      }}
+                    >
+                      {q.label}
+                    </Button>
+                  ))}
                 </div>
                 <div className="grid gap-2">
                   <Label>Assign Employees</Label>

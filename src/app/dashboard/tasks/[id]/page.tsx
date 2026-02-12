@@ -37,7 +37,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,10 +68,16 @@ interface TaskAssignee {
   employees: Employee;
 }
 
+interface ContactOption {
+  id: string;
+  name: string;
+}
+
 interface Task {
   id: string;
   title: string;
   description: string | null;
+  contact_id: string | null;
   priority: string;
   status: string;
   start_date: string | null;
@@ -80,6 +85,7 @@ interface Task {
   is_milestone: boolean;
   created_at: string;
   task_assignees: TaskAssignee[];
+  contacts: ContactOption | null;
 }
 
 interface TaskOption {
@@ -112,6 +118,7 @@ export default function TaskDetailPage() {
   const [dependencies, setDependencies] = useState<DependencyRow[]>([]);
   const [allTasks, setAllTasks] = useState<TaskOption[]>([]);
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [allContacts, setAllContacts] = useState<ContactOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [depOpen, setDepOpen] = useState(false);
@@ -129,6 +136,7 @@ export default function TaskDetailPage() {
   const [editForm, setEditForm] = useState({
     title: "",
     description: "",
+    contact_id: "",
     priority: "medium",
     status: "pending",
     start_date: "",
@@ -139,11 +147,13 @@ export default function TaskDetailPage() {
 
   // Delete state
   const [deleting, setDeleting] = useState(false);
+  const [deleteCheckOpen, setDeleteCheckOpen] = useState(false);
+  const [dependentTasks, setDependentTasks] = useState<{ id: string; title: string }[]>([]);
 
   const fetchTask = async () => {
     const { data, error } = await supabase
       .from("tasks")
-      .select("*")
+      .select("*, contacts:contact_id(id, name)")
       .eq("id", taskId)
       .single();
 
@@ -228,11 +238,20 @@ export default function TaskDetailPage() {
     setAllEmployees(data || []);
   };
 
+  const fetchAllContacts = async () => {
+    const { data } = await supabase
+      .from("contacts")
+      .select("id, name")
+      .order("name");
+    setAllContacts(data || []);
+  };
+
   useEffect(() => {
     fetchTask();
     fetchDependencies();
     fetchAllTasks();
     fetchAllEmployees();
+    fetchAllContacts();
   }, [taskId]);
 
   const handleAddDependency = async (e: React.FormEvent) => {
@@ -268,6 +287,7 @@ export default function TaskDetailPage() {
     setEditForm({
       title: task.title,
       description: task.description || "",
+      contact_id: task.contact_id || "",
       priority: task.priority,
       status: task.status,
       start_date: task.start_date || "",
@@ -289,6 +309,7 @@ export default function TaskDetailPage() {
       .update({
         title: editForm.title,
         description: editForm.description || null,
+        contact_id: editForm.contact_id || null,
         priority: editForm.priority,
         status: editForm.status,
         start_date: editForm.start_date || null,
@@ -327,9 +348,28 @@ export default function TaskDetailPage() {
     );
   };
 
+  const checkDependenciesAndDelete = async () => {
+    // Check what tasks depend on this one
+    const { data: deps } = await supabase
+      .from("task_dependencies")
+      .select("task_id")
+      .eq("depends_on_task_id", taskId);
+
+    if (deps && deps.length > 0) {
+      const depTaskIds = deps.map((d: { task_id: string }) => d.task_id);
+      const { data: depTasks } = await supabase
+        .from("tasks")
+        .select("id, title")
+        .in("id", depTaskIds);
+      setDependentTasks(depTasks || []);
+    } else {
+      setDependentTasks([]);
+    }
+    setDeleteCheckOpen(true);
+  };
+
   const handleDeleteTask = async () => {
     setDeleting(true);
-    // Delete assignees and dependencies first
     await supabase.from("task_assignees").delete().eq("task_id", taskId);
     await supabase.from("task_dependencies").delete().eq("task_id", taskId);
     await supabase.from("task_dependencies").delete().eq("depends_on_task_id", taskId);
@@ -403,19 +443,46 @@ export default function TaskDetailPage() {
             <Pencil className="mr-2 h-4 w-4" />
             Edit
           </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={deleting}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                {deleting ? "Deleting..." : "Delete"}
-              </Button>
-            </AlertDialogTrigger>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={deleting}
+            onClick={checkDependenciesAndDelete}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+          <AlertDialog open={deleteCheckOpen} onOpenChange={setDeleteCheckOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete Task</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete &quot;{task.title}&quot;? This will also
-                  remove all assignees and dependencies. This action cannot be undone.
+                <AlertDialogDescription asChild>
+                  <div className="space-y-2">
+                    <p>
+                      Are you sure you want to delete &quot;{task.title}&quot;? This action cannot be undone.
+                    </p>
+                    {dependentTasks.length > 0 && (
+                      <div>
+                        <p className="font-medium text-foreground">Tasks depending on this ({dependentTasks.length}):</p>
+                        <ul className="list-disc pl-4 text-sm">
+                          {dependentTasks.map((t) => (
+                            <li key={t.id}>{t.title}</li>
+                          ))}
+                        </ul>
+                        <p className="text-xs mt-1">These dependency links will be removed.</p>
+                      </div>
+                    )}
+                    {task.task_assignees.length > 0 && (
+                      <p className="text-xs">
+                        {task.task_assignees.length} employee assignment(s) will also be removed.
+                      </p>
+                    )}
+                    {dependencies.length > 0 && (
+                      <p className="text-xs">
+                        {dependencies.length} dependency link(s) from this task will be removed.
+                      </p>
+                    )}
+                  </div>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -464,6 +531,32 @@ export default function TaskDetailPage() {
                   }
                 />
               </div>
+              {allContacts.length > 0 && (
+                <div className="grid gap-2">
+                  <Label>
+                    Contact{" "}
+                    <span className="text-muted-foreground font-normal">(optional)</span>
+                  </Label>
+                  <Select
+                    value={editForm.contact_id || "none"}
+                    onValueChange={(value) =>
+                      setEditForm({ ...editForm, contact_id: value === "none" ? "" : value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="No contact" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No contact</SelectItem>
+                      {allContacts.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label>Priority</Label>
@@ -516,15 +609,40 @@ export default function TaskDetailPage() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="edit_due_date">Due Date</Label>
+                  <Label htmlFor="edit_due_date">Due Date & Time</Label>
                   <Input
                     id="edit_due_date"
-                    type="date"
+                    type="datetime-local"
                     value={editForm.due_date}
                     onChange={(e) =>
                       setEditForm({ ...editForm, due_date: e.target.value })
                     }
                   />
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { label: "4h", hours: 4 },
+                      { label: "1d", hours: 24 },
+                      { label: "3d", hours: 72 },
+                      { label: "1w", hours: 168 },
+                      { label: "2w", hours: 336 },
+                    ].map((q) => (
+                      <Button
+                        key={q.label}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setHours(d.getHours() + q.hours);
+                          const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                          setEditForm({ ...editForm, due_date: local });
+                        }}
+                      >
+                        {q.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               </div>
               <div className="grid gap-2">
@@ -602,6 +720,22 @@ export default function TaskDetailPage() {
                 <p className="mt-1">{task.description}</p>
               </div>
             )}
+            {task.contacts && (
+              <>
+                <Separator />
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Contact
+                  </p>
+                  <p
+                    className="mt-1 cursor-pointer text-primary hover:underline"
+                    onClick={() => router.push(`/dashboard/contacts/${task.contact_id}`)}
+                  >
+                    {task.contacts.name}
+                  </p>
+                </div>
+              </>
+            )}
             <Separator />
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -636,7 +770,32 @@ export default function TaskDetailPage() {
                 <p className="text-sm font-medium text-muted-foreground">
                   Due Date
                 </p>
-                <p className="mt-1">{task.due_date || "Not set"}</p>
+                {task.due_date ? (
+                  <div className="mt-1">
+                    <p>{new Date(task.due_date).toLocaleString()}</p>
+                    {task.status !== "completed" && (() => {
+                      const due = new Date(task.due_date);
+                      const now = new Date();
+                      const diffMs = due.getTime() - now.getTime();
+                      const absDiffMs = Math.abs(diffMs);
+                      const hours = Math.floor(absDiffMs / (1000 * 60 * 60));
+                      const days = Math.floor(hours / 24);
+                      const isOverdue = diffMs < 0;
+                      let text: string;
+                      if (days > 30) text = `${Math.floor(days / 30)} month(s)`;
+                      else if (days > 0) text = `${days} day(s)`;
+                      else if (hours > 0) text = `${hours} hour(s)`;
+                      else text = "less than 1 hour";
+                      return (
+                        <p className={`text-xs ${isOverdue ? "text-red-600" : "text-muted-foreground"}`}>
+                          {isOverdue ? `Overdue by ${text}` : `Due in ${text}`}
+                        </p>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <p className="mt-1">Not set</p>
+                )}
               </div>
             </div>
           </CardContent>

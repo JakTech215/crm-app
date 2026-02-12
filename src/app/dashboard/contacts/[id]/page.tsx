@@ -65,7 +65,8 @@ import {
 
 interface Contact {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string | null;
   email: string | null;
   phone: string | null;
   company: string | null;
@@ -74,6 +75,9 @@ interface Contact {
   sms_notifications_enabled: boolean;
   created_at: string;
 }
+
+const contactName = (c: { first_name: string; last_name: string | null }) =>
+  `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
 
 interface Note {
   id: string;
@@ -136,7 +140,8 @@ export default function ContactDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editForm, setEditForm] = useState({
-    name: "",
+    first_name: "",
+    last_name: "",
     email: "",
     phone: "",
     company: "",
@@ -254,7 +259,8 @@ export default function ContactDetailPage() {
   const openEditDialog = () => {
     if (!contact) return;
     setEditForm({
-      name: contact.name,
+      first_name: contact.first_name,
+      last_name: contact.last_name || "",
       email: contact.email || "",
       phone: contact.phone || "",
       company: contact.company || "",
@@ -272,7 +278,8 @@ export default function ContactDetailPage() {
     const { error } = await supabase
       .from("contacts")
       .update({
-        name: editForm.name,
+        first_name: editForm.first_name,
+        last_name: editForm.last_name || null,
         email: editForm.email || null,
         phone: editForm.phone || null,
         company: editForm.company || null,
@@ -351,7 +358,7 @@ export default function ContactDetailPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">{contact.name}</h1>
+            <h1 className="text-3xl font-bold tracking-tight">{contactName(contact)}</h1>
             <p className="text-muted-foreground">Contact details and notes</p>
           </div>
         </div>
@@ -376,7 +383,7 @@ export default function ContactDetailPage() {
                 <AlertDialogDescription asChild>
                   <div className="space-y-2">
                     <p>
-                      Are you sure you want to delete &quot;{contact.name}&quot;? This action cannot be undone.
+                      Are you sure you want to delete &quot;{contactName(contact)}&quot;? This action cannot be undone.
                     </p>
                     {linkedProjects.length > 0 && (
                       <div>
@@ -425,14 +432,24 @@ export default function ContactDetailPage() {
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="edit_name">Name *</Label>
+                <Label htmlFor="edit_first_name">First Name *</Label>
                 <Input
-                  id="edit_name"
-                  value={editForm.name}
+                  id="edit_first_name"
+                  value={editForm.first_name}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, name: e.target.value })
+                    setEditForm({ ...editForm, first_name: e.target.value })
                   }
                   required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit_last_name">Last Name</Label>
+                <Input
+                  id="edit_last_name"
+                  value={editForm.last_name}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, last_name: e.target.value })
+                  }
                 />
               </div>
               <div className="grid gap-2">

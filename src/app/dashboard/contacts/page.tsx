@@ -42,7 +42,8 @@ import { Plus, Search, Mail, MessageSquare } from "lucide-react";
 
 interface Contact {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string | null;
   email: string | null;
   phone: string | null;
   company: string | null;
@@ -51,6 +52,9 @@ interface Contact {
   sms_notifications_enabled: boolean;
   created_at: string;
 }
+
+const contactName = (c: { first_name: string; last_name: string | null }) =>
+  `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
 
 interface StatusOption {
   id: string;
@@ -86,7 +90,8 @@ export default function ContactsPage() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({
-    name: "",
+    first_name: "",
+    last_name: "",
     email: "",
     phone: "",
     company: "",
@@ -127,7 +132,8 @@ export default function ContactsPage() {
     } = await supabase.auth.getUser();
 
     const { error } = await supabase.from("contacts").insert({
-      name: form.name,
+      first_name: form.first_name,
+      last_name: form.last_name || null,
       email: form.email || null,
       phone: form.phone || null,
       company: form.company || null,
@@ -136,7 +142,7 @@ export default function ContactsPage() {
     });
 
     if (!error) {
-      setForm({ name: "", email: "", phone: "", company: "", status: "lead" });
+      setForm({ first_name: "", last_name: "", email: "", phone: "", company: "", status: "lead" });
       setOpen(false);
       fetchContacts();
     }
@@ -168,16 +174,28 @@ export default function ContactsPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Name *</Label>
-                  <Input
-                    id="name"
-                    value={form.name}
-                    onChange={(e) =>
-                      setForm({ ...form, name: e.target.value })
-                    }
-                    required
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="first_name">First Name *</Label>
+                    <Input
+                      id="first_name"
+                      value={form.first_name}
+                      onChange={(e) =>
+                        setForm({ ...form, first_name: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="last_name">Last Name</Label>
+                    <Input
+                      id="last_name"
+                      value={form.last_name}
+                      onChange={(e) =>
+                        setForm({ ...form, last_name: e.target.value })
+                      }
+                    />
+                  </div>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="email">Email</Label>
@@ -282,7 +300,7 @@ export default function ContactsPage() {
                 </TableRow>
               ) : contacts.filter((c) => {
                 const q = search.toLowerCase();
-                return !q || c.name.toLowerCase().includes(q) ||
+                return !q || contactName(c).toLowerCase().includes(q) ||
                   c.email?.toLowerCase().includes(q) ||
                   c.company?.toLowerCase().includes(q);
               }).length === 0 ? (
@@ -297,7 +315,7 @@ export default function ContactsPage() {
               ) : (
                 contacts.filter((c) => {
                   const q = search.toLowerCase();
-                  return !q || c.name.toLowerCase().includes(q) ||
+                  return !q || contactName(c).toLowerCase().includes(q) ||
                     c.email?.toLowerCase().includes(q) ||
                     c.company?.toLowerCase().includes(q);
                 }).map((contact) => (
@@ -307,7 +325,7 @@ export default function ContactsPage() {
                     onClick={() => router.push(`/dashboard/contacts/${contact.id}`)}
                   >
                     <TableCell className="font-medium">
-                      {contact.name}
+                      {contactName(contact)}
                     </TableCell>
                     <TableCell>{contact.email || "—"}</TableCell>
                     <TableCell>{contact.phone || "—"}</TableCell>

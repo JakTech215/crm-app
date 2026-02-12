@@ -70,8 +70,12 @@ interface TaskAssignee {
 
 interface ContactOption {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string | null;
 }
+
+const contactName = (c: { first_name: string; last_name: string | null }) =>
+  `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
 
 interface Task {
   id: string;
@@ -153,7 +157,7 @@ export default function TaskDetailPage() {
   const fetchTask = async () => {
     const { data, error } = await supabase
       .from("tasks")
-      .select("*, contacts:contact_id(id, name)")
+      .select("*, contacts:contact_id(id, first_name, last_name)")
       .eq("id", taskId)
       .single();
 
@@ -241,8 +245,8 @@ export default function TaskDetailPage() {
   const fetchAllContacts = async () => {
     const { data } = await supabase
       .from("contacts")
-      .select("id, name")
-      .order("name");
+      .select("id, first_name, last_name")
+      .order("first_name");
     setAllContacts(data || []);
   };
 
@@ -550,7 +554,7 @@ export default function TaskDetailPage() {
                       <SelectItem value="none">No contact</SelectItem>
                       {allContacts.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
-                          {c.name}
+                          {contactName(c)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -731,7 +735,7 @@ export default function TaskDetailPage() {
                     className="mt-1 cursor-pointer text-primary hover:underline"
                     onClick={() => router.push(`/dashboard/contacts/${task.contact_id}`)}
                   >
-                    {task.contacts.name}
+                    {contactName(task.contacts)}
                   </p>
                 </div>
               </>

@@ -43,8 +43,12 @@ import { Plus, Search } from "lucide-react";
 
 interface Contact {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string | null;
 }
+
+const contactName = (c: { first_name: string; last_name: string | null }) =>
+  `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
 
 interface Project {
   id: string;
@@ -106,7 +110,7 @@ export default function ProjectsPage() {
   const fetchProjects = async () => {
     const { data } = await supabase
       .from("projects")
-      .select("*, contacts:contact_id(id, name)")
+      .select("*, contacts:contact_id(id, first_name, last_name)")
       .order("created_at", { ascending: false });
     setProjects((data as Project[]) || []);
     setLoading(false);
@@ -115,8 +119,8 @@ export default function ProjectsPage() {
   const fetchContacts = async () => {
     const { data } = await supabase
       .from("contacts")
-      .select("id, name")
-      .order("name");
+      .select("id, first_name, last_name")
+      .order("first_name");
     setContacts(data || []);
   };
 
@@ -257,7 +261,7 @@ export default function ProjectsPage() {
                       <SelectItem value="none">No contact linked</SelectItem>
                       {contacts.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
-                          {c.name}
+                          {contactName(c)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -360,7 +364,7 @@ export default function ProjectsPage() {
                 const q = search.toLowerCase();
                 return !q || p.name.toLowerCase().includes(q) ||
                   p.client?.toLowerCase().includes(q) ||
-                  p.contacts?.name.toLowerCase().includes(q);
+                  (p.contacts ? contactName(p.contacts).toLowerCase().includes(q) : false);
               }).length === 0 ? (
                 <TableRow>
                   <TableCell
@@ -376,7 +380,7 @@ export default function ProjectsPage() {
                   const q = search.toLowerCase();
                   return !q || p.name.toLowerCase().includes(q) ||
                     p.client?.toLowerCase().includes(q) ||
-                    p.contacts?.name.toLowerCase().includes(q);
+                    (p.contacts ? contactName(p.contacts).toLowerCase().includes(q) : false);
                 }).map((project) => (
                   <TableRow
                     key={project.id}
@@ -387,7 +391,7 @@ export default function ProjectsPage() {
                       {project.name}
                     </TableCell>
                     <TableCell>
-                      {project.contacts?.name || project.client || "—"}
+                      {(project.contacts ? contactName(project.contacts) : null) || project.client || "—"}
                     </TableCell>
                     <TableCell>
                       <Badge

@@ -74,15 +74,15 @@ export default function DashboardPage() {
 
         // Recent activity: last 5 items across contacts, projects, tasks
         const [recentContacts, recentProjects, recentTasks] = await Promise.all([
-          supabase.from("contacts").select("id, name, created_at").order("created_at", { ascending: false }).limit(3),
+          supabase.from("contacts").select("id, first_name, last_name, created_at").order("created_at", { ascending: false }).limit(3),
           supabase.from("projects").select("id, name, created_at").order("created_at", { ascending: false }).limit(3),
           supabase.from("tasks").select("id, title, created_at").order("created_at", { ascending: false }).limit(3),
         ]);
 
         const items: RecentItem[] = [
-          ...(recentContacts.data || []).map((c) => ({
+          ...(recentContacts.data || []).map((c: { id: string; first_name: string; last_name: string | null; created_at: string }) => ({
             id: c.id,
-            label: c.name,
+            label: `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`,
             type: "Contact",
             date: c.created_at,
             href: `/dashboard/contacts/${c.id}`,

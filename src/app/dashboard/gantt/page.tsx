@@ -73,23 +73,29 @@ export default function GanttPage() {
   });
 
   const fetchData = async () => {
-    const [{ data: taskData }, { data: depData }, { data: projData }] = await Promise.all([
+    const [{ data: taskData }, { data: depData }, { data: projData }, { data: ptLinks }] = await Promise.all([
       supabase
         .from("tasks")
-        .select("id, title, status, priority, start_date, due_date, project_id")
-        .order("project_id")
+        .select("id, title, status, priority, start_date, due_date")
         .order("start_date"),
       supabase.from("task_dependencies").select("task_id, depends_on_task_id"),
       supabase.from("projects").select("id, name").order("name"),
+      supabase.from("project_tasks").select("task_id, project_id"),
     ]);
 
-    // Enrich tasks with project names
+    // Build task→project mapping from junction table
+    const taskProjectMap: Record<string, string> = {};
+    (ptLinks || []).forEach((link: { task_id: string; project_id: string }) => {
+      taskProjectMap[link.task_id] = link.project_id;
+    });
+
     const projMap: Record<string, string> = {};
     (projData || []).forEach((p: Project) => { projMap[p.id] = p.name; });
 
-    const enriched = (taskData || []).map((t: Omit<GanttTask, "project_name">) => ({
+    const enriched = (taskData || []).map((t: { id: string; title: string; status: string; priority: string; start_date: string | null; due_date: string | null }) => ({
       ...t,
-      project_name: t.project_id ? projMap[t.project_id] || null : null,
+      project_id: taskProjectMap[t.id] || null,
+      project_name: taskProjectMap[t.id] ? projMap[taskProjectMap[t.id]] || null : null,
     }));
 
     setTasks(enriched);

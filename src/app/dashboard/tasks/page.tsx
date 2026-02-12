@@ -61,14 +61,17 @@ interface TaskAssignee {
 
 interface ContactOption {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string | null;
 }
+
+const contactName = (c: { first_name: string; last_name: string | null }) =>
+  `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
 
 interface Task {
   id: string;
   title: string;
   description: string | null;
-  project_id: string | null;
   contact_id: string | null;
   priority: string;
   status: string;
@@ -125,7 +128,7 @@ export default function TasksPage() {
   const fetchTasks = async () => {
     const { data, error } = await supabase
       .from("tasks")
-      .select("*, contacts:contact_id(id, name)")
+      .select("*, contacts:contact_id(id, first_name, last_name)")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -180,8 +183,8 @@ export default function TasksPage() {
   const fetchContacts = async () => {
     const { data } = await supabase
       .from("contacts")
-      .select("id, name")
-      .order("name");
+      .select("id, first_name, last_name")
+      .order("first_name");
     setContacts(data || []);
   };
 
@@ -247,7 +250,6 @@ export default function TasksPage() {
       .insert({
         title: form.title,
         description: form.description || null,
-        project_id: form.project_id || null,
         contact_id: form.contact_id || null,
         priority: form.priority,
         status: form.status,
@@ -280,6 +282,13 @@ export default function TasksPage() {
             assignError.message
         );
       }
+    }
+
+    // Link to project via junction table
+    if (task && form.project_id) {
+      await supabase
+        .from("project_tasks")
+        .insert({ task_id: task.id, project_id: form.project_id });
     }
 
     setForm({
@@ -415,7 +424,7 @@ export default function TasksPage() {
                 </div>
               </TableCell>
               <TableCell>
-                {task.contacts?.name || "—"}
+                {task.contacts ? contactName(task.contacts) : "—"}
               </TableCell>
               <TableCell>
                 {task.task_assignees?.length > 0 ? (
@@ -593,7 +602,7 @@ export default function TasksPage() {
                         <SelectItem value="none">No contact</SelectItem>
                         {contacts.map((c) => (
                           <SelectItem key={c.id} value={c.id}>
-                            {c.name}
+                            {contactName(c)}
                           </SelectItem>
                         ))}
                       </SelectContent>

@@ -53,8 +53,12 @@ import { ArrowLeft, Pencil, Trash2, Plus } from "lucide-react";
 
 interface Contact {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string | null;
 }
+
+const contactName = (c: { first_name: string; last_name: string | null }) =>
+  `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
 
 interface Project {
   id: string;
@@ -148,7 +152,7 @@ export default function ProjectDetailPage() {
   const fetchProject = async () => {
     const { data, error } = await supabase
       .from("projects")
-      .select("*, contacts:contact_id(id, name)")
+      .select("*, contacts:contact_id(id, first_name, last_name)")
       .eq("id", projectId)
       .single();
 
@@ -163,10 +167,22 @@ export default function ProjectDetailPage() {
   };
 
   const fetchTasks = async () => {
+    // Get task IDs linked to this project via junction table
+    const { data: links } = await supabase
+      .from("project_tasks")
+      .select("task_id")
+      .eq("project_id", projectId);
+
+    if (!links || links.length === 0) {
+      setTasks([]);
+      return;
+    }
+
+    const taskIds = links.map((l: { task_id: string }) => l.task_id);
     const { data } = await supabase
       .from("tasks")
       .select("id, title, priority, status, due_date")
-      .eq("project_id", projectId)
+      .in("id", taskIds)
       .order("created_at", { ascending: false });
     setTasks(data || []);
   };
@@ -174,8 +190,8 @@ export default function ProjectDetailPage() {
   const fetchContacts = async () => {
     const { data } = await supabase
       .from("contacts")
-      .select("id, name")
-      .order("name");
+      .select("id, first_name, last_name")
+      .order("first_name");
     setContacts(data || []);
   };
 
@@ -247,10 +263,10 @@ export default function ProjectDetailPage() {
 
   const handleDelete = async () => {
     setDeleting(true);
-    // Unlink tasks from this project first
+    // Remove task links from junction table
     await supabase
-      .from("tasks")
-      .update({ project_id: null })
+      .from("project_tasks")
+      .delete()
       .eq("project_id", projectId);
     const { error } = await supabase.from("projects").delete().eq("id", projectId);
     if (!error) {
@@ -392,7 +408,7 @@ export default function ProjectDetailPage() {
                     <SelectItem value="none">No contact linked</SelectItem>
                     {contacts.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
-                        {c.name}
+                        {contactName(c)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -471,7 +487,7 @@ export default function ProjectDetailPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Client</p>
-                <p className="mt-1">{project.contacts?.name || project.client || "Not set"}</p>
+                <p className="mt-1">{(project.contacts ? contactName(project.contacts) : null) || project.client || "Not set"}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Start Date</p>
@@ -494,7 +510,7 @@ export default function ProjectDetailPage() {
                     className="mt-1 text-primary cursor-pointer hover:underline"
                     onClick={() => router.push(`/dashboard/contacts/${project.contacts!.id}`)}
                   >
-                    {project.contacts.name}
+                    {contactName(project.contacts)}
                   </p>
                 </div>
               )}

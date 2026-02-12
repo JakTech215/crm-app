@@ -12,7 +12,7 @@ export default function Home() {
         <h1 className="text-4xl font-bold">CRM</h1>
       </div>
       <p className="max-w-md text-center text-muted-foreground">
-        Manage your contacts, projects, tasks, and team — all in one place.
+        Manage your contacts, projects, tasks, and team — all in one place. Powered by Next.js and Supabase.
       </p>
       <div className="flex gap-4">
         <Button asChild size="lg">

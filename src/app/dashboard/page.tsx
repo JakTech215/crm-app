@@ -11,6 +11,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Users, FolderKanban, CheckSquare, UserCog } from "lucide-react";
 
 interface StatCard {
@@ -54,29 +57,42 @@ export default function DashboardPage() {
   const [recent, setRecent] = useState<RecentItem[]>([]);
   const [upcoming, setUpcoming] = useState<UpcomingTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
 
   useEffect(() => {
     const fetchData = async () => {
+      // Stats - check errors individually
+      const contactsRes = await supabase.from("contacts").select("id", { count: "exact", head: true });
+      const projectsRes = await supabase.from("projects").select("id", { count: "exact", head: true });
+      const tasksRes = await supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed");
+      const employeesRes = await supabase.from("employees").select("id", { count: "exact", head: true }).eq("status", "active");
+
+      setStats([
+        { title: "Total Contacts", value: contactsRes.error ? 0 : (contactsRes.count ?? 0), description: "Active contacts", icon: Users },
+        { title: "Projects", value: projectsRes.error ? 0 : (projectsRes.count ?? 0), description: "Active projects", icon: FolderKanban },
+        { title: "Tasks", value: tasksRes.error ? 0 : (tasksRes.count ?? 0), description: "Pending tasks", icon: CheckSquare },
+        { title: "Employees", value: employeesRes.error ? 0 : (employeesRes.count ?? 0), description: "Team members", icon: UserCog },
+      ]);
+
+      // Recent activity
       try {
-        const [contactsRes, projectsRes, tasksRes, employeesRes] = await Promise.all([
-          supabase.from("contacts").select("id", { count: "exact", head: true }),
-          supabase.from("projects").select("id", { count: "exact", head: true }),
-          supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"),
-          supabase.from("employees").select("id", { count: "exact", head: true }).eq("status", "active"),
-        ]);
+        let contactsQuery = supabase.from("contacts").select("id, first_name, last_name, created_at").order("created_at", { ascending: false }).limit(3);
+        if (dateFrom) contactsQuery = contactsQuery.gte("created_at", dateFrom);
+        if (dateTo) contactsQuery = contactsQuery.lte("created_at", dateTo + "T23:59:59");
 
-        setStats([
-          { title: "Total Contacts", value: contactsRes.count ?? 0, description: "Active contacts", icon: Users },
-          { title: "Projects", value: projectsRes.count ?? 0, description: "Active projects", icon: FolderKanban },
-          { title: "Tasks", value: tasksRes.count ?? 0, description: "Pending tasks", icon: CheckSquare },
-          { title: "Employees", value: employeesRes.count ?? 0, description: "Team members", icon: UserCog },
-        ]);
+        let projectsQuery = supabase.from("projects").select("id, name, created_at").order("created_at", { ascending: false }).limit(3);
+        if (dateFrom) projectsQuery = projectsQuery.gte("created_at", dateFrom);
+        if (dateTo) projectsQuery = projectsQuery.lte("created_at", dateTo + "T23:59:59");
 
-        // Recent activity: last 5 items across contacts, projects, tasks
+        let tasksQuery = supabase.from("tasks").select("id, title, created_at").order("created_at", { ascending: false }).limit(3);
+        if (dateFrom) tasksQuery = tasksQuery.gte("created_at", dateFrom);
+        if (dateTo) tasksQuery = tasksQuery.lte("created_at", dateTo + "T23:59:59");
+
         const [recentContacts, recentProjects, recentTasks] = await Promise.all([
-          supabase.from("contacts").select("id, first_name, last_name, created_at").order("created_at", { ascending: false }).limit(3),
-          supabase.from("projects").select("id, name, created_at").order("created_at", { ascending: false }).limit(3),
-          supabase.from("tasks").select("id, title, created_at").order("created_at", { ascending: false }).limit(3),
+          contactsQuery,
+          projectsQuery,
+          tasksQuery,
         ]);
 
         const items: RecentItem[] = [
@@ -104,32 +120,34 @@ export default function DashboardPage() {
         ];
         items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setRecent(items.slice(0, 5));
+      } catch (e) {
+        console.error("Failed to fetch recent activity:", e);
+      }
 
-        // Upcoming tasks: due in the next 14 days
-        const today = new Date().toISOString().split("T")[0];
-        const twoWeeks = new Date();
-        twoWeeks.setDate(twoWeeks.getDate() + 14);
-        const futureDate = twoWeeks.toISOString().split("T")[0];
+      // Upcoming tasks
+      try {
+        const startDate = dateFrom || new Date().toISOString().split("T")[0];
+        const endDate = dateTo || (() => { const d = new Date(); d.setDate(d.getDate() + 14); return d.toISOString().split("T")[0]; })();
 
         const { data: upcomingTasks } = await supabase
           .from("tasks")
           .select("id, title, due_date, priority")
           .neq("status", "completed")
-          .gte("due_date", today)
-          .lte("due_date", futureDate)
+          .gte("due_date", startDate)
+          .lte("due_date", endDate)
           .order("due_date", { ascending: true })
           .limit(5);
 
         setUpcoming(upcomingTasks || []);
-      } catch (err) {
-        console.error("Failed to fetch dashboard data:", err);
-      } finally {
-        setLoading(false);
+      } catch (e) {
+        console.error("Failed to fetch upcoming tasks:", e);
       }
+
+      setLoading(false);
     };
 
     fetchData();
-  }, []);
+  }, [dateFrom, dateTo]);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -149,6 +167,24 @@ export default function DashboardPage() {
         <p className="text-muted-foreground">
           Overview of your CRM activity.
         </p>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="dateFrom" className="text-sm whitespace-nowrap">From</Label>
+          <Input id="dateFrom" type="date" value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)} className="w-auto" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="dateTo" className="text-sm whitespace-nowrap">To</Label>
+          <Input id="dateTo" type="date" value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)} className="w-auto" />
+        </div>
+        {(dateFrom || dateTo) && (
+          <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); }}>
+            Clear
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

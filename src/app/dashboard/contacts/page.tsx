@@ -56,6 +56,12 @@ interface Contact {
 const contactName = (c: { first_name: string; last_name: string | null }) =>
   `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
 
+interface ContactUpcomingTask {
+  id: string;
+  title: string;
+  due_date: string | null;
+}
+
 interface StatusOption {
   id: string;
   name: string;
@@ -88,7 +94,9 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [contactTasksMap, setContactTasksMap] = useState<Record<string, ContactUpcomingTask[]>>({});
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -107,6 +115,27 @@ export default function ContactsPage() {
     setLoading(false);
   };
 
+  const fetchContactTasks = async () => {
+    const today = new Date().toISOString().split("T")[0];
+    const { data } = await supabase
+      .from("tasks")
+      .select("id, title, due_date, contact_id")
+      .neq("status", "completed")
+      .not("contact_id", "is", null)
+      .gte("due_date", today)
+      .order("due_date", { ascending: true });
+
+    const map: Record<string, ContactUpcomingTask[]> = {};
+    for (const t of (data || []) as { id: string; title: string; due_date: string | null; contact_id: string }[]) {
+      if (!t.contact_id) continue;
+      if (!map[t.contact_id]) map[t.contact_id] = [];
+      if (map[t.contact_id].length < 3) {
+        map[t.contact_id].push({ id: t.id, title: t.title, due_date: t.due_date });
+      }
+    }
+    setContactTasksMap(map);
+  };
+
   const fetchStatuses = async () => {
     const { data } = await supabase
       .from("contact_statuses")
@@ -121,17 +150,19 @@ export default function ContactsPage() {
   useEffect(() => {
     fetchContacts();
     fetchStatuses();
+    fetchContactTasks();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const { error } = await supabase.from("contacts").insert({
+    const { error: insertError } = await supabase.from("contacts").insert({
       first_name: form.first_name,
       last_name: form.last_name || null,
       email: form.email || null,
@@ -141,11 +172,15 @@ export default function ContactsPage() {
       user_id: user?.id,
     });
 
-    if (!error) {
-      setForm({ first_name: "", last_name: "", email: "", phone: "", company: "", status: "lead" });
-      setOpen(false);
-      fetchContacts();
+    if (insertError) {
+      setError(insertError.message);
+      setSaving(false);
+      return;
     }
+
+    setForm({ first_name: "", last_name: "", email: "", phone: "", company: "", status: "lead" });
+    setOpen(false);
+    fetchContacts();
     setSaving(false);
   };
 
@@ -174,6 +209,11 @@ export default function ContactsPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                {error && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="first_name">First Name *</Label>
@@ -288,13 +328,14 @@ export default function ContactsPage() {
                 <TableHead>Phone</TableHead>
                 <TableHead>Company</TableHead>
                 <TableHead>Notifications</TableHead>
+                <TableHead>Upcoming Tasks</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     Loading...
                   </TableCell>
                 </TableRow>
@@ -306,7 +347,7 @@ export default function ContactsPage() {
               }).length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="text-center text-muted-foreground py-8"
                   >
                     No contacts yet. Click &quot;Add Contact&quot; to create one.
@@ -335,6 +376,28 @@ export default function ContactsPage() {
                         <Mail className={`h-4 w-4 ${contact.email_notifications_enabled ? "text-primary" : "text-muted-foreground/30"}`} />
                         <MessageSquare className={`h-4 w-4 ${contact.sms_notifications_enabled ? "text-primary" : "text-muted-foreground/30"}`} />
                       </div>
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      {(contactTasksMap[contact.id] || []).length > 0 ? (
+                        <div className="space-y-1">
+                          {contactTasksMap[contact.id].map((t) => (
+                            <div
+                              key={t.id}
+                              className="text-xs cursor-pointer hover:underline text-primary truncate max-w-[200px]"
+                              onClick={() => router.push(`/dashboard/tasks/${t.id}`)}
+                            >
+                              {t.title}
+                              {t.due_date && (
+                                <span className="text-muted-foreground ml-1">
+                                  ({new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge

@@ -11,6 +11,8 @@ import {
   Settings,
   LogOut,
   GanttChart,
+  CalendarDays,
+  History,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -33,6 +35,8 @@ const navItems = [
   { title: "Contacts", href: "/dashboard/contacts", icon: Users },
   { title: "Projects", href: "/dashboard/projects", icon: FolderKanban },
   { title: "Tasks", href: "/dashboard/tasks", icon: CheckSquare },
+  { title: "Upcoming", href: "/dashboard/upcoming", icon: CalendarDays },
+  { title: "History", href: "/dashboard/history", icon: History },
   { title: "Gantt Chart", href: "/dashboard/gantt", icon: GanttChart },
   { title: "Employees", href: "/dashboard/employees", icon: UserCog },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },

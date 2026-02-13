@@ -56,7 +56,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, Bell } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -82,6 +82,8 @@ interface Task {
   title: string;
   description: string | null;
   contact_id: string | null;
+  parent_task_id: string | null;
+  template_id: string | null;
   priority: string;
   status: string;
   start_date: string | null;
@@ -146,8 +148,14 @@ export default function TaskDetailPage() {
     start_date: "",
     due_date: "",
     is_milestone: false,
+    send_notification: false,
   });
   const [editSelectedEmployees, setEditSelectedEmployees] = useState<string[]>([]);
+
+  // Linkages state
+  const [linkedProjects, setLinkedProjects] = useState<{ id: string; name: string }[]>([]);
+  const [parentTask, setParentTask] = useState<{ id: string; title: string } | null>(null);
+  const [childTasks, setChildTasks] = useState<{ id: string; title: string; status: string }[]>([]);
 
   // Delete state
   const [deleting, setDeleting] = useState(false);
@@ -250,13 +258,53 @@ export default function TaskDetailPage() {
     setAllContacts(data || []);
   };
 
+  const fetchLinkedProjects = async () => {
+    const { data: links } = await supabase
+      .from("project_tasks")
+      .select("project_id")
+      .eq("task_id", taskId);
+    if (links && links.length > 0) {
+      const projectIds = links.map((l: { project_id: string }) => l.project_id);
+      const { data: projects } = await supabase
+        .from("projects")
+        .select("id, name")
+        .in("id", projectIds);
+      setLinkedProjects(projects || []);
+    } else {
+      setLinkedProjects([]);
+    }
+  };
+
+  const fetchChildTasks = async () => {
+    const { data } = await supabase
+      .from("tasks")
+      .select("id, title, status")
+      .eq("parent_task_id", taskId);
+    setChildTasks(data || []);
+  };
+
   useEffect(() => {
     fetchTask();
     fetchDependencies();
     fetchAllTasks();
     fetchAllEmployees();
     fetchAllContacts();
+    fetchLinkedProjects();
+    fetchChildTasks();
   }, [taskId]);
+
+  useEffect(() => {
+    if (task?.parent_task_id) {
+      supabase
+        .from("tasks")
+        .select("id, title")
+        .eq("id", task.parent_task_id)
+        .single()
+        .then(({ data }) => setParentTask(data));
+    } else {
+      setParentTask(null);
+    }
+  }, [task?.parent_task_id]);
 
   const handleAddDependency = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -297,6 +345,7 @@ export default function TaskDetailPage() {
       start_date: task.start_date || "",
       due_date: task.due_date || "",
       is_milestone: task.is_milestone,
+      send_notification: false,
     });
     setEditSelectedEmployees(task.task_assignees.map((a) => a.employee_id));
     setEditError(null);
@@ -337,6 +386,61 @@ export default function TaskDetailPage() {
           employee_id: empId,
         }))
       );
+    }
+
+    // Auto-create follow-up task if task was just completed and has a template
+    if (editForm.status === "completed" && task && task.status !== "completed" && task.template_id) {
+      try {
+        const { data: steps } = await supabase
+          .from("task_workflow_steps")
+          .select("step_order, delay_days, next_template_id")
+          .eq("template_id", task.template_id)
+          .order("step_order", { ascending: true })
+          .limit(1);
+
+        if (steps && steps.length > 0) {
+          const step = steps[0];
+          // Fetch the next template details
+          const { data: nextTemplate } = await supabase
+            .from("task_templates")
+            .select("id, name, description, default_priority, due_amount, due_unit, default_due_days")
+            .eq("id", step.next_template_id)
+            .single();
+
+          if (nextTemplate) {
+            // Calculate due date
+            let dueDate: string | null = null;
+            const delayDays = step.delay_days || 0;
+            const amount = nextTemplate.due_amount || nextTemplate.default_due_days;
+            const unit = nextTemplate.due_unit || "days";
+            if (amount) {
+              const d = new Date();
+              d.setDate(d.getDate() + delayDays);
+              if (unit === "hours") d.setHours(d.getHours() + amount);
+              else if (unit === "days") d.setDate(d.getDate() + amount);
+              else if (unit === "weeks") d.setDate(d.getDate() + amount * 7);
+              else if (unit === "months") d.setMonth(d.getMonth() + amount);
+              dueDate = d.toISOString().split("T")[0];
+            }
+
+            const { data: { user } } = await supabase.auth.getUser();
+
+            await supabase.from("tasks").insert({
+              title: nextTemplate.name,
+              description: nextTemplate.description || null,
+              priority: nextTemplate.default_priority,
+              status: "pending",
+              due_date: dueDate,
+              contact_id: task.contact_id || null,
+              parent_task_id: taskId,
+              template_id: nextTemplate.id,
+              created_by: user?.id,
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Failed to create follow-up task:", e);
+      }
     }
 
     setSavingEdit(false);
@@ -700,6 +804,18 @@ export default function TaskDetailPage() {
                   <span className="text-sm font-medium">Mark as milestone</span>
                 </div>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={editForm.send_notification}
+                  onCheckedChange={(checked) =>
+                    setEditForm({ ...editForm, send_notification: !!checked })
+                  }
+                />
+                <div className="flex items-center gap-1.5">
+                  <Bell className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Send notification</span>
+                </div>
+              </label>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={savingEdit}>
@@ -982,6 +1098,69 @@ export default function TaskDetailPage() {
               )}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Linkages</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Projects</p>
+            {linkedProjects.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mt-1">
+                {linkedProjects.map((p) => (
+                  <Badge
+                    key={p.id}
+                    variant="outline"
+                    className="cursor-pointer hover:bg-muted"
+                    onClick={() => router.push(`/dashboard/projects/${p.id}`)}
+                  >
+                    {p.name}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground mt-1">No linked projects</p>
+            )}
+          </div>
+          {parentTask && (
+            <>
+              <Separator />
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Parent Task</p>
+                <p
+                  className="mt-1 cursor-pointer text-primary hover:underline"
+                  onClick={() => router.push(`/dashboard/tasks/${parentTask.id}`)}
+                >
+                  {parentTask.title}
+                </p>
+              </div>
+            </>
+          )}
+          {childTasks.length > 0 && (
+            <>
+              <Separator />
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Follow-up Tasks</p>
+                <div className="space-y-2 mt-1">
+                  {childTasks.map((ct) => (
+                    <div
+                      key={ct.id}
+                      className="flex items-center justify-between rounded-lg border p-2 cursor-pointer hover:bg-muted/50"
+                      onClick={() => router.push(`/dashboard/tasks/${ct.id}`)}
+                    >
+                      <span className="text-sm">{ct.title}</span>
+                      <Badge variant="secondary" className={`capitalize ${statusColors[ct.status] || ""}`}>
+                        {ct.status.replace("_", " ")}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

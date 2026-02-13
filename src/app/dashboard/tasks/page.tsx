@@ -47,7 +47,7 @@ import {
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Users, Diamond, Search } from "lucide-react";
+import { Plus, Users, Diamond, Search, Bell } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -113,6 +113,7 @@ export default function TasksPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -123,6 +124,7 @@ export default function TasksPage() {
     start_date: "",
     due_date: "",
     is_milestone: false,
+    send_notification: false,
   });
 
   const fetchTasks = async () => {
@@ -227,6 +229,7 @@ export default function TasksPage() {
       priority: tmpl.default_priority,
       due_date: dueDate || form.due_date,
     });
+    setSelectedTemplateId(templateId);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -291,6 +294,11 @@ export default function TasksPage() {
         .insert({ task_id: task.id, project_id: form.project_id });
     }
 
+    // Save template_id on the task if a template was used
+    if (task && selectedTemplateId) {
+      await supabase.from("tasks").update({ template_id: selectedTemplateId }).eq("id", task.id);
+    }
+
     setForm({
       title: "",
       description: "",
@@ -301,7 +309,9 @@ export default function TasksPage() {
       start_date: "",
       due_date: "",
       is_milestone: false,
+      send_notification: false,
     });
+    setSelectedTemplateId("");
     setSelectedEmployees([]);
     setOpen(false);
     fetchTasks();
@@ -752,6 +762,18 @@ export default function TasksPage() {
                     <span className="text-sm font-medium">
                       Mark as milestone
                     </span>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={form.send_notification}
+                    onCheckedChange={(checked) =>
+                      setForm({ ...form, send_notification: !!checked })
+                    }
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <Bell className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Send notification</span>
                   </div>
                 </label>
               </div>

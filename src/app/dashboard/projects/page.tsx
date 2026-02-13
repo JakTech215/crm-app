@@ -54,7 +54,6 @@ interface Project {
   id: string;
   name: string;
   description: string | null;
-  client: string | null;
   contact_id: string | null;
   status: string;
   start_date: string | null;
@@ -96,11 +95,11 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({
     name: "",
     description: "",
-    client: "",
     contact_id: "",
     status: "planning",
     start_date: "",
@@ -144,15 +143,15 @@ export default function ProjectsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const { error } = await supabase.from("projects").insert({
+    const { error: insertError } = await supabase.from("projects").insert({
       name: form.name,
       description: form.description || null,
-      client: form.client || null,
       contact_id: form.contact_id || null,
       status: form.status,
       start_date: form.start_date || null,
@@ -160,19 +159,22 @@ export default function ProjectsPage() {
       user_id: user?.id,
     });
 
-    if (!error) {
-      setForm({
-        name: "",
-        description: "",
-        client: "",
-        contact_id: "",
-        status: "planning",
-        start_date: "",
-        due_date: "",
-      });
-      setOpen(false);
-      fetchProjects();
+    if (insertError) {
+      setError(insertError.message);
+      setSaving(false);
+      return;
     }
+
+    setForm({
+      name: "",
+      description: "",
+      contact_id: "",
+      status: "planning",
+      start_date: "",
+      due_date: "",
+    });
+    setOpen(false);
+    fetchProjects();
     setSaving(false);
   };
 
@@ -206,6 +208,11 @@ export default function ProjectsPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                {error && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
                 <div className="grid gap-2">
                   <Label htmlFor="name">Project Name *</Label>
                   <Input
@@ -225,17 +232,6 @@ export default function ProjectsPage() {
                     onChange={(e) =>
                       setForm({ ...form, description: e.target.value })
                     }
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="client">Client Name</Label>
-                  <Input
-                    id="client"
-                    value={form.client}
-                    onChange={(e) =>
-                      setForm({ ...form, client: e.target.value })
-                    }
-                    placeholder="Free text client name"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -347,7 +343,7 @@ export default function ProjectsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Project Name</TableHead>
-                <TableHead>Client</TableHead>
+                <TableHead>Contact</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Start Date</TableHead>
                 <TableHead>Due Date</TableHead>
@@ -363,7 +359,6 @@ export default function ProjectsPage() {
               ) : projects.filter((p) => {
                 const q = search.toLowerCase();
                 return !q || p.name.toLowerCase().includes(q) ||
-                  p.client?.toLowerCase().includes(q) ||
                   (p.contacts ? contactName(p.contacts).toLowerCase().includes(q) : false);
               }).length === 0 ? (
                 <TableRow>
@@ -379,7 +374,6 @@ export default function ProjectsPage() {
                 projects.filter((p) => {
                   const q = search.toLowerCase();
                   return !q || p.name.toLowerCase().includes(q) ||
-                    p.client?.toLowerCase().includes(q) ||
                     (p.contacts ? contactName(p.contacts).toLowerCase().includes(q) : false);
                 }).map((project) => (
                   <TableRow
@@ -391,7 +385,7 @@ export default function ProjectsPage() {
                       {project.name}
                     </TableCell>
                     <TableCell>
-                      {(project.contacts ? contactName(project.contacts) : null) || project.client || "—"}
+                      {project.contacts ? contactName(project.contacts) : "—"}
                     </TableCell>
                     <TableCell>
                       <Badge

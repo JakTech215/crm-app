@@ -49,7 +49,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Pencil, Trash2, Plus } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, Plus, Diamond } from "lucide-react";
 
 interface Contact {
   id: string;
@@ -64,7 +64,6 @@ interface Project {
   id: string;
   name: string;
   description: string | null;
-  client: string | null;
   contact_id: string | null;
   status: string;
   start_date: string | null;
@@ -79,6 +78,8 @@ interface ProjectTask {
   priority: string;
   status: string;
   due_date: string | null;
+  start_date: string | null;
+  is_milestone: boolean;
 }
 
 interface StatusOption {
@@ -131,6 +132,9 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  // Task filter state
+  const [taskStatusFilter, setTaskStatusFilter] = useState<string>("all");
+
   // Edit state
   const [editOpen, setEditOpen] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -138,7 +142,6 @@ export default function ProjectDetailPage() {
   const [editForm, setEditForm] = useState({
     name: "",
     description: "",
-    client: "",
     contact_id: "",
     status: "planning",
     start_date: "",
@@ -181,9 +184,9 @@ export default function ProjectDetailPage() {
     const taskIds = links.map((l: { task_id: string }) => l.task_id);
     const { data } = await supabase
       .from("tasks")
-      .select("id, title, priority, status, due_date")
+      .select("id, title, priority, status, due_date, start_date, is_milestone")
       .in("id", taskIds)
-      .order("created_at", { ascending: false });
+      .order("due_date", { ascending: true });
     setTasks(data || []);
   };
 
@@ -222,7 +225,6 @@ export default function ProjectDetailPage() {
     setEditForm({
       name: project.name,
       description: project.description || "",
-      client: project.client || "",
       contact_id: project.contact_id || "",
       status: project.status,
       start_date: project.start_date || "",
@@ -242,7 +244,6 @@ export default function ProjectDetailPage() {
       .update({
         name: editForm.name,
         description: editForm.description || null,
-        client: editForm.client || null,
         contact_id: editForm.contact_id || null,
         status: editForm.status,
         start_date: editForm.start_date || null,
@@ -386,14 +387,6 @@ export default function ProjectDetailPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="edit_client">Client Name</Label>
-                <Input
-                  id="edit_client"
-                  value={editForm.client}
-                  onChange={(e) => setEditForm({ ...editForm, client: e.target.value })}
-                />
-              </div>
-              <div className="grid gap-2">
                 <Label>Link to Contact</Label>
                 <Select
                   value={editForm.contact_id || "none"}
@@ -486,10 +479,6 @@ export default function ProjectDetailPage() {
                 </Badge>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Client</p>
-                <p className="mt-1">{(project.contacts ? contactName(project.contacts) : null) || project.client || "Not set"}</p>
-              </div>
-              <div>
                 <p className="text-sm font-medium text-muted-foreground">Start Date</p>
                 <p className="mt-1">{project.start_date || "Not set"}</p>
               </div>
@@ -539,68 +528,106 @@ export default function ProjectDetailPage() {
               <p className="text-sm text-muted-foreground">
                 No tasks linked to this project yet.
               </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Task</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Due</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tasks.map((task) => (
-                    <TableRow
-                      key={task.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                    >
-                      <TableCell
-                        className="font-medium"
-                        onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
-                      >
-                        {task.title}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={`capitalize ${priorityColors[task.priority] || ""}`}
-                        >
-                          {task.priority}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={task.status}
-                          onValueChange={async (value) => {
-                            await supabase
-                              .from("tasks")
-                              .update({ status: value })
-                              .eq("id", task.id);
-                            fetchTasks();
-                          }}
-                        >
-                          <SelectTrigger className="h-8 w-32">
-                            <Badge
-                              variant="secondary"
-                              className={`capitalize ${statusColors[task.status] || ""}`}
+            ) : (() => {
+              const filteredTasks = tasks.filter(t => taskStatusFilter === "all" || t.status === taskStatusFilter);
+              const milestones = filteredTasks.filter(t => t.is_milestone);
+              const regularTasks = filteredTasks.filter(t => !t.is_milestone);
+              return (
+                <>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Select value={taskStatusFilter} onValueChange={setTaskStatusFilter}>
+                      <SelectTrigger className="w-40">
+                        <SelectValue placeholder="All statuses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="in_progress">In Progress</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {filteredTasks.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No tasks match the selected filter.
+                    </p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Task</TableHead>
+                          <TableHead>Start Date</TableHead>
+                          <TableHead>Priority</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Due Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {[...milestones, ...regularTasks].map((task) => (
+                          <TableRow
+                            key={task.id}
+                            className="cursor-pointer hover:bg-muted/50"
+                          >
+                            <TableCell
+                              className="font-medium"
+                              onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
                             >
-                              {task.status.replace("_", " ")}
-                            </Badge>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="in_progress">In Progress</SelectItem>
-                            <SelectItem value="completed">Completed</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>{task.due_date ? new Date(task.due_date).toLocaleDateString() : "—"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+                              <div className="flex items-center gap-2">
+                                {task.is_milestone && (
+                                  <>
+                                    <Diamond className="h-4 w-4 text-amber-500 shrink-0" />
+                                    <Badge variant="outline" className="border-amber-500 text-amber-700 text-xs">
+                                      Milestone
+                                    </Badge>
+                                  </>
+                                )}
+                                <span>{task.title}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>{task.start_date ? new Date(task.start_date).toLocaleDateString() : "—"}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="secondary"
+                                className={`capitalize ${priorityColors[task.priority] || ""}`}
+                              >
+                                {task.priority}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={task.status}
+                                onValueChange={async (value) => {
+                                  await supabase
+                                    .from("tasks")
+                                    .update({ status: value })
+                                    .eq("id", task.id);
+                                  fetchTasks();
+                                }}
+                              >
+                                <SelectTrigger className="h-8 w-32">
+                                  <Badge
+                                    variant="secondary"
+                                    className={`capitalize ${statusColors[task.status] || ""}`}
+                                  >
+                                    {task.status.replace("_", " ")}
+                                  </Badge>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="in_progress">In Progress</SelectItem>
+                                  <SelectItem value="completed">Completed</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>{task.due_date ? new Date(task.due_date).toLocaleDateString() : "—"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>

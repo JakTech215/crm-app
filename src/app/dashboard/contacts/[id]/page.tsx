@@ -139,6 +139,7 @@ export default function ContactDetailPage() {
   // Edit contact state
   const [editOpen, setEditOpen] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     first_name: "",
     last_name: "",
@@ -274,8 +275,9 @@ export default function ContactDetailPage() {
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingEdit(true);
+    setEditError(null);
 
-    const { error } = await supabase
+    const { error: updateError } = await supabase
       .from("contacts")
       .update({
         first_name: editForm.first_name,
@@ -289,10 +291,14 @@ export default function ContactDetailPage() {
       })
       .eq("id", contactId);
 
-    if (!error) {
-      setEditOpen(false);
-      fetchContact();
+    if (updateError) {
+      setEditError(updateError.message);
+      setSavingEdit(false);
+      return;
     }
+
+    setEditOpen(false);
+    fetchContact();
     setSavingEdit(false);
   };
 
@@ -431,6 +437,11 @@ export default function ContactDetailPage() {
               <DialogDescription>Update this contact&apos;s information.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
+              {editError && (
+                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                  {editError}
+                </div>
+              )}
               <div className="grid gap-2">
                 <Label htmlFor="edit_first_name">First Name *</Label>
                 <Input

@@ -413,12 +413,9 @@ export default function TaskDetailPage() {
     // Update project link via junction table
     await supabase.from("project_tasks").delete().eq("task_id", taskId);
     if (editProjectId) {
-      const { data: { user } } = await supabase.auth.getUser();
       const { error: projectLinkError } = await supabase.from("project_tasks").insert({
         task_id: taskId,
         project_id: editProjectId,
-        added_by: user?.id,
-        milestone_id: editForm.is_milestone ? taskId : null,
       });
       if (projectLinkError) {
         setEditError("Failed to link project: " + projectLinkError.message);

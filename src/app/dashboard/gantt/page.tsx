@@ -27,13 +27,15 @@ interface GanttTask {
   priority: string;
   start_date: string | null;
   due_date: string | null;
-  project_id: string | null;
-  project_name: string | null;
+  project_ids: string[];
+  project_names: string[];
 }
 
 interface Dependency {
   task_id: string;
   depends_on_task_id: string;
+  dependency_type: string;
+  lag_days: number;
 }
 
 interface Project {
@@ -78,28 +80,32 @@ export default function GanttPage() {
         .from("tasks")
         .select("id, title, status, priority, start_date, due_date")
         .order("start_date"),
-      supabase.from("task_dependencies").select("task_id, depends_on_task_id"),
+      supabase.from("task_dependencies").select("task_id, depends_on_task_id, dependency_type, lag_days"),
       supabase.from("projects").select("id, name").order("name"),
       supabase.from("project_tasks").select("task_id, project_id"),
     ]);
 
-    // Build task→project mapping from junction table
-    const taskProjectMap: Record<string, string> = {};
+    // Build task→projects mapping (many-to-many)
+    const taskProjectsMap: Record<string, string[]> = {};
     (ptLinks || []).forEach((link: { task_id: string; project_id: string }) => {
-      taskProjectMap[link.task_id] = link.project_id;
+      if (!taskProjectsMap[link.task_id]) taskProjectsMap[link.task_id] = [];
+      taskProjectsMap[link.task_id].push(link.project_id);
     });
 
     const projMap: Record<string, string> = {};
     (projData || []).forEach((p: Project) => { projMap[p.id] = p.name; });
 
-    const enriched = (taskData || []).map((t: { id: string; title: string; status: string; priority: string; start_date: string | null; due_date: string | null }) => ({
-      ...t,
-      project_id: taskProjectMap[t.id] || null,
-      project_name: taskProjectMap[t.id] ? projMap[taskProjectMap[t.id]] || null : null,
-    }));
+    const enriched = (taskData || []).map((t: { id: string; title: string; status: string; priority: string; start_date: string | null; due_date: string | null }) => {
+      const projectIds = taskProjectsMap[t.id] || [];
+      return {
+        ...t,
+        project_ids: projectIds,
+        project_names: projectIds.map((pid) => projMap[pid]).filter(Boolean),
+      };
+    });
 
     setTasks(enriched);
-    setDependencies(depData || []);
+    setDependencies((depData || []) as Dependency[]);
     setProjects(projData || []);
     setLoading(false);
   };
@@ -147,40 +153,47 @@ export default function GanttPage() {
 
   const todayX = dateToX(new Date().toISOString());
 
-  // Group tasks by project
+  // Group tasks by project (tasks in multiple projects appear under each)
   const grouped: { project: string | null; tasks: GanttTask[] }[] = [];
-  const projectGroups = new Map<string | null, GanttTask[]>();
+  const projectGroups = new Map<string, GanttTask[]>();
+  const unassigned: GanttTask[] = [];
+
   for (const t of tasks) {
-    const key = t.project_name || null;
-    if (!projectGroups.has(key)) projectGroups.set(key, []);
-    projectGroups.get(key)!.push(t);
+    if (t.project_names.length === 0) {
+      unassigned.push(t);
+    } else {
+      for (const pName of t.project_names) {
+        if (!projectGroups.has(pName)) projectGroups.set(pName, []);
+        projectGroups.get(pName)!.push(t);
+      }
+    }
   }
-  // Projects first, then unassigned
+  // Projects first (in alphabetical order matching projects list), then unassigned
   for (const p of projects) {
     if (projectGroups.has(p.name)) {
       grouped.push({ project: p.name, tasks: projectGroups.get(p.name)! });
     }
   }
-  if (projectGroups.has(null)) {
-    grouped.push({ project: null, tasks: projectGroups.get(null)! });
+  if (unassigned.length > 0) {
+    grouped.push({ project: null, tasks: unassigned });
   }
 
-  const allRows: { type: "header" | "task"; label: string; task?: GanttTask }[] = [];
+  const allRows: { type: "header" | "task"; label: string; task?: GanttTask; rowKey: string }[] = [];
   for (const g of grouped) {
-    allRows.push({ type: "header", label: g.project || "No Project" });
+    allRows.push({ type: "header", label: g.project || "No Project", rowKey: `hdr-${g.project || "none"}` });
     for (const t of g.tasks) {
-      allRows.push({ type: "task", label: t.title, task: t });
+      allRows.push({ type: "task", label: t.title, task: t, rowKey: `task-${t.id}-${g.project || "none"}` });
     }
   }
 
   const ROW_HEIGHT = 40;
 
-  // Build task position map for dependency arrows
+  // Build task position map for dependency arrows (use first occurrence of each task)
   const taskRowMap: Record<string, number> = {};
   const taskXMap: Record<string, { x: number; w: number }> = {};
   let rowIndex = 0;
   for (const row of allRows) {
-    if (row.type === "task" && row.task) {
+    if (row.type === "task" && row.task && !taskRowMap.hasOwnProperty(row.task.id)) {
       taskRowMap[row.task.id] = rowIndex;
       if (row.task.start_date && row.task.due_date) {
         const x1 = dateToX(row.task.start_date);
@@ -273,9 +286,9 @@ export default function GanttPage() {
               <div className="h-10 border-b bg-muted/50 flex items-center px-3">
                 <span className="text-xs font-medium text-muted-foreground">Task</span>
               </div>
-              {allRows.map((row, i) => (
+              {allRows.map((row) => (
                 <div
-                  key={i}
+                  key={row.rowKey}
                   className={`flex items-center px-3 border-b ${
                     row.type === "header"
                       ? "bg-muted/30 font-semibold text-sm"
@@ -333,7 +346,7 @@ export default function GanttPage() {
                 {/* Row backgrounds */}
                 {allRows.map((row, i) => (
                   <div
-                    key={`row-${i}`}
+                    key={`row-${row.rowKey}`}
                     className={`absolute left-0 right-0 border-b ${
                       row.type === "header" ? "bg-muted/20" : ""
                     }`}
@@ -363,7 +376,7 @@ export default function GanttPage() {
 
                   return (
                     <div
-                      key={`bar-${row.task.id}`}
+                      key={`bar-${row.rowKey}`}
                       className={`absolute rounded cursor-pointer transition-opacity hover:opacity-80 border-l-4 ${
                         STATUS_COLORS[row.task.status] || "bg-gray-400"
                       } ${PRIORITY_BORDER[row.task.priority] || "border-slate-300"}`}
@@ -397,6 +410,10 @@ export default function GanttPage() {
                     const toX = toPos.x;
                     const toY = toRow * ROW_HEIGHT + ROW_HEIGHT / 2;
                     const midX = (fromX + toX) / 2;
+                    const labelX = midX;
+                    const labelY = (fromY + toY) / 2 - 6;
+                    const typeLabel = dep.dependency_type?.replace(/_/g, " ") || "depends on";
+                    const lagLabel = dep.lag_days ? ` +${dep.lag_days}d` : "";
 
                     return (
                       <g key={`dep-${dep.task_id}-${dep.depends_on_task_id}`}>
@@ -412,6 +429,16 @@ export default function GanttPage() {
                           points={`${toX},${toY} ${toX - 6},${toY - 4} ${toX - 6},${toY + 4}`}
                           fill="#94a3b8"
                         />
+                        {/* Dependency label */}
+                        <text
+                          x={labelX}
+                          y={labelY}
+                          textAnchor="middle"
+                          className="fill-muted-foreground"
+                          fontSize="9"
+                        >
+                          {typeLabel}{lagLabel}
+                        </text>
                       </g>
                     );
                   })}

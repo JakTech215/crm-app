@@ -522,14 +522,39 @@ export default function TaskDetailPage() {
 
   const handleDeleteTask = async () => {
     setDeleting(true);
-    await supabase.from("task_assignees").delete().eq("task_id", taskId);
-    await supabase.from("task_dependencies").delete().eq("task_id", taskId);
-    await supabase.from("task_dependencies").delete().eq("depends_on_task_id", taskId);
-    const { error } = await supabase.from("tasks").delete().eq("id", taskId);
-    if (!error) {
-      router.push("/dashboard/tasks");
+
+    // Clean up all related records before deleting the task
+    const cleanups = [
+      supabase.from("task_assignees").delete().eq("task_id", taskId),
+      supabase.from("task_dependencies").delete().eq("task_id", taskId),
+      supabase.from("task_dependencies").delete().eq("depends_on_task_id", taskId),
+      supabase.from("project_tasks").delete().eq("task_id", taskId),
+    ];
+
+    const results = await Promise.all(cleanups);
+    const cleanupError = results.find((r) => r.error);
+    if (cleanupError?.error) {
+      setEditError("Failed to clean up related records: " + cleanupError.error.message);
+      setDeleting(false);
+      setDeleteCheckOpen(false);
+      return;
     }
-    setDeleting(false);
+
+    // Clear parent_task_id on any child/follow-up tasks
+    await supabase
+      .from("tasks")
+      .update({ parent_task_id: null })
+      .eq("parent_task_id", taskId);
+
+    const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+    if (error) {
+      setEditError("Failed to delete task: " + error.message);
+      setDeleting(false);
+      setDeleteCheckOpen(false);
+      return;
+    }
+
+    router.push("/dashboard/tasks");
   };
 
   const priorityColors: Record<string, string> = {
@@ -632,6 +657,11 @@ export default function TaskDetailPage() {
                     {dependencies.length > 0 && (
                       <p className="text-xs">
                         {dependencies.length} dependency link(s) from this task will be removed.
+                      </p>
+                    )}
+                    {linkedProjects.length > 0 && (
+                      <p className="text-xs">
+                        Project link(s) to {linkedProjects.map((p) => p.name).join(", ")} will be removed.
                       </p>
                     )}
                   </div>

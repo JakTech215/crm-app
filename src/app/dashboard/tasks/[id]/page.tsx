@@ -324,44 +324,12 @@ export default function TaskDetailPage() {
     setSavingDep(true);
     setDepError(null);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const payload: Record<string, unknown> = {
+    const { error } = await supabase.from("task_dependencies").insert({
       task_id: taskId,
       depends_on_task_id: depForm.depends_on_task_id,
       dependency_type: depForm.dependency_type,
       lag_days: parseInt(depForm.lag_days) || 0,
-    };
-
-    // Try with created_by first, fall back without it
-    const { error, data } = await supabase
-      .from("task_dependencies")
-      .insert({ ...payload, created_by: user?.id })
-      .select();
-
-    if (error && error.message.includes("created_by")) {
-      // Column doesn't exist, retry without it
-      const { error: retryError, data: retryData } = await supabase
-        .from("task_dependencies")
-        .insert(payload)
-        .select();
-      if (retryError) {
-        setDepError(retryError.message);
-        setSavingDep(false);
-        return;
-      }
-      console.log("Dependency saved (without created_by):", retryData);
-    } else if (error) {
-      setDepError(error.message);
-      setSavingDep(false);
-      return;
-    } else {
-      console.log("Dependency saved:", data);
-    }
-
-    console.log("Dependency insert result:", { data, error });
+    });
 
     if (error) {
       setDepError(error.message);

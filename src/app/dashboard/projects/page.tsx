@@ -69,10 +69,10 @@ interface StatusOption {
 }
 
 const FALLBACK_STATUSES: StatusOption[] = [
-  { id: "planning", name: "Planning", color: "blue" },
-  { id: "active", name: "Active", color: "green" },
-  { id: "on_hold", name: "On Hold", color: "yellow" },
-  { id: "completed", name: "Completed", color: "gray" },
+  { id: "active", name: "active", color: "green" },
+  { id: "on_hold", name: "on_hold", color: "yellow" },
+  { id: "completed", name: "completed", color: "gray" },
+  { id: "archived", name: "archived", color: "purple" },
 ];
 
 const COLOR_MAP: Record<string, string> = {
@@ -101,7 +101,7 @@ export default function ProjectsPage() {
     name: "",
     description: "",
     contact_id: "",
-    status: "planning",
+    status: "active",
     start_date: "",
     due_date: "",
   });
@@ -130,7 +130,6 @@ export default function ProjectsPage() {
       .order("name");
     if (data && data.length > 0) {
       setProjectStatuses(data);
-      setForm((f) => ({ ...f, status: data[0].name }));
     }
   };
 
@@ -153,7 +152,7 @@ export default function ProjectsPage() {
       name: form.name,
       description: form.description || null,
       contact_id: form.contact_id || null,
-      status: form.status,
+      status: form.status || "active",
       start_date: form.start_date || null,
       due_date: form.due_date || null,
       created_by: user?.id,
@@ -169,7 +168,7 @@ export default function ProjectsPage() {
       name: "",
       description: "",
       contact_id: "",
-      status: "planning",
+      status: "active",
       start_date: "",
       due_date: "",
     });
@@ -276,8 +275,8 @@ export default function ProjectsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {projectStatuses.map((s) => (
-                        <SelectItem key={s.id} value={s.name}>
-                          {s.name}
+                        <SelectItem key={s.id} value={s.name} className="capitalize">
+                          {s.name.replace("_", " ")}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -392,7 +391,7 @@ export default function ProjectsPage() {
                         variant="secondary"
                         className={`capitalize ${getStatusColor(project.status)}`}
                       >
-                        {project.status}
+                        {project.status.replace("_", " ")}
                       </Badge>
                     </TableCell>
                     <TableCell>{project.start_date || "—"}</TableCell>

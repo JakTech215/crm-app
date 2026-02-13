@@ -57,6 +57,7 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({
     name: "",
@@ -82,31 +83,36 @@ export default function EmployeesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const { error } = await supabase.from("employees").insert({
+    const { error: insertError } = await supabase.from("employees").insert({
       name: form.name,
       email: form.email,
       role: form.role || null,
       department: form.department || null,
       status: form.status,
-      user_id: user?.id,
+      created_by: user?.id,
     });
 
-    if (!error) {
-      setForm({
-        name: "",
-        email: "",
-        role: "",
-        department: "",
-        status: "active",
-      });
-      setOpen(false);
-      fetchEmployees();
+    if (insertError) {
+      setError(insertError.message);
+      setSaving(false);
+      return;
     }
+
+    setForm({
+      name: "",
+      email: "",
+      role: "",
+      department: "",
+      status: "active",
+    });
+    setOpen(false);
+    fetchEmployees();
     setSaving(false);
   };
 
@@ -135,6 +141,11 @@ export default function EmployeesPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                {error && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
                 <div className="grid gap-2">
                   <Label htmlFor="name">Name *</Label>
                   <Input

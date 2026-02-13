@@ -63,6 +63,7 @@ export default function EmployeeDetailPage() {
   // Edit state
   const [editOpen, setEditOpen] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
     email: "",
@@ -99,12 +100,14 @@ export default function EmployeeDetailPage() {
       department: employee.department || "",
       status: employee.status,
     });
+    setEditError(null);
     setEditOpen(true);
   };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingEdit(true);
+    setEditError(null);
 
     const { error } = await supabase
       .from("employees")
@@ -117,10 +120,14 @@ export default function EmployeeDetailPage() {
       })
       .eq("id", employeeId);
 
-    if (!error) {
-      setEditOpen(false);
-      fetchEmployee();
+    if (error) {
+      setEditError(error.message);
+      setSavingEdit(false);
+      return;
     }
+
+    setEditOpen(false);
+    fetchEmployee();
     setSavingEdit(false);
   };
 
@@ -251,6 +258,11 @@ export default function EmployeeDetailPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
+              {editError && (
+                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                  {editError}
+                </div>
+              )}
               <div className="grid gap-2">
                 <Label htmlFor="edit_name">Name *</Label>
                 <Input

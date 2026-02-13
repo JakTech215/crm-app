@@ -378,14 +378,24 @@ export default function TaskDetailPage() {
     }
 
     // Update assignees: delete existing, insert new
-    await supabase.from("task_assignees").delete().eq("task_id", taskId);
+    const { error: deleteAssigneesError } = await supabase.from("task_assignees").delete().eq("task_id", taskId);
+    if (deleteAssigneesError) {
+      setEditError("Failed to update assignees: " + deleteAssigneesError.message);
+      setSavingEdit(false);
+      return;
+    }
     if (editSelectedEmployees.length > 0) {
-      await supabase.from("task_assignees").insert(
+      const { error: insertAssigneesError } = await supabase.from("task_assignees").insert(
         editSelectedEmployees.map((empId) => ({
           task_id: taskId,
           employee_id: empId,
         }))
       );
+      if (insertAssigneesError) {
+        setEditError("Failed to assign employees: " + insertAssigneesError.message);
+        setSavingEdit(false);
+        return;
+      }
     }
 
     // Auto-create follow-up task if task was just completed and has a template
@@ -425,7 +435,7 @@ export default function TaskDetailPage() {
 
             const { data: { user } } = await supabase.auth.getUser();
 
-            await supabase.from("tasks").insert({
+            const { error: followUpError } = await supabase.from("tasks").insert({
               title: nextTemplate.name,
               description: nextTemplate.description || null,
               priority: nextTemplate.default_priority,
@@ -436,6 +446,9 @@ export default function TaskDetailPage() {
               template_id: nextTemplate.id,
               created_by: user?.id,
             });
+            if (followUpError) {
+              console.error("Failed to create follow-up task:", followUpError);
+            }
           }
         }
       } catch (e) {

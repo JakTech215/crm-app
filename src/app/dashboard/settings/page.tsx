@@ -82,6 +82,7 @@ function ContactStatusesSection() {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<StatusItem | null>(null);
   const [form, setForm] = useState({ name: "", color: "gray", description: "" });
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const fetch = async () => {
     const { data } = await supabase
@@ -102,15 +103,18 @@ function ContactStatusesSection() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
     if (editing) {
-      await supabase
+      const { error } = await supabase
         .from("contact_statuses")
         .update({ name: form.name, color: form.color, description: form.description || null })
         .eq("id", editing.id);
+      if (error) { setSaveError(error.message); setSaving(false); return; }
     } else {
-      await supabase
+      const { error } = await supabase
         .from("contact_statuses")
         .insert({ name: form.name, color: form.color, description: form.description || null });
+      if (error) { setSaveError(error.message); setSaving(false); return; }
     }
     setSaving(false);
     resetForm();
@@ -120,11 +124,13 @@ function ContactStatusesSection() {
   const handleEdit = (s: StatusItem) => {
     setEditing(s);
     setForm({ name: s.name, color: s.color, description: s.description || "" });
+    setSaveError(null);
     setOpen(true);
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from("contact_statuses").delete().eq("id", id);
+    const { error } = await supabase.from("contact_statuses").delete().eq("id", id);
+    if (error) { setSaveError(error.message); return; }
     fetch();
   };
 
@@ -134,6 +140,7 @@ function ContactStatusesSection() {
         <div>
           <CardTitle>Contact Statuses</CardTitle>
           <CardDescription>Custom statuses for your contacts.</CardDescription>
+          {saveError && <div className="rounded-md bg-destructive/10 p-2 text-sm text-destructive mt-1">{saveError}</div>}
         </div>
         <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); else setOpen(true); }}>
           <DialogTrigger asChild>
@@ -215,6 +222,7 @@ function ProjectStatusesSection() {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<StatusItem | null>(null);
   const [form, setForm] = useState({ name: "", color: "blue", description: "" });
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const fetch = async () => {
     const { data } = await supabase
@@ -235,15 +243,18 @@ function ProjectStatusesSection() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
     if (editing) {
-      await supabase
+      const { error } = await supabase
         .from("project_statuses")
         .update({ name: form.name, color: form.color, description: form.description || null })
         .eq("id", editing.id);
+      if (error) { setSaveError(error.message); setSaving(false); return; }
     } else {
-      await supabase
+      const { error } = await supabase
         .from("project_statuses")
         .insert({ name: form.name, color: form.color, description: form.description || null });
+      if (error) { setSaveError(error.message); setSaving(false); return; }
     }
     setSaving(false);
     resetForm();
@@ -253,11 +264,13 @@ function ProjectStatusesSection() {
   const handleEdit = (s: StatusItem) => {
     setEditing(s);
     setForm({ name: s.name, color: s.color, description: s.description || "" });
+    setSaveError(null);
     setOpen(true);
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from("project_statuses").delete().eq("id", id);
+    const { error } = await supabase.from("project_statuses").delete().eq("id", id);
+    if (error) { setSaveError(error.message); return; }
     fetch();
   };
 
@@ -267,6 +280,7 @@ function ProjectStatusesSection() {
         <div>
           <CardTitle>Project Statuses</CardTitle>
           <CardDescription>Custom statuses for your projects.</CardDescription>
+          {saveError && <div className="rounded-md bg-destructive/10 p-2 text-sm text-destructive mt-1">{saveError}</div>}
         </div>
         <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); else setOpen(true); }}>
           <DialogTrigger asChild>
@@ -347,6 +361,7 @@ function TaskTemplatesSection() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<TaskTemplate | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [workflowSteps, setWorkflowSteps] = useState<Record<string, { next_template_id: string; delay_days: number } | null>>({});
   const [form, setForm] = useState({
     name: "",
@@ -387,6 +402,7 @@ function TaskTemplatesSection() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
     const dueAmount = form.due_amount ? parseInt(form.due_amount) : null;
     const payload = {
       name: form.name,
@@ -400,9 +416,11 @@ function TaskTemplatesSection() {
       category: form.category || null,
     };
     if (editing) {
-      await supabase.from("task_templates").update(payload).eq("id", editing.id);
+      const { error } = await supabase.from("task_templates").update(payload).eq("id", editing.id);
+      if (error) { setSaveError(error.message); setSaving(false); return; }
     } else {
-      await supabase.from("task_templates").insert(payload);
+      const { error } = await supabase.from("task_templates").insert(payload);
+      if (error) { setSaveError(error.message); setSaving(false); return; }
     }
     setSaving(false);
     resetForm();
@@ -425,7 +443,8 @@ function TaskTemplatesSection() {
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from("task_templates").delete().eq("id", id);
+    const { error } = await supabase.from("task_templates").delete().eq("id", id);
+    if (error) { setSaveError(error.message); return; }
     fetch();
   };
 
@@ -442,6 +461,7 @@ function TaskTemplatesSection() {
         <div>
           <CardTitle>Task Templates</CardTitle>
           <CardDescription>Reusable templates for common tasks.</CardDescription>
+          {saveError && <div className="rounded-md bg-destructive/10 p-2 text-sm text-destructive mt-1">{saveError}</div>}
         </div>
         <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); else setOpen(true); }}>
           <DialogTrigger asChild>
@@ -565,15 +585,17 @@ function TaskTemplatesSection() {
                     value={workflowSteps[t.id]?.next_template_id || "none"}
                     onValueChange={async (value) => {
                       if (value === "none") {
-                        await supabase.from("task_workflow_steps").delete().eq("template_id", t.id);
+                        const { error } = await supabase.from("task_workflow_steps").delete().eq("template_id", t.id);
+                        if (error) { setSaveError(error.message); return; }
                         setWorkflowSteps({ ...workflowSteps, [t.id]: null });
                       } else {
-                        await supabase.from("task_workflow_steps").upsert({
+                        const { error } = await supabase.from("task_workflow_steps").upsert({
                           template_id: t.id,
                           step_order: 1,
                           next_template_id: value,
                           delay_days: workflowSteps[t.id]?.delay_days || 0,
                         }, { onConflict: "template_id,step_order" });
+                        if (error) { setSaveError(error.message); return; }
                         setWorkflowSteps({ ...workflowSteps, [t.id]: { next_template_id: value, delay_days: workflowSteps[t.id]?.delay_days || 0 } });
                       }
                     }}
@@ -597,12 +619,13 @@ function TaskTemplatesSection() {
                       const days = parseInt(e.target.value) || 0;
                       const nextId = workflowSteps[t.id]?.next_template_id;
                       if (nextId) {
-                        await supabase.from("task_workflow_steps").upsert({
+                        const { error } = await supabase.from("task_workflow_steps").upsert({
                           template_id: t.id,
                           step_order: 1,
                           next_template_id: nextId,
                           delay_days: days,
                         }, { onConflict: "template_id,step_order" });
+                        if (error) { setSaveError(error.message); return; }
                       }
                       setWorkflowSteps({ ...workflowSteps, [t.id]: { next_template_id: nextId || "", delay_days: days } });
                     }}

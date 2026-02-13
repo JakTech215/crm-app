@@ -289,14 +289,20 @@ export default function TasksPage() {
 
     // Link to project via junction table
     if (task && form.project_id) {
-      await supabase
+      const { error: projectLinkError } = await supabase
         .from("project_tasks")
         .insert({ task_id: task.id, project_id: form.project_id });
+      if (projectLinkError) {
+        setError("Task created but failed to link project: " + projectLinkError.message);
+      }
     }
 
     // Save template_id on the task if a template was used
     if (task && selectedTemplateId) {
-      await supabase.from("tasks").update({ template_id: selectedTemplateId }).eq("id", task.id);
+      const { error: templateError } = await supabase.from("tasks").update({ template_id: selectedTemplateId }).eq("id", task.id);
+      if (templateError) {
+        setError("Task created but failed to save template link: " + templateError.message);
+      }
     }
 
     setForm({

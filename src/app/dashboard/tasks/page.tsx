@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -101,6 +101,7 @@ interface TaskTemplate {
 
 export default function TasksPage() {
   const supabase = createClient();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -816,7 +817,7 @@ export default function TasksPage() {
         />
       </div>
 
-      <Tabs defaultValue="all">
+      <Tabs defaultValue={searchParams.get("status") || "all"}>
         <TabsList>
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="pending">Pending</TabsTrigger>

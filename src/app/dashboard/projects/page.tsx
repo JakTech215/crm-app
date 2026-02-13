@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -89,6 +89,7 @@ const COLOR_MAP: Record<string, string> = {
 export default function ProjectsPage() {
   const supabase = createClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [projects, setProjects] = useState<Project[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [projectStatuses, setProjectStatuses] = useState<StatusOption[]>(FALLBACK_STATUSES);
@@ -97,6 +98,7 @@ export default function ProjectsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -326,14 +328,29 @@ export default function ProjectsPage() {
                 Overview of all your projects and their status.
               </CardDescription>
             </div>
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search projects..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8"
-              />
+            <div className="flex items-center gap-3">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {projectStatuses.map((s) => (
+                    <SelectItem key={s.id} value={s.name} className="capitalize">
+                      {s.name.replace("_", " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="relative w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search projects..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -356,6 +373,7 @@ export default function ProjectsPage() {
                   </TableCell>
                 </TableRow>
               ) : projects.filter((p) => {
+                if (statusFilter !== "all" && p.status !== statusFilter) return false;
                 const q = search.toLowerCase();
                 return !q || p.name.toLowerCase().includes(q) ||
                   (p.contacts ? contactName(p.contacts).toLowerCase().includes(q) : false);
@@ -371,6 +389,7 @@ export default function ProjectsPage() {
                 </TableRow>
               ) : (
                 projects.filter((p) => {
+                  if (statusFilter !== "all" && p.status !== statusFilter) return false;
                   const q = search.toLowerCase();
                   return !q || p.name.toLowerCase().includes(q) ||
                     (p.contacts ? contactName(p.contacts).toLowerCase().includes(q) : false);

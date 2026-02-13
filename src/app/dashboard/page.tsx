@@ -21,6 +21,7 @@ interface StatCard {
   value: number;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
+  href: string;
 }
 
 interface RecentItem {
@@ -49,10 +50,13 @@ export default function DashboardPage() {
   const supabase = createClient();
   const router = useRouter();
   const [stats, setStats] = useState<StatCard[]>([
-    { title: "Total Contacts", value: 0, description: "Active contacts", icon: Users },
-    { title: "Projects", value: 0, description: "Active projects", icon: FolderKanban },
-    { title: "Tasks", value: 0, description: "Pending tasks", icon: CheckSquare },
-    { title: "Employees", value: 0, description: "Team members", icon: UserCog },
+    { title: "Total Contacts", value: 0, description: "All contacts", icon: Users, href: "/dashboard/contacts" },
+    { title: "Active Contacts", value: 0, description: "Status: active", icon: Users, href: "/dashboard/contacts?status=active" },
+    { title: "Projects", value: 0, description: "All projects", icon: FolderKanban, href: "/dashboard/projects" },
+    { title: "Active Projects", value: 0, description: "Status: active", icon: FolderKanban, href: "/dashboard/projects?status=active" },
+    { title: "Tasks", value: 0, description: "All open tasks", icon: CheckSquare, href: "/dashboard/tasks" },
+    { title: "Pending Tasks", value: 0, description: "Status: pending", icon: CheckSquare, href: "/dashboard/tasks?status=pending" },
+    { title: "Employees", value: 0, description: "Active team members", icon: UserCog, href: "/dashboard/employees" },
   ]);
   const [recent, setRecent] = useState<RecentItem[]>([]);
   const [upcoming, setUpcoming] = useState<UpcomingTask[]>([]);
@@ -63,16 +67,26 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchData = async () => {
       // Stats - check errors individually
-      const contactsRes = await supabase.from("contacts").select("id", { count: "exact", head: true });
-      const projectsRes = await supabase.from("projects").select("id", { count: "exact", head: true });
-      const tasksRes = await supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed");
-      const employeesRes = await supabase.from("employees").select("id", { count: "exact", head: true }).eq("status", "active");
+      const [contactsRes, activeContactsRes, projectsRes, activeProjectsRes, tasksRes, pendingTasksRes, employeesRes] = await Promise.all([
+        supabase.from("contacts").select("id", { count: "exact", head: true }),
+        supabase.from("contacts").select("id", { count: "exact", head: true }).eq("status", "active"),
+        supabase.from("projects").select("id", { count: "exact", head: true }),
+        supabase.from("projects").select("id", { count: "exact", head: true }).eq("status", "active"),
+        supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"),
+        supabase.from("tasks").select("id", { count: "exact", head: true }).eq("status", "pending"),
+        supabase.from("employees").select("id", { count: "exact", head: true }).eq("status", "active"),
+      ]);
+
+      const c = (r: { error: unknown; count: number | null }) => r.error ? 0 : (r.count ?? 0);
 
       setStats([
-        { title: "Total Contacts", value: contactsRes.error ? 0 : (contactsRes.count ?? 0), description: "Active contacts", icon: Users },
-        { title: "Projects", value: projectsRes.error ? 0 : (projectsRes.count ?? 0), description: "Active projects", icon: FolderKanban },
-        { title: "Tasks", value: tasksRes.error ? 0 : (tasksRes.count ?? 0), description: "Pending tasks", icon: CheckSquare },
-        { title: "Employees", value: employeesRes.error ? 0 : (employeesRes.count ?? 0), description: "Team members", icon: UserCog },
+        { title: "Total Contacts", value: c(contactsRes), description: "All contacts", icon: Users, href: "/dashboard/contacts" },
+        { title: "Active Contacts", value: c(activeContactsRes), description: "Status: active", icon: Users, href: "/dashboard/contacts?status=active" },
+        { title: "Projects", value: c(projectsRes), description: "All projects", icon: FolderKanban, href: "/dashboard/projects" },
+        { title: "Active Projects", value: c(activeProjectsRes), description: "Status: active", icon: FolderKanban, href: "/dashboard/projects?status=active" },
+        { title: "Tasks", value: c(tasksRes), description: "All open tasks", icon: CheckSquare, href: "/dashboard/tasks" },
+        { title: "Pending Tasks", value: c(pendingTasksRes), description: "Status: pending", icon: CheckSquare, href: "/dashboard/tasks?status=pending" },
+        { title: "Employees", value: c(employeesRes), description: "Active team members", icon: UserCog, href: "/dashboard/employees" },
       ]);
 
       // Recent activity
@@ -189,7 +203,11 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <Card key={stat.title}>
+          <Card
+            key={stat.title}
+            className="cursor-pointer transition-all hover:shadow-md hover:scale-[1.02]"
+            onClick={() => router.push(stat.href)}
+          >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">
                 {stat.title}

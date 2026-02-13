@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -89,6 +89,7 @@ const COLOR_MAP: Record<string, string> = {
 export default function ContactsPage() {
   const supabase = createClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [statuses, setStatuses] = useState<StatusOption[]>(FALLBACK_STATUSES);
   const [loading, setLoading] = useState(true);
@@ -96,6 +97,7 @@ export default function ContactsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
   const [contactTasksMap, setContactTasksMap] = useState<Record<string, ContactUpcomingTask[]>>({});
   const [form, setForm] = useState({
     first_name: "",
@@ -308,14 +310,29 @@ export default function ContactsPage() {
                 A list of all contacts in your CRM.
               </CardDescription>
             </div>
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search contacts..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8"
-              />
+            <div className="flex items-center gap-3">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {statuses.map((s) => (
+                    <SelectItem key={s.id} value={s.name} className="capitalize">
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="relative w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search contacts..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -340,6 +357,7 @@ export default function ContactsPage() {
                   </TableCell>
                 </TableRow>
               ) : contacts.filter((c) => {
+                if (statusFilter !== "all" && c.status !== statusFilter) return false;
                 const q = search.toLowerCase();
                 return !q || contactName(c).toLowerCase().includes(q) ||
                   c.email?.toLowerCase().includes(q) ||
@@ -350,11 +368,12 @@ export default function ContactsPage() {
                     colSpan={7}
                     className="text-center text-muted-foreground py-8"
                   >
-                    No contacts yet. Click &quot;Add Contact&quot; to create one.
+                    No contacts found.
                   </TableCell>
                 </TableRow>
               ) : (
                 contacts.filter((c) => {
+                  if (statusFilter !== "all" && c.status !== statusFilter) return false;
                   const q = search.toLowerCase();
                   return !q || contactName(c).toLowerCase().includes(q) ||
                     c.email?.toLowerCase().includes(q) ||

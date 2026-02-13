@@ -317,26 +317,65 @@ export default function TaskDetailPage() {
     }
   }, [task?.parent_task_id]);
 
+  const [depError, setDepError] = useState<string | null>(null);
+
   const handleAddDependency = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingDep(true);
+    setDepError(null);
 
-    const { error } = await supabase.from("task_dependencies").insert({
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const payload: Record<string, unknown> = {
       task_id: taskId,
       depends_on_task_id: depForm.depends_on_task_id,
       dependency_type: depForm.dependency_type,
       lag_days: parseInt(depForm.lag_days) || 0,
-    });
+    };
 
-    if (!error) {
-      setDepForm({
-        depends_on_task_id: "",
-        dependency_type: "finish_to_start",
-        lag_days: "0",
-      });
-      setDepOpen(false);
-      fetchDependencies();
+    // Try with created_by first, fall back without it
+    const { error, data } = await supabase
+      .from("task_dependencies")
+      .insert({ ...payload, created_by: user?.id })
+      .select();
+
+    if (error && error.message.includes("created_by")) {
+      // Column doesn't exist, retry without it
+      const { error: retryError, data: retryData } = await supabase
+        .from("task_dependencies")
+        .insert(payload)
+        .select();
+      if (retryError) {
+        setDepError(retryError.message);
+        setSavingDep(false);
+        return;
+      }
+      console.log("Dependency saved (without created_by):", retryData);
+    } else if (error) {
+      setDepError(error.message);
+      setSavingDep(false);
+      return;
+    } else {
+      console.log("Dependency saved:", data);
     }
+
+    console.log("Dependency insert result:", { data, error });
+
+    if (error) {
+      setDepError(error.message);
+      setSavingDep(false);
+      return;
+    }
+
+    setDepForm({
+      depends_on_task_id: "",
+      dependency_type: "finish_to_start",
+      lag_days: "0",
+    });
+    setDepOpen(false);
+    fetchDependencies();
     setSavingDep(false);
   };
 
@@ -1073,6 +1112,11 @@ export default function TaskDetailPage() {
                     Select a task this task depends on and configure the
                     relationship.
                   </DialogDescription>
+                  {depError && (
+                    <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive mt-2">
+                      {depError}
+                    </div>
+                  )}
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid gap-2">

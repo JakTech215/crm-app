@@ -43,13 +43,17 @@ import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
 
 interface Employee {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   email: string;
   role: string | null;
   department: string | null;
   status: string;
   created_at: string;
 }
+
+const employeeName = (e: { first_name: string; last_name: string }) =>
+  `${e.first_name} ${e.last_name}`;
 
 export default function EmployeeDetailPage() {
   const supabase = createClient();
@@ -65,7 +69,8 @@ export default function EmployeeDetailPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
-    name: "",
+    first_name: "",
+    last_name: "",
     email: "",
     role: "",
     department: "",
@@ -94,7 +99,8 @@ export default function EmployeeDetailPage() {
   const openEditDialog = () => {
     if (!employee) return;
     setEditForm({
-      name: employee.name,
+      first_name: employee.first_name,
+      last_name: employee.last_name,
       email: employee.email,
       role: employee.role || "",
       department: employee.department || "",
@@ -112,7 +118,8 @@ export default function EmployeeDetailPage() {
     const { error } = await supabase
       .from("employees")
       .update({
-        name: editForm.name,
+        first_name: editForm.first_name,
+        last_name: editForm.last_name,
         email: editForm.email,
         role: editForm.role || null,
         department: editForm.department || null,
@@ -194,7 +201,7 @@ export default function EmployeeDetailPage() {
           </Button>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              {employee.name}
+              {employeeName(employee)}
             </h1>
             <p className="text-muted-foreground">Employee details</p>
           </div>
@@ -220,7 +227,7 @@ export default function EmployeeDetailPage() {
                 <AlertDialogDescription asChild>
                   <div className="space-y-2">
                     <p>
-                      Are you sure you want to delete &quot;{employee.name}&quot;? This action cannot be undone.
+                      Are you sure you want to delete &quot;{employeeName(employee)}&quot;? This action cannot be undone.
                     </p>
                     {assignedTasks.length > 0 && (
                       <div>
@@ -263,16 +270,29 @@ export default function EmployeeDetailPage() {
                   {editError}
                 </div>
               )}
-              <div className="grid gap-2">
-                <Label htmlFor="edit_name">Name *</Label>
-                <Input
-                  id="edit_name"
-                  value={editForm.name}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, name: e.target.value })
-                  }
-                  required
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit_first_name">First Name *</Label>
+                  <Input
+                    id="edit_first_name"
+                    value={editForm.first_name}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, first_name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit_last_name">Last Name *</Label>
+                  <Input
+                    id="edit_last_name"
+                    value={editForm.last_name}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, last_name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="edit_email">Email *</Label>

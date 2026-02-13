@@ -42,13 +42,17 @@ import { Plus, Search } from "lucide-react";
 
 interface Employee {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   email: string;
   role: string | null;
   department: string | null;
   status: string;
   created_at: string;
 }
+
+const employeeName = (e: { first_name: string; last_name: string }) =>
+  `${e.first_name} ${e.last_name}`;
 
 export default function EmployeesPage() {
   const supabase = createClient();
@@ -60,7 +64,8 @@ export default function EmployeesPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({
-    name: "",
+    first_name: "",
+    last_name: "",
     email: "",
     role: "",
     department: "",
@@ -90,7 +95,8 @@ export default function EmployeesPage() {
     } = await supabase.auth.getUser();
 
     const { error: insertError } = await supabase.from("employees").insert({
-      name: form.name,
+      first_name: form.first_name,
+      last_name: form.last_name,
       email: form.email,
       role: form.role || null,
       department: form.department || null,
@@ -105,7 +111,8 @@ export default function EmployeesPage() {
     }
 
     setForm({
-      name: "",
+      first_name: "",
+      last_name: "",
       email: "",
       role: "",
       department: "",
@@ -146,16 +153,29 @@ export default function EmployeesPage() {
                     {error}
                   </div>
                 )}
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Name *</Label>
-                  <Input
-                    id="name"
-                    value={form.name}
-                    onChange={(e) =>
-                      setForm({ ...form, name: e.target.value })
-                    }
-                    required
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="first_name">First Name *</Label>
+                    <Input
+                      id="first_name"
+                      value={form.first_name}
+                      onChange={(e) =>
+                        setForm({ ...form, first_name: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="last_name">Last Name *</Label>
+                    <Input
+                      id="last_name"
+                      value={form.last_name}
+                      onChange={(e) =>
+                        setForm({ ...form, last_name: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="email">Email *</Label>
@@ -260,7 +280,7 @@ export default function EmployeesPage() {
                 </TableRow>
               ) : employees.filter((emp) => {
                 const q = search.toLowerCase();
-                return !q || emp.name.toLowerCase().includes(q) ||
+                return !q || employeeName(emp).toLowerCase().includes(q) ||
                   emp.email.toLowerCase().includes(q) ||
                   emp.role?.toLowerCase().includes(q) ||
                   emp.department?.toLowerCase().includes(q);
@@ -277,7 +297,7 @@ export default function EmployeesPage() {
               ) : (
                 employees.filter((emp) => {
                   const q = search.toLowerCase();
-                  return !q || emp.name.toLowerCase().includes(q) ||
+                  return !q || employeeName(emp).toLowerCase().includes(q) ||
                     emp.email.toLowerCase().includes(q) ||
                     emp.role?.toLowerCase().includes(q) ||
                     emp.department?.toLowerCase().includes(q);
@@ -288,7 +308,7 @@ export default function EmployeesPage() {
                     onClick={() => router.push(`/dashboard/employees/${employee.id}`)}
                   >
                     <TableCell className="font-medium">
-                      {employee.name}
+                      {employeeName(employee)}
                     </TableCell>
                     <TableCell>{employee.email}</TableCell>
                     <TableCell>{employee.role || "—"}</TableCell>

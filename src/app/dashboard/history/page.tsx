@@ -32,8 +32,12 @@ import { Badge } from "@/components/ui/badge";
 
 interface Employee {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
 }
+
+const employeeName = (e: { first_name: string; last_name: string }) =>
+  `${e.first_name} ${e.last_name}`;
 
 interface TaskAssignee {
   employee_id: string;
@@ -119,7 +123,7 @@ export default function TaskHistoryPage() {
     if (taskIds.length > 0) {
       const { data: assignees } = await supabase
         .from("task_assignees")
-        .select("task_id, employee_id, employees(id, name)")
+        .select("task_id, employee_id, employees(id, first_name, last_name)")
         .in("task_id", taskIds);
 
       if (assignees) {
@@ -187,9 +191,9 @@ export default function TaskHistoryPage() {
   const fetchEmployees = async () => {
     const { data } = await supabase
       .from("employees")
-      .select("id, name")
+      .select("id, first_name, last_name")
       .eq("status", "active")
-      .order("name");
+      .order("first_name");
     setEmployees(data || []);
   };
 
@@ -305,7 +309,7 @@ export default function TaskHistoryPage() {
                   <SelectItem value="all">All</SelectItem>
                   {employees.map((e) => (
                     <SelectItem key={e.id} value={e.id}>
-                      {e.name}
+                      {employeeName(e)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -432,7 +436,7 @@ export default function TaskHistoryPage() {
                               variant="outline"
                               className="text-xs"
                             >
-                              {a.employees?.name}
+                              {a.employees ? employeeName(a.employees) : ""}
                             </Badge>
                           ))}
                         </div>

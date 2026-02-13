@@ -31,8 +31,12 @@ import { Badge } from "@/components/ui/badge";
 
 interface Employee {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
 }
+
+const employeeName = (e: { first_name: string; last_name: string }) =>
+  `${e.first_name} ${e.last_name}`;
 
 interface TaskAssignee {
   employee_id: string;
@@ -127,7 +131,7 @@ export default function UpcomingTasksPage() {
     if (taskIds.length > 0) {
       const { data: assignees } = await supabase
         .from("task_assignees")
-        .select("task_id, employee_id, employees(id, name)")
+        .select("task_id, employee_id, employees(id, first_name, last_name)")
         .in("task_id", taskIds);
 
       if (assignees) {
@@ -152,9 +156,9 @@ export default function UpcomingTasksPage() {
   const fetchEmployees = async () => {
     const { data } = await supabase
       .from("employees")
-      .select("id, name")
+      .select("id, first_name, last_name")
       .eq("status", "active")
-      .order("name");
+      .order("first_name");
     setEmployees(data || []);
   };
 
@@ -203,7 +207,7 @@ export default function UpcomingTasksPage() {
           <div className="flex flex-wrap gap-1">
             {task.task_assignees.map((a) => (
               <Badge key={a.employee_id} variant="outline" className="text-xs">
-                {a.employees?.name}
+                {a.employees ? employeeName(a.employees) : ""}
               </Badge>
             ))}
           </div>
@@ -362,7 +366,7 @@ export default function UpcomingTasksPage() {
           <Card key={key}>
             <CardHeader>
               <CardTitle className="text-lg">
-                {group.employee ? group.employee.name : "Unassigned"}
+                {group.employee ? employeeName(group.employee) : "Unassigned"}
               </CardTitle>
               <CardDescription>
                 {group.tasks.length} task{group.tasks.length !== 1 ? "s" : ""}
@@ -398,7 +402,7 @@ export default function UpcomingTasksPage() {
                   <SelectItem value="all">All</SelectItem>
                   {employees.map((emp) => (
                     <SelectItem key={emp.id} value={emp.id}>
-                      {emp.name}
+                      {employeeName(emp)}
                     </SelectItem>
                   ))}
                 </SelectContent>

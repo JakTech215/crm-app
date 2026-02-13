@@ -60,8 +60,12 @@ import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, Bell } from "lucide-re
 
 interface Employee {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
 }
+
+const employeeName = (e: { first_name: string; last_name: string }) =>
+  `${e.first_name} ${e.last_name}`;
 
 interface TaskAssignee {
   employee_id: string;
@@ -182,7 +186,7 @@ export default function TaskDetailPage() {
     let assignees: TaskAssignee[] = [];
     const { data: assigneeData } = await supabase
       .from("task_assignees")
-      .select("employee_id, employees(id, name)")
+      .select("employee_id, employees(id, first_name, last_name)")
       .eq("task_id", taskId);
 
     if (assigneeData) {
@@ -246,9 +250,9 @@ export default function TaskDetailPage() {
   const fetchAllEmployees = async () => {
     const { data } = await supabase
       .from("employees")
-      .select("id, name")
+      .select("id, first_name, last_name")
       .eq("status", "active")
-      .order("name");
+      .order("first_name");
     setAllEmployees(data || []);
   };
 
@@ -898,7 +902,7 @@ export default function TaskDetailPage() {
                               checked={editSelectedEmployees.includes(emp.id)}
                               onCheckedChange={() => toggleEditEmployee(emp.id)}
                             />
-                            <span className="text-sm">{emp.name}</span>
+                            <span className="text-sm">{employeeName(emp)}</span>
                           </label>
                         ))}
                       </div>
@@ -1044,7 +1048,7 @@ export default function TaskDetailPage() {
               <div className="flex flex-wrap gap-2">
                 {task.task_assignees.map((a) => (
                   <Badge key={a.employee_id} variant="outline">
-                    {a.employees?.name}
+                    {a.employees ? employeeName(a.employees) : ""}
                   </Badge>
                 ))}
               </div>

@@ -156,7 +156,7 @@ export default function ProjectsPage() {
       status: form.status,
       start_date: form.start_date || null,
       due_date: form.due_date || null,
-      user_id: user?.id,
+      created_by: user?.id,
     });
 
     if (insertError) {

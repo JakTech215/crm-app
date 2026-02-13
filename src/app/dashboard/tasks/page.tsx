@@ -678,16 +678,21 @@ export default function TasksPage() {
                       id="start_date"
                       type="date"
                       value={form.start_date}
-                      onChange={(e) =>
-                        setForm({ ...form, start_date: e.target.value })
-                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setForm((prev) => ({
+                          ...prev,
+                          start_date: val,
+                          due_date: prev.due_date || val,
+                        }));
+                      }}
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="due_date">Due Date & Time</Label>
+                    <Label htmlFor="due_date">Due Date</Label>
                     <Input
                       id="due_date"
-                      type="datetime-local"
+                      type="date"
                       value={form.due_date}
                       onChange={(e) =>
                         setForm({ ...form, due_date: e.target.value })
@@ -696,14 +701,13 @@ export default function TasksPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <span className="text-xs text-muted-foreground self-center">Quick set:</span>
                   {[
-                    { label: "4h", hours: 4 },
-                    { label: "1d", hours: 24 },
-                    { label: "3d", hours: 72 },
-                    { label: "1w", hours: 168 },
-                    { label: "2w", hours: 336 },
-                    { label: "1m", hours: 720 },
+                    { label: "4h", days: 0 },
+                    { label: "1d", days: 1 },
+                    { label: "3d", days: 3 },
+                    { label: "1w", days: 7 },
+                    { label: "2w", days: 14 },
+                    { label: "1m", days: 30 },
                   ].map((q) => (
                     <Button
                       key={q.label}
@@ -712,10 +716,14 @@ export default function TasksPage() {
                       size="sm"
                       className="h-7 text-xs px-2"
                       onClick={() => {
-                        const d = new Date();
-                        d.setHours(d.getHours() + q.hours);
-                        const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-                        setForm({ ...form, due_date: local });
+                        const base = form.start_date ? new Date(form.start_date + "T00:00:00") : new Date();
+                        base.setDate(base.getDate() + q.days);
+                        const due = base.toISOString().split("T")[0];
+                        setForm((prev) => ({
+                          ...prev,
+                          start_date: prev.start_date || new Date().toISOString().split("T")[0],
+                          due_date: due,
+                        }));
                       }}
                     >
                       {q.label}

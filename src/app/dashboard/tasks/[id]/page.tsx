@@ -808,16 +808,21 @@ export default function TaskDetailPage() {
                     id="edit_start_date"
                     type="date"
                     value={editForm.start_date}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, start_date: e.target.value })
-                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditForm((prev) => ({
+                        ...prev,
+                        start_date: val,
+                        due_date: prev.due_date || val,
+                      }));
+                    }}
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="edit_due_date">Due Date & Time</Label>
+                  <Label htmlFor="edit_due_date">Due Date</Label>
                   <Input
                     id="edit_due_date"
-                    type="datetime-local"
+                    type="date"
                     value={editForm.due_date}
                     onChange={(e) =>
                       setEditForm({ ...editForm, due_date: e.target.value })
@@ -825,11 +830,12 @@ export default function TaskDetailPage() {
                   />
                   <div className="flex flex-wrap gap-1">
                     {[
-                      { label: "4h", hours: 4 },
-                      { label: "1d", hours: 24 },
-                      { label: "3d", hours: 72 },
-                      { label: "1w", hours: 168 },
-                      { label: "2w", hours: 336 },
+                      { label: "4h", days: 0 },
+                      { label: "1d", days: 1 },
+                      { label: "3d", days: 3 },
+                      { label: "1w", days: 7 },
+                      { label: "2w", days: 14 },
+                      { label: "1m", days: 30 },
                     ].map((q) => (
                       <Button
                         key={q.label}
@@ -838,10 +844,14 @@ export default function TaskDetailPage() {
                         size="sm"
                         className="h-6 text-xs px-2"
                         onClick={() => {
-                          const d = new Date();
-                          d.setHours(d.getHours() + q.hours);
-                          const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-                          setEditForm({ ...editForm, due_date: local });
+                          const base = editForm.start_date ? new Date(editForm.start_date + "T00:00:00") : new Date();
+                          base.setDate(base.getDate() + q.days);
+                          const due = base.toISOString().split("T")[0];
+                          setEditForm((prev) => ({
+                            ...prev,
+                            start_date: prev.start_date || new Date().toISOString().split("T")[0],
+                            due_date: due,
+                          }));
                         }}
                       >
                         {q.label}
@@ -989,7 +999,7 @@ export default function TaskDetailPage() {
                 </p>
                 {task.due_date ? (
                   <div className="mt-1">
-                    <p>{new Date(task.due_date).toLocaleString()}</p>
+                    <p>{new Date(task.due_date).toLocaleDateString()}</p>
                     {task.status !== "completed" && (() => {
                       const due = new Date(task.due_date);
                       const now = new Date();

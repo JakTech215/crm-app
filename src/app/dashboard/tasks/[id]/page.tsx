@@ -56,7 +56,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, Bell } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, Bell, X, FolderKanban } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -159,7 +159,7 @@ export default function TaskDetailPage() {
   // Linkages state
   const [linkedProjects, setLinkedProjects] = useState<{ id: string; name: string }[]>([]);
   const [allProjects, setAllProjects] = useState<{ id: string; name: string }[]>([]);
-  const [editProjectId, setEditProjectId] = useState("");
+  const [editSelectedProjects, setEditSelectedProjects] = useState<string[]>([]);
   const [parentTask, setParentTask] = useState<{ id: string; title: string } | null>(null);
   const [childTasks, setChildTasks] = useState<{ id: string; title: string; status: string }[]>([]);
 
@@ -370,7 +370,7 @@ export default function TaskDetailPage() {
       send_notification: false,
     });
     setEditSelectedEmployees(task.task_assignees.map((a) => a.employee_id));
-    setEditProjectId(linkedProjects.length > 0 ? linkedProjects[0].id : "");
+    setEditSelectedProjects(linkedProjects.map((p) => p.id));
     setEditError(null);
     setEditOpen(true);
   };
@@ -421,15 +421,17 @@ export default function TaskDetailPage() {
       }
     }
 
-    // Update project link via junction table
+    // Update project links via junction table
     await supabase.from("project_tasks").delete().eq("task_id", taskId);
-    if (editProjectId) {
-      const { error: projectLinkError } = await supabase.from("project_tasks").insert({
-        task_id: taskId,
-        project_id: editProjectId,
-      });
+    if (editSelectedProjects.length > 0) {
+      const { error: projectLinkError } = await supabase.from("project_tasks").insert(
+        editSelectedProjects.map((pid) => ({
+          task_id: taskId,
+          project_id: pid,
+        }))
+      );
       if (projectLinkError) {
-        setEditError("Failed to link project: " + projectLinkError.message);
+        setEditError("Failed to link projects: " + projectLinkError.message);
         setSavingEdit(false);
         return;
       }
@@ -506,6 +508,35 @@ export default function TaskDetailPage() {
         ? prev.filter((id) => id !== empId)
         : [...prev, empId]
     );
+  };
+
+  const toggleEditProject = (projectId: string) => {
+    setEditSelectedProjects((prev) =>
+      prev.includes(projectId)
+        ? prev.filter((id) => id !== projectId)
+        : [...prev, projectId]
+    );
+  };
+
+  // Inline relationship handlers
+  const handleInlineRemoveEmployee = async (empId: string) => {
+    await supabase.from("task_assignees").delete().eq("task_id", taskId).eq("employee_id", empId);
+    fetchTask();
+  };
+
+  const handleInlineAddEmployee = async (empId: string) => {
+    await supabase.from("task_assignees").insert({ task_id: taskId, employee_id: empId });
+    fetchTask();
+  };
+
+  const handleInlineRemoveProject = async (projectId: string) => {
+    await supabase.from("project_tasks").delete().eq("task_id", taskId).eq("project_id", projectId);
+    fetchLinkedProjects();
+  };
+
+  const handleInlineAddProject = async (projectId: string) => {
+    await supabase.from("project_tasks").insert({ task_id: taskId, project_id: projectId });
+    fetchLinkedProjects();
   };
 
   const checkDependenciesAndDelete = async () => {
@@ -749,28 +780,37 @@ export default function TaskDetailPage() {
               )}
               {allProjects.length > 0 && (
                 <div className="grid gap-2">
-                  <Label>
-                    Project{" "}
-                    <span className="text-muted-foreground font-normal">(optional)</span>
-                  </Label>
-                  <Select
-                    value={editProjectId || "none"}
-                    onValueChange={(value) =>
-                      setEditProjectId(value === "none" ? "" : value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="No project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No project</SelectItem>
-                      {allProjects.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Projects</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        type="button"
+                        className="justify-start"
+                      >
+                        <FolderKanban className="mr-2 h-4 w-4" />
+                        {editSelectedProjects.length > 0
+                          ? `${editSelectedProjects.length} selected`
+                          : "Select projects..."}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2" align="start">
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {allProjects.map((p) => (
+                          <label
+                            key={p.id}
+                            className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer"
+                          >
+                            <Checkbox
+                              checked={editSelectedProjects.includes(p.id)}
+                              onCheckedChange={() => toggleEditProject(p.id)}
+                            />
+                            <span className="text-sm">{p.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-4">
@@ -1040,15 +1080,52 @@ export default function TaskDetailPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Assigned Employees</CardTitle>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Employee
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2" align="end">
+                {(() => {
+                  const assignedIds = task.task_assignees.map((a) => a.employee_id);
+                  const available = allEmployees.filter((e) => !assignedIds.includes(e.id));
+                  if (available.length === 0) {
+                    return <p className="text-sm text-muted-foreground p-2">No more employees to add.</p>;
+                  }
+                  return (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {available.map((emp) => (
+                        <button
+                          key={emp.id}
+                          className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
+                          onClick={() => handleInlineAddEmployee(emp.id)}
+                        >
+                          <Plus className="h-3 w-3 text-muted-foreground" />
+                          {employeeName(emp)}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </PopoverContent>
+            </Popover>
           </CardHeader>
           <CardContent>
             {task.task_assignees?.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {task.task_assignees.map((a) => (
-                  <Badge key={a.employee_id} variant="outline">
+                  <Badge key={a.employee_id} variant="outline" className="flex items-center gap-1 pr-1">
                     {a.employees ? employeeName(a.employees) : ""}
+                    <button
+                      className="ml-1 rounded-full hover:bg-muted p-0.5"
+                      onClick={() => handleInlineRemoveEmployee(a.employee_id)}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
                   </Badge>
                 ))}
               </div>
@@ -1230,17 +1307,60 @@ export default function TaskDetailPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">Projects</p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-muted-foreground">Projects</p>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs">
+                    <Plus className="mr-1 h-3 w-3" />
+                    Add Project
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2" align="end">
+                  {(() => {
+                    const linkedIds = linkedProjects.map((p) => p.id);
+                    const available = allProjects.filter((p) => !linkedIds.includes(p.id));
+                    if (available.length === 0) {
+                      return <p className="text-sm text-muted-foreground p-2">No more projects to add.</p>;
+                    }
+                    return (
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {available.map((p) => (
+                          <button
+                            key={p.id}
+                            className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
+                            onClick={() => handleInlineAddProject(p.id)}
+                          >
+                            <Plus className="h-3 w-3 text-muted-foreground" />
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </PopoverContent>
+              </Popover>
+            </div>
             {linkedProjects.length > 0 ? (
               <div className="flex flex-wrap gap-2 mt-1">
                 {linkedProjects.map((p) => (
                   <Badge
                     key={p.id}
                     variant="outline"
-                    className="cursor-pointer hover:bg-muted"
-                    onClick={() => router.push(`/dashboard/projects/${p.id}`)}
+                    className="flex items-center gap-1 pr-1"
                   >
-                    {p.name}
+                    <span
+                      className="cursor-pointer hover:underline"
+                      onClick={() => router.push(`/dashboard/projects/${p.id}`)}
+                    >
+                      {p.name}
+                    </span>
+                    <button
+                      className="ml-1 rounded-full hover:bg-muted p-0.5"
+                      onClick={() => handleInlineRemoveProject(p.id)}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
                   </Badge>
                 ))}
               </div>

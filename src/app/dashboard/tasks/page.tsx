@@ -291,7 +291,12 @@ export default function TasksPage() {
     if (task && form.project_id) {
       const { error: projectLinkError } = await supabase
         .from("project_tasks")
-        .insert({ task_id: task.id, project_id: form.project_id });
+        .insert({
+          task_id: task.id,
+          project_id: form.project_id,
+          added_by: user.id,
+          milestone_id: form.is_milestone ? task.id : null,
+        });
       if (projectLinkError) {
         setError("Task created but failed to link project: " + projectLinkError.message);
       }

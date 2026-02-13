@@ -154,6 +154,8 @@ export default function TaskDetailPage() {
 
   // Linkages state
   const [linkedProjects, setLinkedProjects] = useState<{ id: string; name: string }[]>([]);
+  const [allProjects, setAllProjects] = useState<{ id: string; name: string }[]>([]);
+  const [editProjectId, setEditProjectId] = useState("");
   const [parentTask, setParentTask] = useState<{ id: string; title: string } | null>(null);
   const [childTasks, setChildTasks] = useState<{ id: string; title: string; status: string }[]>([]);
 
@@ -258,6 +260,14 @@ export default function TaskDetailPage() {
     setAllContacts(data || []);
   };
 
+  const fetchAllProjects = async () => {
+    const { data } = await supabase
+      .from("projects")
+      .select("id, name")
+      .order("name");
+    setAllProjects(data || []);
+  };
+
   const fetchLinkedProjects = async () => {
     const { data: links } = await supabase
       .from("project_tasks")
@@ -289,6 +299,7 @@ export default function TaskDetailPage() {
     fetchAllTasks();
     fetchAllEmployees();
     fetchAllContacts();
+    fetchAllProjects();
     fetchLinkedProjects();
     fetchChildTasks();
   }, [taskId]);
@@ -348,6 +359,7 @@ export default function TaskDetailPage() {
       send_notification: false,
     });
     setEditSelectedEmployees(task.task_assignees.map((a) => a.employee_id));
+    setEditProjectId(linkedProjects.length > 0 ? linkedProjects[0].id : "");
     setEditError(null);
     setEditOpen(true);
   };
@@ -393,6 +405,23 @@ export default function TaskDetailPage() {
       );
       if (insertAssigneesError) {
         setEditError("Failed to assign employees: " + insertAssigneesError.message);
+        setSavingEdit(false);
+        return;
+      }
+    }
+
+    // Update project link via junction table
+    await supabase.from("project_tasks").delete().eq("task_id", taskId);
+    if (editProjectId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error: projectLinkError } = await supabase.from("project_tasks").insert({
+        task_id: taskId,
+        project_id: editProjectId,
+        added_by: user?.id,
+        milestone_id: editForm.is_milestone ? taskId : null,
+      });
+      if (projectLinkError) {
+        setEditError("Failed to link project: " + projectLinkError.message);
         setSavingEdit(false);
         return;
       }
@@ -459,6 +488,8 @@ export default function TaskDetailPage() {
     setSavingEdit(false);
     setEditOpen(false);
     fetchTask();
+    fetchLinkedProjects();
+    fetchChildTasks();
   };
 
   const toggleEditEmployee = (empId: string) => {
@@ -672,6 +703,32 @@ export default function TaskDetailPage() {
                       {allContacts.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
                           {contactName(c)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {allProjects.length > 0 && (
+                <div className="grid gap-2">
+                  <Label>
+                    Project{" "}
+                    <span className="text-muted-foreground font-normal">(optional)</span>
+                  </Label>
+                  <Select
+                    value={editProjectId || "none"}
+                    onValueChange={(value) =>
+                      setEditProjectId(value === "none" ? "" : value)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="No project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No project</SelectItem>
+                      {allProjects.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

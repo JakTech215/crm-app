@@ -32,7 +32,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Pencil, Trash2, Mail, MessageSquare } from "lucide-react";
+import { Plus, Pencil, Trash2, Mail, MessageSquare, RefreshCw } from "lucide-react";
 
 // ---------- Types ----------
 
@@ -54,6 +54,17 @@ interface TaskTemplate {
   send_email_reminder: boolean;
   send_sms_reminder: boolean;
   category: string | null;
+  task_type_id: string | null;
+  is_recurring: boolean;
+  recurrence_frequency: number | null;
+  recurrence_unit: string | null;
+}
+
+interface TaskType {
+  id: string;
+  name: string;
+  color: string;
+  is_active: boolean;
 }
 
 const COLOR_OPTIONS = [
@@ -352,12 +363,157 @@ function ProjectStatusesSection() {
 }
 
 // ================================================================
+// Task Types Section
+// ================================================================
+
+function TaskTypesSection() {
+  const supabase = createClient();
+  const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<TaskType | null>(null);
+  const [form, setForm] = useState({ name: "", color: "gray", is_active: true });
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const fetch = async () => {
+    const { data } = await supabase
+      .from("task_types")
+      .select("*")
+      .order("name");
+    setTaskTypes(data || []);
+  };
+
+  useEffect(() => { fetch(); }, []);
+
+  const resetForm = () => {
+    setForm({ name: "", color: "gray", is_active: true });
+    setEditing(null);
+    setOpen(false);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setSaveError(null);
+    if (editing) {
+      const { error } = await supabase
+        .from("task_types")
+        .update({ name: form.name, color: form.color, is_active: form.is_active })
+        .eq("id", editing.id);
+      if (error) { setSaveError(error.message); setSaving(false); return; }
+    } else {
+      const { error } = await supabase
+        .from("task_types")
+        .insert({ name: form.name, color: form.color, is_active: form.is_active });
+      if (error) { setSaveError(error.message); setSaving(false); return; }
+    }
+    setSaving(false);
+    resetForm();
+    fetch();
+  };
+
+  const handleEdit = (tt: TaskType) => {
+    setEditing(tt);
+    setForm({ name: tt.name, color: tt.color, is_active: tt.is_active });
+    setSaveError(null);
+    setOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    const { error } = await supabase.from("task_types").delete().eq("id", id);
+    if (error) { setSaveError(error.message); return; }
+    fetch();
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle>Task Types</CardTitle>
+          <CardDescription>Manage task types for categorizing tasks.</CardDescription>
+          {saveError && <div className="rounded-md bg-destructive/10 p-2 text-sm text-destructive mt-1">{saveError}</div>}
+        </div>
+        <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); else setOpen(true); }}>
+          <DialogTrigger asChild>
+            <Button size="sm"><Plus className="mr-2 h-4 w-4" />New Task Type</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <form onSubmit={handleSave}>
+              <DialogHeader>
+                <DialogTitle>{editing ? "Edit Task Type" : "New Task Type"}</DialogTitle>
+                <DialogDescription>
+                  {editing ? "Update this task type." : "Create a new task type."}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="tt-type-name">Name *</Label>
+                  <Input id="tt-type-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Color</Label>
+                  <Select value={form.color} onValueChange={(v) => setForm({ ...form, color: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {COLOR_OPTIONS.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>
+                          <span className="flex items-center gap-2">
+                            <span className={`inline-block h-3 w-3 rounded-full ${c.cls.split(" ")[0]}`} />
+                            {c.label}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={form.is_active}
+                    onCheckedChange={(checked) => setForm({ ...form, is_active: !!checked })}
+                  />
+                  <span className="text-sm font-medium">Active</span>
+                </label>
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={saving}>{saving ? "Saving..." : editing ? "Update" : "Create"}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent>
+        {taskTypes.length === 0 ? (
+          <p className="text-center text-muted-foreground py-6">No task types yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {taskTypes.map((tt) => (
+              <div key={tt.id} className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex items-center gap-3">
+                  <Badge className={colorCls(tt.color)}>{tt.name}</Badge>
+                  <span className={`inline-block h-2 w-2 rounded-full ${tt.is_active ? "bg-green-500" : "bg-gray-400"}`} />
+                  <span className="text-xs text-muted-foreground">{tt.is_active ? "Active" : "Inactive"}</span>
+                </div>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(tt)}><Pencil className="h-3 w-3" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(tt.id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ================================================================
 // Task Templates Section
 // ================================================================
 
 function TaskTemplatesSection() {
   const supabase = createClient();
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<TaskTemplate | null>(null);
@@ -371,7 +527,10 @@ function TaskTemplatesSection() {
     due_unit: "days",
     send_email_reminder: false,
     send_sms_reminder: false,
-    category: "",
+    task_type_id: "",
+    is_recurring: false,
+    recurrence_frequency: "",
+    recurrence_unit: "days",
   });
 
   const fetch = async () => {
@@ -389,12 +548,19 @@ function TaskTemplatesSection() {
       }
       setWorkflowSteps(map);
     }
+
+    const { data: types } = await supabase
+      .from("task_types")
+      .select("id, name, color, is_active")
+      .eq("is_active", true)
+      .order("name");
+    if (types) setTaskTypes(types);
   };
 
   useEffect(() => { fetch(); }, []);
 
   const resetForm = () => {
-    setForm({ name: "", description: "", default_priority: "medium", due_amount: "", due_unit: "days", send_email_reminder: false, send_sms_reminder: false, category: "" });
+    setForm({ name: "", description: "", default_priority: "medium", due_amount: "", due_unit: "days", send_email_reminder: false, send_sms_reminder: false, task_type_id: "", is_recurring: false, recurrence_frequency: "", recurrence_unit: "days" });
     setEditing(null);
     setOpen(false);
   };
@@ -413,7 +579,10 @@ function TaskTemplatesSection() {
       due_unit: dueAmount ? form.due_unit : null,
       send_email_reminder: form.send_email_reminder,
       send_sms_reminder: form.send_sms_reminder,
-      category: form.category || null,
+      task_type_id: form.task_type_id || null,
+      is_recurring: form.is_recurring,
+      recurrence_frequency: form.is_recurring && form.recurrence_frequency ? parseInt(form.recurrence_frequency) : null,
+      recurrence_unit: form.is_recurring && form.recurrence_frequency ? form.recurrence_unit : null,
     };
     if (editing) {
       const { error } = await supabase.from("task_templates").update(payload).eq("id", editing.id);
@@ -437,7 +606,10 @@ function TaskTemplatesSection() {
       due_unit: t.due_unit || "days",
       send_email_reminder: t.send_email_reminder || false,
       send_sms_reminder: t.send_sms_reminder || false,
-      category: t.category || "",
+      task_type_id: t.task_type_id || "",
+      is_recurring: t.is_recurring || false,
+      recurrence_frequency: t.recurrence_frequency?.toString() || "",
+      recurrence_unit: t.recurrence_unit || "days",
     });
     setOpen(true);
   };
@@ -453,6 +625,22 @@ function TaskTemplatesSection() {
     medium: "bg-blue-100 text-blue-800",
     high: "bg-orange-100 text-orange-800",
     urgent: "bg-red-100 text-red-800",
+  };
+
+  const buildChain = (startId: string): { name: string; delayDays: number }[] => {
+    const chain: { name: string; delayDays: number }[] = [];
+    const visited = new Set<string>();
+    let currentId = startId;
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const step = workflowSteps[currentId];
+      if (!step || !step.next_template_id) break;
+      const nextTmpl = templates.find((t) => t.id === step.next_template_id);
+      if (!nextTmpl) break;
+      chain.push({ name: nextTmpl.name, delayDays: step.delay_days });
+      currentId = step.next_template_id;
+    }
+    return chain;
   };
 
   return (
@@ -534,8 +722,50 @@ function TaskTemplatesSection() {
                   </label>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="tt-cat">Category</Label>
-                  <Input id="tt-cat" placeholder="e.g. Onboarding, Development" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+                  <Label>Task Type</Label>
+                  <Select value={form.task_type_id || "none"} onValueChange={(v) => setForm({ ...form, task_type_id: v === "none" ? "" : v })}>
+                    <SelectTrigger><SelectValue placeholder="No type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No type</SelectItem>
+                      {taskTypes.map((tt) => (
+                        <SelectItem key={tt.id} value={tt.id}>
+                          <span className="flex items-center gap-2">
+                            <span className={`inline-block h-3 w-3 rounded-full ${colorCls(tt.color).split(" ")[0]}`} />
+                            {tt.name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={form.is_recurring}
+                      onCheckedChange={(checked) => setForm({ ...form, is_recurring: !!checked })}
+                    />
+                    <RefreshCw className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Recurring task</span>
+                  </label>
+                  {form.is_recurring && (
+                    <div className="grid grid-cols-2 gap-4 pl-6">
+                      <div className="grid gap-2">
+                        <Label htmlFor="tt-rec-freq">Every</Label>
+                        <Input id="tt-rec-freq" type="number" min="1" placeholder="e.g. 2" value={form.recurrence_frequency} onChange={(e) => setForm({ ...form, recurrence_frequency: e.target.value })} />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Unit</Label>
+                        <Select value={form.recurrence_unit} onValueChange={(v) => setForm({ ...form, recurrence_unit: v })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="days">Days</SelectItem>
+                            <SelectItem value="weeks">Weeks</SelectItem>
+                            <SelectItem value="months">Months</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <DialogFooter>
@@ -559,7 +789,16 @@ function TaskTemplatesSection() {
                       <Badge className={priorityColors[t.default_priority] || ""} variant="secondary">
                         {t.default_priority}
                       </Badge>
-                      {t.category && <Badge variant="outline">{t.category}</Badge>}
+                      {(() => {
+                        const tt = taskTypes.find((x) => x.id === t.task_type_id);
+                        return tt ? <Badge className={colorCls(tt.color)}>{tt.name}</Badge> : null;
+                      })()}
+                      {t.is_recurring && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <RefreshCw className="h-3 w-3" />
+                          Every {t.recurrence_frequency} {t.recurrence_unit}
+                        </span>
+                      )}
                       {t.due_amount && t.due_unit ? (
                         <span className="text-xs text-muted-foreground">{t.due_amount} {t.due_unit}</span>
                       ) : t.default_due_days ? (
@@ -632,6 +871,21 @@ function TaskTemplatesSection() {
                   />
                   <span className="text-muted-foreground">days</span>
                 </div>
+                {(() => {
+                  const chain = buildChain(t.id);
+                  if (chain.length === 0) return null;
+                  return (
+                    <div className="flex items-center gap-1 mt-2 flex-wrap">
+                      <Badge variant="default" className="text-xs">{t.name}</Badge>
+                      {chain.map((step, i) => (
+                        <span key={i} className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">{"\u2014"}{step.delayDays}d{"\u2192"}</span>
+                          <Badge variant="outline" className="text-xs">{step.name}</Badge>
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>
@@ -747,6 +1001,7 @@ export default function SettingsPage() {
           <TabsTrigger value="contact-statuses">Contact Statuses</TabsTrigger>
           <TabsTrigger value="project-statuses">Project Statuses</TabsTrigger>
           <TabsTrigger value="task-templates">Task Templates</TabsTrigger>
+          <TabsTrigger value="task-types">Task Types</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
         <TabsContent value="contact-statuses">
@@ -757,6 +1012,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="task-templates">
           <TaskTemplatesSection />
+        </TabsContent>
+        <TabsContent value="task-types">
+          <TaskTypesSection />
         </TabsContent>
         <TabsContent value="notifications">
           <NotificationsSection />

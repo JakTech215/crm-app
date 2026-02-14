@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { RefreshCw } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -65,6 +66,8 @@ interface Task {
   start_date: string | null;
   due_date: string | null;
   is_milestone: boolean;
+  task_type_id: string | null;
+  is_recurring: boolean;
   created_at: string;
   task_assignees: TaskAssignee[];
   contacts: ContactOption | null;
@@ -86,6 +89,23 @@ const statusColors: Record<string, string> = {
   completed: "bg-green-100 text-green-800",
 };
 
+const COLOR_MAP: Record<string, string> = {
+  gray: "bg-gray-100 text-gray-800",
+  red: "bg-red-100 text-red-800",
+  orange: "bg-orange-100 text-orange-800",
+  yellow: "bg-yellow-100 text-yellow-800",
+  green: "bg-green-100 text-green-800",
+  blue: "bg-blue-100 text-blue-800",
+  purple: "bg-purple-100 text-purple-800",
+  pink: "bg-pink-100 text-pink-800",
+};
+
+interface TaskType {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export default function TaskHistoryPage() {
   const supabase = createClient();
   const router = useRouter();
@@ -95,6 +115,7 @@ export default function TaskHistoryPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [projectMap, setProjectMap] = useState<Record<string, string>>({});
+  const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -205,11 +226,21 @@ export default function TaskHistoryPage() {
     setProjects(data || []);
   };
 
+  const fetchTaskTypes = async () => {
+    const { data } = await supabase
+      .from("task_types")
+      .select("id, name, color")
+      .eq("is_active", true)
+      .order("name");
+    setTaskTypes(data || []);
+  };
+
   useEffect(() => {
     fetchTasks();
     fetchContacts();
     fetchEmployees();
     fetchProjects();
+    fetchTaskTypes();
   }, []);
 
   const filteredTasks = tasks.filter((task) => {
@@ -387,6 +418,7 @@ export default function TaskHistoryPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Task</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Project</TableHead>
                 <TableHead>Assignees</TableHead>
@@ -398,14 +430,14 @@ export default function TaskHistoryPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={8} className="text-center py-8">
                     Loading...
                   </TableCell>
                 </TableRow>
               ) : filteredTasks.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="text-center text-muted-foreground py-8"
                   >
                     No tasks found.
@@ -419,7 +451,16 @@ export default function TaskHistoryPage() {
                     onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
                   >
                     <TableCell className="font-medium">
-                      {task.title}
+                      <div className="flex items-center gap-1">
+                        {task.is_recurring && <RefreshCw className="h-3 w-3 text-muted-foreground shrink-0" />}
+                        {task.title}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const tt = taskTypes.find((x) => x.id === task.task_type_id);
+                        return tt ? <Badge variant="secondary" className={COLOR_MAP[tt.color] || ""}>{tt.name}</Badge> : <span className="text-muted-foreground">—</span>;
+                      })()}
                     </TableCell>
                     <TableCell>
                       {task.contacts ? contactName(task.contacts) : "\u2014"}

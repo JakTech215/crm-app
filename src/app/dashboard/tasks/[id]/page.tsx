@@ -56,7 +56,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, Bell, X, FolderKanban } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, Bell, X, FolderKanban, RefreshCw } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -97,6 +97,11 @@ interface Task {
   start_date: string | null;
   due_date: string | null;
   is_milestone: boolean;
+  task_type_id: string | null;
+  is_recurring: boolean;
+  recurrence_frequency: number | null;
+  recurrence_unit: string | null;
+  recurrence_source_task_id: string | null;
   created_at: string;
   task_assignees: TaskAssignee[];
   contacts: ContactOption | null;
@@ -113,6 +118,23 @@ interface DependencyRow {
   lag_days: number;
   depends_on_task_id: string;
   depends_on_task_title?: string;
+}
+
+const COLOR_MAP: Record<string, string> = {
+  gray: "bg-gray-100 text-gray-800",
+  red: "bg-red-100 text-red-800",
+  orange: "bg-orange-100 text-orange-800",
+  yellow: "bg-yellow-100 text-yellow-800",
+  green: "bg-green-100 text-green-800",
+  blue: "bg-blue-100 text-blue-800",
+  purple: "bg-purple-100 text-purple-800",
+  pink: "bg-pink-100 text-pink-800",
+};
+
+interface TaskType {
+  id: string;
+  name: string;
+  color: string;
 }
 
 const DEPENDENCY_TYPES = [
@@ -157,6 +179,10 @@ export default function TaskDetailPage() {
     due_date: "",
     is_milestone: false,
     send_notification: false,
+    task_type_id: "",
+    is_recurring: false,
+    recurrence_frequency: "",
+    recurrence_unit: "days",
   });
   const [editSelectedEmployees, setEditSelectedEmployees] = useState<string[]>([]);
 
@@ -166,6 +192,8 @@ export default function TaskDetailPage() {
   const [editSelectedProjects, setEditSelectedProjects] = useState<string[]>([]);
   const [parentTask, setParentTask] = useState<{ id: string; title: string } | null>(null);
   const [childTasks, setChildTasks] = useState<{ id: string; title: string; status: string }[]>([]);
+  const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
+  const [workflowChain, setWorkflowChain] = useState<{ id: string; name: string; delayDays: number }[]>([]);
 
   // Delete state
   const [deleting, setDeleting] = useState(false);
@@ -301,6 +329,53 @@ export default function TaskDetailPage() {
     setChildTasks(data || []);
   };
 
+  const fetchTaskTypes = async () => {
+    const { data } = await supabase
+      .from("task_types")
+      .select("id, name, color")
+      .eq("is_active", true)
+      .order("name");
+    setTaskTypes(data || []);
+  };
+
+  const fetchWorkflowChain = async (templateId: string) => {
+    const { data: allTemplates } = await supabase.from("task_templates").select("id, name").order("name");
+    const { data: steps } = await supabase.from("task_workflow_steps").select("template_id, next_template_id, delay_days");
+    if (!allTemplates || !steps) { setWorkflowChain([]); return; }
+
+    const tmplMap: Record<string, string> = {};
+    for (const t of allTemplates) tmplMap[t.id] = t.name;
+
+    const stepMap: Record<string, { next_template_id: string; delay_days: number }> = {};
+    for (const s of steps) stepMap[s.template_id] = { next_template_id: s.next_template_id, delay_days: s.delay_days };
+
+    // Build full chain starting from the very beginning (find root)
+    // First, find which template starts the chain that includes our template
+    const allTemplateIds = allTemplates.map((t: { id: string }) => t.id);
+    const nextIds = new Set(steps.map((s: { next_template_id: string }) => s.next_template_id));
+    // Templates that are not pointed to by any step are potential roots
+    const roots = allTemplateIds.filter((id: string) => !nextIds.has(id) && stepMap[id]);
+
+    // Find the chain that includes our templateId
+    let chain: { id: string; name: string; delayDays: number }[] = [];
+    for (const rootId of roots) {
+      const c: { id: string; name: string; delayDays: number }[] = [{ id: rootId, name: tmplMap[rootId] || rootId, delayDays: 0 }];
+      const visited = new Set<string>([rootId]);
+      let currentId = rootId;
+      let found = currentId === templateId;
+      while (currentId) {
+        const step = stepMap[currentId];
+        if (!step || !step.next_template_id || visited.has(step.next_template_id)) break;
+        visited.add(step.next_template_id);
+        c.push({ id: step.next_template_id, name: tmplMap[step.next_template_id] || step.next_template_id, delayDays: step.delay_days });
+        if (step.next_template_id === templateId) found = true;
+        currentId = step.next_template_id;
+      }
+      if (found && c.length > 1) { chain = c; break; }
+    }
+    setWorkflowChain(chain);
+  };
+
   useEffect(() => {
     fetchTask();
     fetchDependencies();
@@ -310,6 +385,7 @@ export default function TaskDetailPage() {
     fetchAllProjects();
     fetchLinkedProjects();
     fetchChildTasks();
+    fetchTaskTypes();
   }, [taskId]);
 
   useEffect(() => {
@@ -324,6 +400,14 @@ export default function TaskDetailPage() {
       setParentTask(null);
     }
   }, [task?.parent_task_id]);
+
+  useEffect(() => {
+    if (task?.template_id) {
+      fetchWorkflowChain(task.template_id);
+    } else {
+      setWorkflowChain([]);
+    }
+  }, [task?.template_id]);
 
   const [depError, setDepError] = useState<string | null>(null);
 
@@ -372,6 +456,10 @@ export default function TaskDetailPage() {
       due_date: task.due_date || "",
       is_milestone: task.is_milestone,
       send_notification: false,
+      task_type_id: task.task_type_id || "",
+      is_recurring: task.is_recurring || false,
+      recurrence_frequency: task.recurrence_frequency?.toString() || "",
+      recurrence_unit: task.recurrence_unit || "days",
     });
     setEditSelectedEmployees(task.task_assignees.map((a) => a.employee_id));
     setEditSelectedProjects(linkedProjects.map((p) => p.id));
@@ -395,6 +483,10 @@ export default function TaskDetailPage() {
         start_date: editForm.start_date || null,
         due_date: editForm.due_date || null,
         is_milestone: editForm.is_milestone,
+        task_type_id: editForm.task_type_id || null,
+        is_recurring: editForm.is_recurring,
+        recurrence_frequency: editForm.is_recurring && editForm.recurrence_frequency ? parseInt(editForm.recurrence_frequency) : null,
+        recurrence_unit: editForm.is_recurring && editForm.recurrence_frequency ? editForm.recurrence_unit : null,
       })
       .eq("id", taskId);
 
@@ -456,7 +548,7 @@ export default function TaskDetailPage() {
           // Fetch the next template details
           const { data: nextTemplate } = await supabase
             .from("task_templates")
-            .select("id, name, description, default_priority, due_amount, due_unit, default_due_days")
+            .select("id, name, description, default_priority, due_amount, due_unit, default_due_days, task_type_id")
             .eq("id", step.next_template_id)
             .single();
 
@@ -487,6 +579,7 @@ export default function TaskDetailPage() {
               contact_id: task.contact_id || null,
               parent_task_id: taskId,
               template_id: nextTemplate.id,
+              task_type_id: (nextTemplate as { task_type_id?: string }).task_type_id || null,
               created_by: user?.id,
             });
             if (followUpError) {
@@ -496,6 +589,63 @@ export default function TaskDetailPage() {
         }
       } catch (e) {
         console.error("Failed to create follow-up task:", e);
+      }
+    }
+
+    // Auto-create next recurring task on completion
+    if (editForm.status === "completed" && task && task.status !== "completed" && task.is_recurring && task.recurrence_frequency && task.recurrence_unit) {
+      try {
+        // Guard: check no pending recurring child already exists
+        const { data: existingRecurring } = await supabase
+          .from("tasks")
+          .select("id")
+          .eq("parent_task_id", taskId)
+          .eq("is_recurring", true)
+          .neq("status", "completed")
+          .neq("status", "cancelled")
+          .limit(1);
+
+        if (!existingRecurring || existingRecurring.length === 0) {
+          // Calculate next due date
+          const d = new Date();
+          if (task.recurrence_unit === "days") d.setDate(d.getDate() + task.recurrence_frequency);
+          else if (task.recurrence_unit === "weeks") d.setDate(d.getDate() + task.recurrence_frequency * 7);
+          else if (task.recurrence_unit === "months") d.setMonth(d.getMonth() + task.recurrence_frequency);
+          const nextDueDate = d.toISOString().split("T")[0];
+
+          const { data: { user } } = await supabase.auth.getUser();
+
+          const { data: newRecurringTask, error: recurError } = await supabase.from("tasks").insert({
+            title: task.title,
+            description: task.description || null,
+            priority: task.priority,
+            status: "pending",
+            due_date: nextDueDate,
+            contact_id: task.contact_id || null,
+            parent_task_id: taskId,
+            template_id: task.template_id || null,
+            task_type_id: task.task_type_id || null,
+            is_recurring: true,
+            recurrence_frequency: task.recurrence_frequency,
+            recurrence_unit: task.recurrence_unit,
+            recurrence_source_task_id: task.recurrence_source_task_id || taskId,
+            created_by: user?.id,
+          }).select().single();
+
+          if (recurError) {
+            console.error("Failed to create recurring task:", recurError);
+          } else if (newRecurringTask) {
+            // Copy assignees to new recurring task
+            const currentAssignees = task.task_assignees.map((a) => a.employee_id);
+            if (currentAssignees.length > 0) {
+              await supabase.from("task_assignees").insert(
+                currentAssignees.map((empId) => ({ task_id: newRecurringTask.id, employee_id: empId }))
+              );
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Failed to create recurring task:", e);
       }
     }
 
@@ -971,6 +1121,52 @@ export default function TaskDetailPage() {
                   <span className="text-sm font-medium">Mark as milestone</span>
                 </div>
               </label>
+              <div className="grid gap-2">
+                <Label>Task Type</Label>
+                <Select value={editForm.task_type_id || "none"} onValueChange={(v) => setEditForm({ ...editForm, task_type_id: v === "none" ? "" : v })}>
+                  <SelectTrigger><SelectValue placeholder="No type" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No type</SelectItem>
+                    {taskTypes.map((tt) => (
+                      <SelectItem key={tt.id} value={tt.id}>
+                        <span className="flex items-center gap-2">
+                          <span className={`inline-block h-3 w-3 rounded-full ${(COLOR_MAP[tt.color] || "").split(" ")[0]}`} />
+                          {tt.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={editForm.is_recurring}
+                    onCheckedChange={(checked) => setEditForm({ ...editForm, is_recurring: !!checked })}
+                  />
+                  <RefreshCw className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Recurring task</span>
+                </label>
+                {editForm.is_recurring && (
+                  <div className="grid grid-cols-2 gap-4 pl-6">
+                    <div className="grid gap-2">
+                      <Label>Every</Label>
+                      <Input type="number" min="1" placeholder="e.g. 2" value={editForm.recurrence_frequency} onChange={(e) => setEditForm({ ...editForm, recurrence_frequency: e.target.value })} />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Unit</Label>
+                      <Select value={editForm.recurrence_unit} onValueChange={(v) => setEditForm({ ...editForm, recurrence_unit: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="days">Days</SelectItem>
+                          <SelectItem value="weeks">Weeks</SelectItem>
+                          <SelectItem value="months">Months</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+              </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <Checkbox
                   checked={editForm.send_notification}
@@ -1069,6 +1265,37 @@ export default function TaskDetailPage() {
                 )}
               </div>
             </div>
+            {task.task_type_id && (() => {
+              const tt = taskTypes.find((x) => x.id === task.task_type_id);
+              return tt ? (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Type</p>
+                  <Badge className={`mt-1 ${COLOR_MAP[tt.color] || ""}`}>{tt.name}</Badge>
+                </div>
+              ) : null;
+            })()}
+            {task.is_recurring && (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Recurring</p>
+                  <div className="flex items-center gap-1 mt-1">
+                    <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-sm">Every {task.recurrence_frequency} {task.recurrence_unit}</span>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={async () => {
+                    await supabase.from("tasks").update({ is_recurring: false, recurrence_frequency: null, recurrence_unit: null }).eq("id", taskId);
+                    fetchTask();
+                  }}
+                >
+                  Stop Recurring
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1437,6 +1664,27 @@ export default function TaskDetailPage() {
               <p className="text-sm text-muted-foreground mt-1">No linked projects</p>
             )}
           </div>
+          {workflowChain.length > 1 && (
+            <>
+              <Separator />
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Workflow Chain</p>
+                <div className="flex items-center gap-1 mt-2 flex-wrap">
+                  {workflowChain.map((step, i) => (
+                    <span key={step.id} className="flex items-center gap-1">
+                      {i > 0 && <span className="text-xs text-muted-foreground">&mdash;{step.delayDays}d&rarr;</span>}
+                      <Badge
+                        variant={step.id === task.template_id ? "default" : "outline"}
+                        className="text-xs"
+                      >
+                        {step.name}
+                      </Badge>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
           {parentTask && (
             <>
               <Separator />

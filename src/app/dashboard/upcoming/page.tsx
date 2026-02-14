@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { RefreshCw } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -59,6 +60,8 @@ interface Task {
   start_date: string | null;
   due_date: string | null;
   is_milestone: boolean;
+  task_type_id: string | null;
+  is_recurring: boolean;
   created_at: string;
   task_assignees: TaskAssignee[];
   contacts: ContactInfo | null;
@@ -94,6 +97,23 @@ const priorityColors: Record<string, string> = {
   urgent: "bg-red-100 text-red-800",
 };
 
+const COLOR_MAP: Record<string, string> = {
+  gray: "bg-gray-100 text-gray-800",
+  red: "bg-red-100 text-red-800",
+  orange: "bg-orange-100 text-orange-800",
+  yellow: "bg-yellow-100 text-yellow-800",
+  green: "bg-green-100 text-green-800",
+  blue: "bg-blue-100 text-blue-800",
+  purple: "bg-purple-100 text-purple-800",
+  pink: "bg-pink-100 text-pink-800",
+};
+
+interface TaskType {
+  id: string;
+  name: string;
+  color: string;
+}
+
 
 
 export default function UpcomingTasksPage() {
@@ -102,6 +122,7 @@ export default function UpcomingTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
 
   // Filters
   const [assigneeFilter, setAssigneeFilter] = useState("all");
@@ -153,6 +174,15 @@ export default function UpcomingTasksPage() {
     setLoading(false);
   };
 
+  const fetchTaskTypes = async () => {
+    const { data } = await supabase
+      .from("task_types")
+      .select("id, name, color")
+      .eq("is_active", true)
+      .order("name");
+    setTaskTypes(data || []);
+  };
+
   const fetchEmployees = async () => {
     const { data } = await supabase
       .from("employees")
@@ -165,6 +195,7 @@ export default function UpcomingTasksPage() {
   useEffect(() => {
     fetchTasks();
     fetchEmployees();
+    fetchTaskTypes();
   }, []);
 
   // Client-side filtering
@@ -197,7 +228,16 @@ export default function UpcomingTasksPage() {
       onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
     >
       <TableCell>
-        <div className="font-medium">{task.title}</div>
+        <div className="font-medium flex items-center gap-1">
+          {task.is_recurring && <RefreshCw className="h-3 w-3 text-muted-foreground shrink-0" />}
+          {task.title}
+        </div>
+      </TableCell>
+      <TableCell>
+        {(() => {
+          const tt = taskTypes.find((x) => x.id === task.task_type_id);
+          return tt ? <Badge variant="secondary" className={COLOR_MAP[tt.color] || ""}>{tt.name}</Badge> : <span className="text-muted-foreground">—</span>;
+        })()}
       </TableCell>
       <TableCell>
         {task.contacts ? contactName(task.contacts) : "\u2014"}
@@ -248,6 +288,7 @@ export default function UpcomingTasksPage() {
       <TableHeader>
         <TableRow>
           <TableHead>Task</TableHead>
+          <TableHead>Type</TableHead>
           <TableHead>Contact</TableHead>
           <TableHead>Assignees</TableHead>
           <TableHead>Priority</TableHead>
@@ -257,14 +298,14 @@ export default function UpcomingTasksPage() {
       <TableBody>
         {loading ? (
           <TableRow>
-            <TableCell colSpan={5} className="text-center py-8">
+            <TableCell colSpan={6} className="text-center py-8">
               Loading...
             </TableCell>
           </TableRow>
         ) : taskList.length === 0 ? (
           <TableRow>
             <TableCell
-              colSpan={5}
+              colSpan={6}
               className="text-center text-muted-foreground py-8"
             >
               No upcoming tasks found.

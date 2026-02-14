@@ -47,7 +47,18 @@ import {
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Users, Diamond, Search, Bell } from "lucide-react";
+import { Plus, Users, Diamond, Search, Bell, RefreshCw } from "lucide-react";
+
+const COLOR_MAP: Record<string, string> = {
+  gray: "bg-gray-100 text-gray-800",
+  red: "bg-red-100 text-red-800",
+  orange: "bg-orange-100 text-orange-800",
+  yellow: "bg-yellow-100 text-yellow-800",
+  green: "bg-green-100 text-green-800",
+  blue: "bg-blue-100 text-blue-800",
+  purple: "bg-purple-100 text-purple-800",
+  pink: "bg-pink-100 text-pink-800",
+};
 
 interface Employee {
   id: string;
@@ -86,6 +97,7 @@ interface Task {
   start_date: string | null;
   due_date: string | null;
   is_milestone: boolean;
+  task_type_id: string | null;
   created_at: string;
   task_assignees: TaskAssignee[];
   contacts: ContactOption | null;
@@ -105,6 +117,16 @@ interface TaskTemplate {
   due_amount: number | null;
   due_unit: string | null;
   category: string | null;
+  task_type_id: string | null;
+  is_recurring: boolean;
+  recurrence_frequency: number | null;
+  recurrence_unit: string | null;
+}
+
+interface TaskType {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export default function TasksPage() {
@@ -123,6 +145,9 @@ export default function TasksPage() {
   const [search, setSearch] = useState("");
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [selectedTaskTypeId, setSelectedTaskTypeId] = useState<string>("");
+  const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
+  const [templateChain, setTemplateChain] = useState<{ name: string; delayDays: number }[]>([]);
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -207,12 +232,46 @@ export default function TasksPage() {
     setTemplates(data || []);
   };
 
+  const fetchTaskTypes = async () => {
+    const { data } = await supabase
+      .from("task_types")
+      .select("id, name, color")
+      .eq("is_active", true)
+      .order("name");
+    setTaskTypes(data || []);
+  };
+
+  const fetchChain = async (templateId: string) => {
+    const { data: steps } = await supabase
+      .from("task_workflow_steps")
+      .select("template_id, next_template_id, delay_days");
+    if (!steps) { setTemplateChain([]); return; }
+
+    const stepMap: Record<string, { next_template_id: string; delay_days: number }> = {};
+    for (const s of steps) stepMap[s.template_id] = { next_template_id: s.next_template_id, delay_days: s.delay_days };
+
+    const chain: { name: string; delayDays: number }[] = [];
+    const visited = new Set<string>();
+    let currentId = templateId;
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const step = stepMap[currentId];
+      if (!step || !step.next_template_id) break;
+      const nextTmpl = templates.find((t) => t.id === step.next_template_id);
+      if (!nextTmpl) break;
+      chain.push({ name: nextTmpl.name, delayDays: step.delay_days });
+      currentId = step.next_template_id;
+    }
+    setTemplateChain(chain);
+  };
+
   useEffect(() => {
     fetchTasks();
     fetchEmployees();
     fetchProjects();
     fetchContacts();
     fetchTemplates();
+    fetchTaskTypes();
   }, []);
 
   const applyTemplate = (templateId: string) => {
@@ -239,6 +298,8 @@ export default function TasksPage() {
       due_date: dueDate || form.due_date,
     });
     setSelectedTemplateId(templateId);
+    setSelectedTaskTypeId(tmpl.task_type_id || "");
+    fetchChain(templateId);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -268,6 +329,7 @@ export default function TasksPage() {
         start_date: form.start_date || null,
         due_date: form.due_date || null,
         is_milestone: form.is_milestone,
+        task_type_id: selectedTaskTypeId || null,
         created_by: user.id,
       })
       .select()
@@ -319,6 +381,19 @@ export default function TasksPage() {
       }
     }
 
+    // Save recurring fields from template
+    if (task && selectedTemplateId) {
+      const tmpl = templates.find((t) => t.id === selectedTemplateId);
+      if (tmpl?.is_recurring) {
+        await supabase.from("tasks").update({
+          is_recurring: true,
+          recurrence_frequency: tmpl.recurrence_frequency,
+          recurrence_unit: tmpl.recurrence_unit,
+          recurrence_source_task_id: task.id,
+        }).eq("id", task.id);
+      }
+    }
+
     setForm({
       title: "",
       description: "",
@@ -333,6 +408,8 @@ export default function TasksPage() {
     });
     setSelectedTemplateId("");
     setSelectedEmployees([]);
+    setSelectedTaskTypeId("");
+    setTemplateChain([]);
     setOpen(false);
     fetchTasks();
     setSaving(false);
@@ -398,6 +475,7 @@ export default function TasksPage() {
       <TableHeader>
         <TableRow>
           <TableHead>Task</TableHead>
+          <TableHead>Type</TableHead>
           <TableHead>Contact</TableHead>
           <TableHead>Assigned To</TableHead>
           <TableHead>Priority</TableHead>
@@ -408,14 +486,14 @@ export default function TasksPage() {
       <TableBody>
         {loading ? (
           <TableRow>
-            <TableCell colSpan={7} className="text-center py-8">
+            <TableCell colSpan={8} className="text-center py-8">
               Loading...
             </TableCell>
           </TableRow>
         ) : filteredTasks.length === 0 ? (
           <TableRow>
             <TableCell
-              colSpan={7}
+              colSpan={8}
               className="text-center text-muted-foreground py-8"
             >
               No tasks found.
@@ -452,6 +530,16 @@ export default function TasksPage() {
                     )}
                   </div>
                 </div>
+              </TableCell>
+              <TableCell>
+                {(() => {
+                  const tt = taskTypes.find((x) => x.id === task.task_type_id);
+                  return tt ? (
+                    <Badge variant="secondary" className={COLOR_MAP[tt.color] || ""}>{tt.name}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  );
+                })()}
               </TableCell>
               <TableCell>
                 {task.contacts ? contactName(task.contacts) : "—"}
@@ -550,18 +638,47 @@ export default function TasksPage() {
                       <SelectContent>
                         {templates.map((t) => (
                           <SelectItem key={t.id} value={t.id}>
-                            {t.name}
-                            {t.category && (
-                              <span className="text-muted-foreground">
-                                {" "}
-                                — {t.category}
-                              </span>
-                            )}
+                            <span className="flex items-center gap-2">
+                              {t.name}
+                              {(() => {
+                                const tt = taskTypes.find((x) => x.id === t.task_type_id);
+                                return tt ? <Badge variant="secondary" className={`text-xs ${COLOR_MAP[tt.color] || ""}`}>{tt.name}</Badge> : null;
+                              })()}
+                              {t.is_recurring && <RefreshCw className="h-3 w-3 text-muted-foreground" />}
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
+                )}
+
+                {selectedTemplateId && (templateChain.length > 0 || templates.find((t) => t.id === selectedTemplateId)?.is_recurring) && (
+                  <Card className="border-dashed bg-muted/30">
+                    <CardContent className="p-3 space-y-2">
+                      {templateChain.length > 0 && (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className="text-xs font-medium text-muted-foreground">Workflow:</span>
+                          <Badge variant="default" className="text-xs">{templates.find((t) => t.id === selectedTemplateId)?.name}</Badge>
+                          {templateChain.map((step, i) => (
+                            <span key={i} className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground">—{step.delayDays}d→</span>
+                              <Badge variant="outline" className="text-xs">{step.name}</Badge>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {(() => {
+                        const tmpl = templates.find((t) => t.id === selectedTemplateId);
+                        return tmpl?.is_recurring ? (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <RefreshCw className="h-3 w-3" />
+                            Recurring: every {tmpl.recurrence_frequency} {tmpl.recurrence_unit}
+                          </div>
+                        ) : null;
+                      })()}
+                    </CardContent>
+                  </Card>
                 )}
 
                 {templates.length > 0 && <Separator />}

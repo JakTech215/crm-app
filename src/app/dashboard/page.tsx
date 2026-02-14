@@ -31,6 +31,8 @@ import {
   X,
   Loader2,
   Check,
+  Calendar,
+  StickyNote,
 } from "lucide-react";
 
 interface StatCard {
@@ -77,6 +79,27 @@ interface CalendarTask {
   priority: string;
   is_milestone: boolean;
 }
+
+interface DashboardEvent {
+  id: string;
+  title: string;
+  event_date: string;
+  event_type: string;
+}
+
+interface DashboardNote {
+  id: string;
+  content: string;
+  created_at: string;
+}
+
+const eventTypeColors: Record<string, string> = {
+  meeting: "bg-blue-100 text-blue-800",
+  deadline: "bg-red-100 text-red-800",
+  milestone: "bg-amber-100 text-amber-800",
+  appointment: "bg-green-100 text-green-800",
+  other: "bg-gray-100 text-gray-800",
+};
 
 interface CalendarDayData {
   date: string;
@@ -131,6 +154,8 @@ export default function DashboardPage() {
   ]);
   const [overdue, setOverdue] = useState<OverdueTask[]>([]);
   const [upcoming, setUpcoming] = useState<UpcomingTask[]>([]);
+  const [dashEvents, setDashEvents] = useState<DashboardEvent[]>([]);
+  const [dashNotes, setDashNotes] = useState<DashboardNote[]>([]);
   const [calendarTaskMap, setCalendarTaskMap] = useState<Record<string, CalendarDayData>>({});
   const [calendarBaseDate, setCalendarBaseDate] = useState(() => {
     const now = new Date();
@@ -304,6 +329,31 @@ export default function DashboardPage() {
         }
       } catch (e) {
         console.error("Failed to fetch upcoming tasks:", e);
+      }
+
+      // Upcoming events
+      try {
+        const { data: evts } = await supabase
+          .from("events")
+          .select("id, title, event_date, event_type")
+          .gte("event_date", today)
+          .order("event_date", { ascending: true })
+          .limit(5);
+        setDashEvents(evts || []);
+      } catch (e) {
+        console.error("Failed to fetch events:", e);
+      }
+
+      // Recent notes
+      try {
+        const { data: nts } = await supabase
+          .from("notes_standalone")
+          .select("id, content, created_at")
+          .order("created_at", { ascending: false })
+          .limit(5);
+        setDashNotes(nts || []);
+      } catch (e) {
+        console.error("Failed to fetch notes:", e);
       }
 
       setLoading(false);
@@ -648,6 +698,75 @@ export default function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Upcoming Events & Recent Notes */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2"><Calendar className="h-4 w-4" /> Upcoming Events</CardTitle>
+              <CardDescription>Next scheduled events</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => router.push("/dashboard/events")}>View All</Button>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            ) : dashEvents.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No upcoming events.</p>
+            ) : (
+              <div className="space-y-2">
+                {dashEvents.map((evt) => (
+                  <div
+                    key={evt.id}
+                    className="flex items-center justify-between p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => router.push(`/dashboard/events/${evt.id}`)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className={`capitalize text-xs ${eventTypeColors[evt.event_type] || ""}`}>
+                        {evt.event_type}
+                      </Badge>
+                      <span className="text-sm font-medium">{evt.title}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{formatDate(evt.event_date)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2"><StickyNote className="h-4 w-4" /> Recent Notes</CardTitle>
+              <CardDescription>Latest quick notes</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => router.push("/dashboard/notes")}>View All</Button>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            ) : dashNotes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No notes yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {dashNotes.map((note) => (
+                  <div
+                    key={note.id}
+                    className="p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => router.push("/dashboard/notes")}
+                  >
+                    <p className="text-sm line-clamp-2">{note.content}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {new Date(note.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Upcoming Tasks */}
       <Card>

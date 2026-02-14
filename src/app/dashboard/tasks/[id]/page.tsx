@@ -56,7 +56,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, Bell, X, FolderKanban, RefreshCw, Loader2, Check } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, Bell, X, FolderKanban, RefreshCw, Loader2, Check, StickyNote } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -196,6 +196,12 @@ export default function TaskDetailPage() {
   const [workflowChain, setWorkflowChain] = useState<{ id: string; name: string; delayDays: number }[]>([]);
   const [seriesTasks, setSeriesTasks] = useState<{ id: string; title: string; status: string; due_date: string | null }[]>([]);
   const [templateName, setTemplateName] = useState<string | null>(null);
+
+  // Notes state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [taskNotes, setTaskNotes] = useState<any[]>([]);
+  const [newNoteContent, setNewNoteContent] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
 
   // Delete state
   const [deleting, setDeleting] = useState(false);
@@ -340,6 +346,15 @@ export default function TaskDetailPage() {
     setTaskTypes(data || []);
   };
 
+  const fetchNotes = async () => {
+    const { data: notesData } = await supabase
+      .from("notes_standalone")
+      .select("*")
+      .eq("task_id", taskId)
+      .order("created_at", { ascending: false });
+    setTaskNotes(notesData || []);
+  };
+
   const fetchSeriesTasks = async () => {
     if (!task) return;
     const sourceId = task.recurrence_source_task_id || (task.is_recurring ? task.id : null);
@@ -401,6 +416,7 @@ export default function TaskDetailPage() {
     fetchLinkedProjects();
     fetchChildTasks();
     fetchTaskTypes();
+    fetchNotes();
   }, [taskId]);
 
   useEffect(() => {
@@ -1786,6 +1802,79 @@ export default function TaskDetailPage() {
                 </div>
               </div>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="flex items-center gap-2">
+            <StickyNote className="h-5 w-5" />
+            <CardTitle>Notes</CardTitle>
+            <Badge variant="secondary">{taskNotes.length}</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Textarea
+              placeholder="Add a note..."
+              value={newNoteContent}
+              onChange={(e) => setNewNoteContent(e.target.value)}
+            />
+            <Button
+              size="sm"
+              disabled={!newNoteContent.trim() || addingNote}
+              onClick={async () => {
+                setAddingNote(true);
+                await supabase.from("notes_standalone").insert({
+                  task_id: taskId,
+                  content: newNoteContent.trim(),
+                });
+                setNewNoteContent("");
+                setAddingNote(false);
+                fetchNotes();
+              }}
+            >
+              {addingNote && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Add Note
+            </Button>
+          </div>
+          {taskNotes.length > 0 ? (
+            <div className="space-y-2">
+              {taskNotes.map((note) => (
+                <div
+                  key={note.id}
+                  className="relative rounded-md border p-3"
+                >
+                  <button
+                    className="absolute top-2 right-2 rounded-full hover:bg-muted p-1"
+                    onClick={async () => {
+                      await supabase
+                        .from("notes_standalone")
+                        .delete()
+                        .eq("id", note.id);
+                      fetchNotes();
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </button>
+                  <p className="text-sm whitespace-pre-wrap pr-8">{note.content}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {new Date(note.created_at).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            !newNoteContent && (
+              <p className="text-sm text-muted-foreground">No notes yet</p>
+            )
           )}
         </CardContent>
       </Card>

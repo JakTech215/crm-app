@@ -53,7 +53,9 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Pencil, Trash2, Plus, X, Search, Loader2, Check } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, Plus, X, Search, Loader2, Check, Calendar, StickyNote } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import Link from "next/link";
 
 interface Employee {
   id: string;
@@ -102,6 +104,20 @@ const taskStatusColors: Record<string, string> = {
   blocked: "bg-red-100 text-red-800",
 };
 
+const eventTypeColors: Record<string, string> = {
+  meeting: "bg-blue-100 text-blue-800",
+  deadline: "bg-red-100 text-red-800",
+  milestone: "bg-amber-100 text-amber-800",
+  appointment: "bg-green-100 text-green-800",
+  other: "bg-gray-100 text-gray-800",
+};
+
+const eventStatusColors: Record<string, string> = {
+  scheduled: "bg-blue-100 text-blue-800",
+  completed: "bg-green-100 text-green-800",
+  cancelled: "bg-gray-100 text-gray-800",
+};
+
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
 
 export default function EmployeeDetailPage() {
@@ -144,6 +160,17 @@ export default function EmployeeDetailPage() {
   const [savingField, setSavingField] = useState<Record<string, boolean>>({});
   const [savedField, setSavedField] = useState<Record<string, boolean>>({});
   const [inlineError, setInlineError] = useState<string | null>(null);
+
+  // Events state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [employeeEvents, setEmployeeEvents] = useState<any[]>([]);
+
+  // Notes state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [employeeNotes, setEmployeeNotes] = useState<any[]>([]);
+  const [newNoteContent, setNewNoteContent] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
   const fetchEmployee = async () => {
     const { data } = await supabase
@@ -272,10 +299,86 @@ export default function EmployeeDetailPage() {
     }, 2000);
   };
 
+  const fetchEmployeeEvents = async () => {
+    const { data: attendeeData } = await supabase
+      .from("event_attendees")
+      .select("event_id, events(*, projects(id, name), contacts(first_name, last_name))")
+      .eq("employee_id", employeeId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const empEvents = (attendeeData || [])
+      .map((a: Record<string, unknown>) => a.events)
+      .filter(Boolean)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .sort((a: any, b: any) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime());
+    setEmployeeEvents(empEvents);
+  };
+
+  const handleEventStatusUpdate = async (eventId: string, newStatus: string) => {
+    const key = `${eventId}-event_status`;
+    setSavingField((prev) => ({ ...prev, [key]: true }));
+    setSavedField((prev) => ({ ...prev, [key]: false }));
+    setInlineError(null);
+
+    const { error } = await supabase
+      .from("events")
+      .update({ status: newStatus })
+      .eq("id", eventId);
+
+    setSavingField((prev) => ({ ...prev, [key]: false }));
+
+    if (error) {
+      setInlineError(`Failed to update event status: ${error.message}`);
+      return;
+    }
+
+    setEmployeeEvents((prev) =>
+      prev.map((e) => (e.id === eventId ? { ...e, status: newStatus } : e))
+    );
+    setSavedField((prev) => ({ ...prev, [key]: true }));
+    setTimeout(() => {
+      setSavedField((prev) => ({ ...prev, [key]: false }));
+    }, 2000);
+  };
+
+  const fetchEmployeeNotes = async () => {
+    const { data: notesData } = await supabase
+      .from("notes_standalone")
+      .select("*")
+      .eq("employee_id", employeeId)
+      .order("created_at", { ascending: false });
+    setEmployeeNotes(notesData || []);
+  };
+
+  const handleAddNote = async () => {
+    if (!newNoteContent.trim()) return;
+    setAddingNote(true);
+    const { error } = await supabase
+      .from("notes_standalone")
+      .insert({ content: newNoteContent.trim(), employee_id: employeeId });
+    if (!error) {
+      setNewNoteContent("");
+      fetchEmployeeNotes();
+    }
+    setAddingNote(false);
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    const { error } = await supabase
+      .from("notes_standalone")
+      .delete()
+      .eq("id", noteId);
+    if (!error) {
+      setEmployeeNotes((prev) => prev.filter((n) => n.id !== noteId));
+    }
+    setDeletingNoteId(null);
+  };
+
   useEffect(() => {
     fetchEmployee();
     fetchEmployeeTasks();
     fetchAllTasks();
+    fetchEmployeeEvents();
+    fetchEmployeeNotes();
   }, [employeeId]);
 
   const openEditDialog = () => {
@@ -905,6 +1008,229 @@ export default function EmployeeDetailPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Events Section */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Calendar className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <CardTitle>Events</CardTitle>
+            </div>
+            <Badge variant="secondary">{employeeEvents.length}</Badge>
+          </div>
+          <Link href="/dashboard/events">
+            <Button variant="outline" size="sm">View All</Button>
+          </Link>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Event Stats */}
+          {employeeEvents.length > 0 && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold">{employeeEvents.length}</p>
+                <p className="text-xs text-muted-foreground">Total Events</p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold text-blue-600">
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {employeeEvents.filter((e: any) => e.event_date && new Date(e.event_date) >= new Date()).length}
+                </p>
+                <p className="text-xs text-muted-foreground">Upcoming</p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold text-gray-600">
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {employeeEvents.filter((e: any) => e.event_date && new Date(e.event_date) < new Date()).length}
+                </p>
+                <p className="text-xs text-muted-foreground">Past</p>
+              </div>
+            </div>
+          )}
+
+          {/* Events Table */}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Title</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Time</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Project</TableHead>
+                <TableHead>Contact</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {employeeEvents.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    No events found for this employee.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                employeeEvents.map((event: any) => (
+                  <TableRow key={event.id}>
+                    <TableCell>
+                      <span
+                        className="font-medium cursor-pointer text-primary hover:underline"
+                        onClick={() => router.push(`/dashboard/events/${event.id}`)}
+                      >
+                        {event.title}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {event.event_date
+                        ? new Date(event.event_date).toLocaleDateString()
+                        : <span className="text-muted-foreground">&mdash;</span>}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {event.event_time || <span className="text-muted-foreground">&mdash;</span>}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className={`capitalize ${eventTypeColors[event.event_type] || ""}`}>
+                        {event.event_type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {event.projects ? (
+                        <span
+                          className="text-blue-600 hover:underline cursor-pointer text-sm"
+                          onClick={() => router.push(`/dashboard/projects/${event.projects.id}`)}
+                        >
+                          {event.projects.name}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">&mdash;</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {event.contacts ? (
+                        <span
+                          className="text-blue-600 hover:underline cursor-pointer text-sm"
+                          onClick={() => router.push(`/dashboard/contacts/${event.contact_id}`)}
+                        >
+                          {contactName(event.contacts)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">&mdash;</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <Select value={event.status} onValueChange={(v) => handleEventStatusUpdate(event.id, v)}>
+                          <SelectTrigger className={`h-7 rounded-full border-0 text-xs font-semibold shadow-none capitalize ${eventStatusColors[event.status] || ""}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="scheduled">Scheduled</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {savingField[`${event.id}-event_status`] && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                        {savedField[`${event.id}-event_status`] && <Check className="h-3 w-3 text-green-600" />}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Notes Section */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="flex items-center gap-3">
+            <StickyNote className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <CardTitle>Notes</CardTitle>
+            </div>
+            <Badge variant="secondary">{employeeNotes.length}</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Quick-add form */}
+          <div className="space-y-2">
+            <Textarea
+              placeholder="Add a note..."
+              value={newNoteContent}
+              onChange={(e) => setNewNoteContent(e.target.value)}
+              rows={3}
+            />
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                disabled={addingNote || !newNoteContent.trim()}
+                onClick={handleAddNote}
+              >
+                {addingNote ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Note
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Notes list */}
+          {employeeNotes.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">
+              No notes yet. Add one above.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {employeeNotes.map((note) => (
+                <div key={note.id} className="rounded-lg border p-4 space-y-2">
+                  <div className="flex items-start justify-between">
+                    <p className="text-sm whitespace-pre-wrap line-clamp-3 flex-1">
+                      {note.content}
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 ml-2"
+                      onClick={() => setDeletingNoteId(note.id)}
+                    >
+                      <X className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDate(note.created_at)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Delete note confirmation */}
+      <AlertDialog open={!!deletingNoteId} onOpenChange={(open) => !open && setDeletingNoteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Note</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this note? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deletingNoteId && handleDeleteNote(deletingNoteId)}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Remove assignment confirmation */}
       <AlertDialog open={!!removeTaskId} onOpenChange={(open) => !open && setRemoveTaskId(null)}>

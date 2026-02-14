@@ -56,6 +56,8 @@ interface GanttTask {
   recurrence_frequency: number | null;
   recurrence_unit: string | null;
   occurrences: { id: string; date: string; status: string }[];
+  is_event?: boolean;
+  event_type?: string;
 }
 
 interface Dependency {
@@ -140,6 +142,7 @@ export default function GanttPage() {
   const [filterEmployee, setFilterEmployee] = useState(
     searchParams.get("employee") || "all"
   );
+  const [showEvents, setShowEvents] = useState(true);
 
   // Sync filters to URL
   const syncFiltersToUrl = useCallback(() => {
@@ -271,7 +274,62 @@ export default function GanttPage() {
       }
     }
 
-    setTasks(enriched.filter((t) => !collapsedIds.has(t.id)) as GanttTask[]);
+    const finalTasks = enriched.filter((t) => !collapsedIds.has(t.id)) as GanttTask[];
+
+    // Fetch events and add as Gantt rows
+    const { data: eventData } = await supabase
+      .from("events")
+      .select("id, title, event_date, event_type, status, project_id, contact_id, contacts:contact_id(id, first_name, last_name)")
+      .order("event_date");
+
+    if (eventData) {
+      const { data: eaData } = await supabase
+        .from("event_attendees")
+        .select("event_id, employee_id")
+        .in("event_id", eventData.map((e: { id: string }) => e.id));
+
+      const eventAttendeeMap: Record<string, string[]> = {};
+      (eaData || []).forEach((ea: { event_id: string; employee_id: string }) => {
+        if (!eventAttendeeMap[ea.event_id]) eventAttendeeMap[ea.event_id] = [];
+        eventAttendeeMap[ea.event_id].push(ea.employee_id);
+      });
+
+      const eventRows: GanttTask[] = eventData.map((e: Record<string, unknown>) => {
+        const contactObj = Array.isArray(e.contacts) ? e.contacts[0] : e.contacts;
+        const attIds = eventAttendeeMap[e.id as string] || [];
+        const projId = e.project_id as string | null;
+        const projName = projId ? (projData || []).find((p: { id: string }) => p.id === projId)?.name : null;
+        return {
+          id: `event-${e.id}`,
+          title: `📅 ${e.title}`,
+          status: e.status as string,
+          priority: "medium",
+          start_date: e.event_date as string,
+          due_date: e.event_date as string,
+          is_milestone: true,
+          project_ids: projId ? [projId] : [],
+          project_names: projName ? [projName] : [],
+          assignee_ids: attIds,
+          assignee_names: attIds.map((aid) => {
+            const emp = (empData || []).find((em: { id: string }) => em.id === aid);
+            return emp ? employeeName(emp) : "";
+          }).filter(Boolean),
+          contact_id: e.contact_id as string | null,
+          contact_name: contactObj ? `${(contactObj as { first_name: string }).first_name} ${(contactObj as { last_name: string }).last_name || ""}`.trim() : null,
+          is_recurring: false,
+          recurrence_source_task_id: null,
+          recurrence_frequency: null,
+          recurrence_unit: null,
+          occurrences: [],
+          is_event: true,
+          event_type: e.event_type as string,
+        };
+      });
+
+      finalTasks.push(...eventRows);
+    }
+
+    setTasks(finalTasks);
     setDependencies((depData || []) as Dependency[]);
     setProjects(projData || []);
     setEmployees(empData || []);
@@ -336,9 +394,12 @@ export default function GanttPage() {
       // Employee filter
       if (filterEmployee !== "all" && !t.assignee_ids.includes(filterEmployee)) return false;
 
+      // Events toggle
+      if (!showEvents && t.is_event) return false;
+
       return true;
     });
-  }, [tasks, filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterDateFrom, filterDateTo, filterEmployee]);
+  }, [tasks, filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterDateFrom, filterDateTo, filterEmployee, showEvents]);
 
   const toggleProjectFilter = (projectId: string) => {
     setFilterProjects((prev) =>
@@ -678,15 +739,24 @@ export default function GanttPage() {
               </div>
             </div>
 
-            {/* Milestone toggle + clear */}
+            {/* Toggles + clear */}
             <div className="flex items-center justify-between mt-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={filterMilestoneOnly}
-                  onCheckedChange={(checked) => setFilterMilestoneOnly(!!checked)}
-                />
-                <span className="text-sm">Show only milestones</span>
-              </label>
+              <div className="flex items-center gap-6">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={filterMilestoneOnly}
+                    onCheckedChange={(checked) => setFilterMilestoneOnly(!!checked)}
+                  />
+                  <span className="text-sm">Show only milestones</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={showEvents}
+                    onCheckedChange={(checked) => setShowEvents(!!checked)}
+                  />
+                  <span className="text-sm">Show events</span>
+                </label>
+              </div>
               {activeFilterCount > 0 && (
                 <Button variant="ghost" size="sm" onClick={clearAllFilters}>
                   <X className="mr-1 h-4 w-4" />
@@ -719,8 +789,9 @@ export default function GanttPage() {
         <CardHeader>
           <CardTitle>Timeline</CardTitle>
           <CardDescription>
-            Showing {filteredTasks.filter((t) => t.start_date && t.due_date).length} of{" "}
-            {tasks.length} tasks
+            Showing {filteredTasks.filter((t) => t.start_date && t.due_date && !t.is_event).length} tasks
+            {filteredTasks.filter((t) => t.is_event).length > 0 && ` + ${filteredTasks.filter((t) => t.is_event).length} events`}
+            {" "}of {tasks.filter((t) => !t.is_event).length} total tasks
             {filteredTasks.filter((t) => t.start_date && t.due_date).length !== filteredTasks.length && (
               <span className="ml-1 text-orange-600">
                 ({filteredTasks.filter((t) => !t.start_date || !t.due_date).length} without dates)
@@ -764,7 +835,7 @@ export default function GanttPage() {
                       style={{ height: ROW_HEIGHT }}
                       onClick={() => {
                         if (row.type === "task" && row.task) {
-                          router.push(`/dashboard/tasks/${row.task.id}`);
+                          router.push(row.task.is_event ? `/dashboard/events/${row.task.id}` : `/dashboard/tasks/${row.task.id}`);
                         }
                       }}
                     >
@@ -790,8 +861,10 @@ export default function GanttPage() {
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div
-                                className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                                  STATUS_COLORS[row.task?.status || ""] || "bg-gray-400"
+                                className={`h-2.5 w-2.5 shrink-0 ${
+                                  row.task?.is_event
+                                    ? "bg-purple-500 rotate-45"
+                                    : `rounded-full ${STATUS_COLORS[row.task?.status || ""] || "bg-gray-400"}`
                                 }`}
                               />
                               <span className="truncate">{row.label}</span>
@@ -801,68 +874,106 @@ export default function GanttPage() {
                             </div>
                           </PopoverTrigger>
                           <PopoverContent className="w-56 p-3" align="start" side="right">
-                            <div className="space-y-2">
-                              <div
-                                className="font-medium text-sm text-blue-600 hover:underline cursor-pointer"
-                                onClick={() => router.push(`/dashboard/tasks/${row.task!.id}`)}
-                              >
-                                {row.task!.title}
-                              </div>
-                              <div className="text-xs space-y-1.5">
-                                <div>
-                                  <span className="text-muted-foreground">Contact: </span>
-                                  {row.task!.contact_name ? (
-                                    <span
-                                      className="text-blue-600 hover:underline cursor-pointer"
-                                      onClick={() => router.push(`/dashboard/contacts/${row.task!.contact_id}`)}
-                                    >
-                                      {row.task!.contact_name}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground">—</span>
-                                  )}
+                            {row.task!.is_event ? (
+                              <div className="space-y-2">
+                                <div
+                                  className="font-medium text-sm text-purple-600 hover:underline cursor-pointer"
+                                  onClick={() => router.push(`/dashboard/events/${row.task!.id}`)}
+                                >
+                                  {row.task!.title}
                                 </div>
-                                <div>
-                                  <span className="text-muted-foreground">Projects: </span>
-                                  {row.task!.project_names.length > 0 ? (
-                                    <span>
-                                      {row.task!.project_ids.map((pid, i) => (
-                                        <span key={pid}>
-                                          {i > 0 && ", "}
-                                          <span
-                                            className="text-blue-600 hover:underline cursor-pointer"
-                                            onClick={() => router.push(`/dashboard/projects/${pid}`)}
-                                          >
-                                            {row.task!.project_names[i]}
-                                          </span>
-                                        </span>
-                                      ))}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground">—</span>
-                                  )}
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">Employees: </span>
-                                  {row.task!.assignee_names.length > 0 ? (
-                                    <span>{row.task!.assignee_names.join(", ")}</span>
-                                  ) : (
-                                    <span className="text-muted-foreground">—</span>
-                                  )}
-                                </div>
-                                {(row.task!.occurrences?.length ?? 0) > 1 && (
-                                  <div className="flex items-center gap-1 text-blue-600">
-                                    <RefreshCw className="h-3 w-3 shrink-0" />
-                                    <span>
-                                      {row.task!.occurrences.length} occurrences
-                                      {row.task!.recurrence_frequency && row.task!.recurrence_unit && (
-                                        <> (every {row.task!.recurrence_frequency} {row.task!.recurrence_unit})</>
-                                      )}
-                                    </span>
+                                <div className="text-xs space-y-1.5">
+                                  <div>
+                                    <span className="text-muted-foreground">Type: </span>
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">{row.task!.event_type}</Badge>
                                   </div>
-                                )}
+                                  <div>
+                                    <span className="text-muted-foreground">Date: </span>
+                                    <span>{new Date(row.task!.start_date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</span>
+                                  </div>
+                                  {row.task!.contact_name && (
+                                    <div>
+                                      <span className="text-muted-foreground">Contact: </span>
+                                      <span
+                                        className="text-blue-600 hover:underline cursor-pointer"
+                                        onClick={() => router.push(`/dashboard/contacts/${row.task!.contact_id}`)}
+                                      >
+                                        {row.task!.contact_name}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {row.task!.assignee_names.length > 0 && (
+                                    <div>
+                                      <span className="text-muted-foreground">Attendees: </span>
+                                      <span>{row.task!.assignee_names.join(", ")}</span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <div
+                                  className="font-medium text-sm text-blue-600 hover:underline cursor-pointer"
+                                  onClick={() => router.push(`/dashboard/tasks/${row.task!.id}`)}
+                                >
+                                  {row.task!.title}
+                                </div>
+                                <div className="text-xs space-y-1.5">
+                                  <div>
+                                    <span className="text-muted-foreground">Contact: </span>
+                                    {row.task!.contact_name ? (
+                                      <span
+                                        className="text-blue-600 hover:underline cursor-pointer"
+                                        onClick={() => router.push(`/dashboard/contacts/${row.task!.contact_id}`)}
+                                      >
+                                        {row.task!.contact_name}
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted-foreground">—</span>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Projects: </span>
+                                    {row.task!.project_names.length > 0 ? (
+                                      <span>
+                                        {row.task!.project_ids.map((pid, i) => (
+                                          <span key={pid}>
+                                            {i > 0 && ", "}
+                                            <span
+                                              className="text-blue-600 hover:underline cursor-pointer"
+                                              onClick={() => router.push(`/dashboard/projects/${pid}`)}
+                                            >
+                                              {row.task!.project_names[i]}
+                                            </span>
+                                          </span>
+                                        ))}
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted-foreground">—</span>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Employees: </span>
+                                    {row.task!.assignee_names.length > 0 ? (
+                                      <span>{row.task!.assignee_names.join(", ")}</span>
+                                    ) : (
+                                      <span className="text-muted-foreground">—</span>
+                                    )}
+                                  </div>
+                                  {(row.task!.occurrences?.length ?? 0) > 1 && (
+                                    <div className="flex items-center gap-1 text-blue-600">
+                                      <RefreshCw className="h-3 w-3 shrink-0" />
+                                      <span>
+                                        {row.task!.occurrences.length} occurrences
+                                        {row.task!.recurrence_frequency && row.task!.recurrence_unit && (
+                                          <> (every {row.task!.recurrence_frequency} {row.task!.recurrence_unit})</>
+                                        )}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </PopoverContent>
                         </Popover>
                       )}
@@ -929,6 +1040,27 @@ export default function GanttPage() {
                       const barW = Math.max(x2 - x1, 8);
                       const barY = i * ROW_HEIGHT + 10;
                       const barH = ROW_HEIGHT - 20;
+
+                      // Event diamond marker
+                      if (task.is_event) {
+                        const diamondSize = 14;
+                        const cx = dateToX(task.start_date!);
+                        const cy = i * ROW_HEIGHT + ROW_HEIGHT / 2;
+                        return (
+                          <div
+                            key={`bar-${row.rowKey}`}
+                            className="absolute bg-purple-500 rotate-45 cursor-pointer transition-transform hover:scale-125 z-10 border border-purple-700 shadow-sm"
+                            style={{
+                              left: cx - diamondSize / 2,
+                              top: cy - diamondSize / 2,
+                              width: diamondSize,
+                              height: diamondSize,
+                            }}
+                            title={`${task.title} (${task.event_type})\n${new Date(task.start_date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}`}
+                            onClick={() => router.push(`/dashboard/events/${task.id}`)}
+                          />
+                        );
+                      }
 
                       // Recurring task with occurrence markers (Option B)
                       if ((task.occurrences?.length ?? 0) > 1) {
@@ -1062,6 +1194,10 @@ export default function GanttPage() {
                     <div className="h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-white shadow-sm z-10" />
                   </div>
                   <span className="text-xs">Recurring</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-3 w-3 bg-purple-500 rotate-45 border border-purple-700" />
+                  <span className="text-xs ml-0.5">Event</span>
                 </div>
                 <span className="text-xs text-muted-foreground ml-4">Priority (left border):</span>
                 <div className="flex items-center gap-1">

@@ -70,6 +70,8 @@ import {
   X,
   Loader2,
   Check,
+  Calendar,
+  StickyNote,
 } from "lucide-react";
 
 interface Contact {
@@ -158,6 +160,20 @@ const FALLBACK_STATUSES: StatusOption[] = [
   { id: "archived", name: "archived", color: "red" },
 ];
 
+const eventTypeColors: Record<string, string> = {
+  meeting: "bg-blue-100 text-blue-800",
+  deadline: "bg-red-100 text-red-800",
+  milestone: "bg-amber-100 text-amber-800",
+  appointment: "bg-green-100 text-green-800",
+  other: "bg-gray-100 text-gray-800",
+};
+
+const eventStatusColors: Record<string, string> = {
+  scheduled: "bg-blue-100 text-blue-800",
+  completed: "bg-green-100 text-green-800",
+  cancelled: "bg-gray-100 text-gray-800",
+};
+
 export default function ContactDetailPage() {
   const supabase = createClient();
   const router = useRouter();
@@ -210,6 +226,19 @@ export default function ContactDetailPage() {
   const [savingField, setSavingField] = useState<Record<string, boolean>>({});
   const [savedField, setSavedField] = useState<Record<string, boolean>>({});
   const [inlineError, setInlineError] = useState<string | null>(null);
+
+  // Events section state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [contactEvents, setContactEvents] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [eventAttendeeMap, setEventAttendeeMap] = useState<Record<string, any[]>>({});
+
+  // Standalone notes section state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [standaloneNotes, setStandaloneNotes] = useState<any[]>([]);
+  const [newStandaloneNote, setNewStandaloneNote] = useState("");
+  const [addingStandaloneNote, setAddingStandaloneNote] = useState(false);
+  const [deleteStandaloneNoteId, setDeleteStandaloneNoteId] = useState<string | null>(null);
 
   const fetchContact = async () => {
     const { data } = await supabase
@@ -313,6 +342,90 @@ export default function ContactDetailPage() {
     setAllTasks(data || []);
   };
 
+  const fetchContactEvents = async () => {
+    const { data: eventsData } = await supabase
+      .from("events")
+      .select("*, projects(id, name)")
+      .eq("contact_id", contactId)
+      .order("event_date", { ascending: false });
+    setContactEvents(eventsData || []);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const eventIds = (eventsData || []).map((e: any) => e.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const attendeeMap: Record<string, any[]> = {};
+    if (eventIds.length > 0) {
+      const { data: attData } = await supabase
+        .from("event_attendees")
+        .select("event_id, employees(id, first_name, last_name)")
+        .in("event_id", eventIds);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (attData || []).forEach((a: any) => {
+        if (!attendeeMap[a.event_id]) attendeeMap[a.event_id] = [];
+        attendeeMap[a.event_id].push(a.employees);
+      });
+    }
+    setEventAttendeeMap(attendeeMap);
+  };
+
+  const fetchStandaloneNotes = async () => {
+    const { data: sNotesData } = await supabase
+      .from("notes_standalone")
+      .select("*")
+      .eq("contact_id", contactId)
+      .order("created_at", { ascending: false });
+    setStandaloneNotes(sNotesData || []);
+  };
+
+  const handleEventStatusUpdate = async (eventId: string, newStatus: string) => {
+    const key = `event-${eventId}-status`;
+    setSavingField((prev) => ({ ...prev, [key]: true }));
+    setSavedField((prev) => ({ ...prev, [key]: false }));
+
+    const { error } = await supabase
+      .from("events")
+      .update({ status: newStatus })
+      .eq("id", eventId);
+
+    setSavingField((prev) => ({ ...prev, [key]: false }));
+
+    if (!error) {
+      setContactEvents((prev) =>
+        prev.map((e) => (e.id === eventId ? { ...e, status: newStatus } : e))
+      );
+      setSavedField((prev) => ({ ...prev, [key]: true }));
+      setTimeout(() => {
+        setSavedField((prev) => ({ ...prev, [key]: false }));
+      }, 2000);
+    }
+  };
+
+  const handleAddStandaloneNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStandaloneNote.trim()) return;
+    setAddingStandaloneNote(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    await supabase.from("notes_standalone").insert({
+      contact_id: contactId,
+      content: newStandaloneNote.trim(),
+      author_id: user?.id,
+    });
+
+    setNewStandaloneNote("");
+    setAddingStandaloneNote(false);
+    fetchStandaloneNotes();
+  };
+
+  const handleDeleteStandaloneNote = async (noteId: string) => {
+    await supabase.from("notes_standalone").delete().eq("id", noteId);
+    setDeleteStandaloneNoteId(null);
+    fetchStandaloneNotes();
+  };
+
   const handleLinkTask = async (taskId: string) => {
     await supabase.from("tasks").update({ contact_id: contactId }).eq("id", taskId);
     fetchContactTasks();
@@ -368,6 +481,8 @@ export default function ContactDetailPage() {
     fetchContactTasks();
     fetchStatuses();
     fetchAllTasks();
+    fetchContactEvents();
+    fetchStandaloneNotes();
   }, [contactId]);
 
   const handleSaveNote = async (e: React.FormEvent) => {
@@ -566,6 +681,14 @@ export default function ContactDetailPage() {
   // Tasks available to link (not already linked to this contact)
   const linkedTaskIds = new Set(contactTasks.map((t) => t.id));
   const availableTasks = allTasks.filter((t) => !linkedTaskIds.has(t.id));
+
+  // Event stats
+  const todayDate = new Date().toISOString().split("T")[0];
+  const eventStats = {
+    total: contactEvents.length,
+    upcoming: contactEvents.filter((e) => e.event_date && e.event_date >= todayDate).length,
+    past: contactEvents.filter((e) => e.event_date && e.event_date < todayDate).length,
+  };
 
   if (loading) {
     return <div className="p-6">Loading...</div>;
@@ -1260,6 +1383,232 @@ export default function ContactDetailPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => unlinkTaskId && handleUnlinkTask(unlinkTaskId)}>
               Unlink
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Events Section */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="flex items-center gap-3">
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Events
+            </CardTitle>
+            <Badge variant="secondary">{contactEvents.length}</Badge>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push("/dashboard/events")}
+          >
+            View All
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Event Stats */}
+          {contactEvents.length > 0 && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold">{eventStats.total}</p>
+                <p className="text-xs text-muted-foreground">Total Events</p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold text-blue-600">{eventStats.upcoming}</p>
+                <p className="text-xs text-muted-foreground">Upcoming</p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold text-gray-600">{eventStats.past}</p>
+                <p className="text-xs text-muted-foreground">Past</p>
+              </div>
+            </div>
+          )}
+
+          {/* Events Table */}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Title</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Time</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Project</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Attendees</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {contactEvents.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    No events linked to this contact.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                contactEvents.map((event) => (
+                  <TableRow key={event.id}>
+                    <TableCell>
+                      <span
+                        className="font-medium cursor-pointer text-primary hover:underline"
+                        onClick={() => router.push(`/dashboard/events/${event.id}`)}
+                      >
+                        {event.title}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {event.event_date
+                        ? new Date(event.event_date).toLocaleDateString()
+                        : <span className="text-muted-foreground">&mdash;</span>}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {event.event_time
+                        ? event.event_time.slice(0, 5)
+                        : <span className="text-muted-foreground">&mdash;</span>}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={`capitalize ${eventTypeColors[event.event_type] || eventTypeColors.other}`}>
+                        {event.event_type || "other"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {event.projects ? (
+                        <span
+                          className="text-blue-600 hover:underline cursor-pointer text-sm"
+                          onClick={() => router.push(`/dashboard/projects/${event.projects.id}`)}
+                        >
+                          {event.projects.name}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">&mdash;</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <Select value={event.status || "scheduled"} onValueChange={(v) => handleEventStatusUpdate(event.id, v)}>
+                          <SelectTrigger className={`h-7 rounded-full border-0 text-xs font-semibold shadow-none capitalize ${eventStatusColors[event.status] || eventStatusColors.scheduled}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="scheduled">Scheduled</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {savingField[`event-${event.id}-status`] && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                        {savedField[`event-${event.id}-status`] && <Check className="h-3 w-3 text-green-600" />}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {eventAttendeeMap[event.id]?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {eventAttendeeMap[event.id].map((att) => (
+                            <Badge key={att.id} variant="outline" className="text-xs">
+                              {att.first_name} {att.last_name}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">&mdash;</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Quick Notes Section (notes_standalone) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="flex items-center gap-3">
+            <CardTitle className="flex items-center gap-2">
+              <StickyNote className="h-5 w-5" />
+              Quick Notes
+            </CardTitle>
+            <Badge variant="secondary">{standaloneNotes.length}</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Quick-add form */}
+          <form onSubmit={handleAddStandaloneNote} className="space-y-3">
+            <Textarea
+              placeholder="Add a quick note..."
+              value={newStandaloneNote}
+              onChange={(e) => setNewStandaloneNote(e.target.value)}
+              rows={3}
+            />
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                size="sm"
+                disabled={addingStandaloneNote || !newStandaloneNote.trim()}
+              >
+                {addingStandaloneNote ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Note
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
+
+          {/* Notes list */}
+          {standaloneNotes.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">
+              No quick notes yet. Add one above.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {standaloneNotes.map((note) => (
+                <div
+                  key={note.id}
+                  className="rounded-lg border p-4 space-y-2"
+                >
+                  <p className="text-sm whitespace-pre-wrap line-clamp-3">
+                    {note.content}
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(note.created_at)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setDeleteStandaloneNoteId(note.id)}
+                    >
+                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Delete standalone note confirmation */}
+      <AlertDialog open={!!deleteStandaloneNoteId} onOpenChange={(open) => !open && setDeleteStandaloneNoteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Note</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this note? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteStandaloneNoteId && handleDeleteStandaloneNote(deleteStandaloneNoteId)}>
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

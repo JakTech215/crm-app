@@ -53,7 +53,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Pencil, Trash2, Plus, X, Search } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, Plus, X, Search, Loader2, Check } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -98,6 +98,8 @@ const taskStatusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   in_progress: "bg-blue-100 text-blue-800",
   completed: "bg-green-100 text-green-800",
+  cancelled: "bg-gray-100 text-gray-800",
+  blocked: "bg-red-100 text-red-800",
 };
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
@@ -138,6 +140,9 @@ export default function EmployeeDetailPage() {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [sortBy, setSortBy] = useState("due_date");
   const [removeTaskId, setRemoveTaskId] = useState<string | null>(null);
+  const [savingField, setSavingField] = useState<Record<string, boolean>>({});
+  const [savedField, setSavedField] = useState<Record<string, boolean>>({});
+  const [inlineError, setInlineError] = useState<string | null>(null);
 
   const fetchEmployee = async () => {
     const { data } = await supabase
@@ -237,6 +242,33 @@ export default function EmployeeDetailPage() {
     await supabase.from("task_assignees").delete().eq("task_id", taskId).eq("employee_id", employeeId);
     setRemoveTaskId(null);
     fetchEmployeeTasks();
+  };
+
+  const handleInlineUpdate = async (taskId: string, field: string, value: string) => {
+    const key = `${taskId}-${field}`;
+    setSavingField((prev) => ({ ...prev, [key]: true }));
+    setSavedField((prev) => ({ ...prev, [key]: false }));
+    setInlineError(null);
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ [field]: value })
+      .eq("id", taskId);
+
+    setSavingField((prev) => ({ ...prev, [key]: false }));
+
+    if (error) {
+      setInlineError(`Failed to update ${field}: ${error.message}`);
+      return;
+    }
+
+    setEmpTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, [field]: value } : t))
+    );
+    setSavedField((prev) => ({ ...prev, [key]: true }));
+    setTimeout(() => {
+      setSavedField((prev) => ({ ...prev, [key]: false }));
+    }, 2000);
   };
 
   useEffect(() => {
@@ -592,21 +624,21 @@ export default function EmployeeDetailPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Assigned Tasks</CardTitle>
+            <CardTitle>Linked Tasks</CardTitle>
             <CardDescription>
-              Tasks assigned to {employeeName(employee)}.
+              Tasks linked to {employeeName(employee)}.
             </CardDescription>
           </div>
           <Popover>
             <PopoverTrigger asChild>
               <Button size="sm">
                 <Plus className="mr-2 h-4 w-4" />
-                Assign Task
+                Link Task
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80 p-2" align="end">
               {availableTasks.length === 0 ? (
-                <p className="text-sm text-muted-foreground p-2">No tasks available to assign.</p>
+                <p className="text-sm text-muted-foreground p-2">No tasks available to link.</p>
               ) : (
                 <div className="space-y-1 max-h-64 overflow-y-auto">
                   {availableTasks.map((t) => (
@@ -648,6 +680,12 @@ export default function EmployeeDetailPage() {
                 <p className="text-2xl font-bold text-red-600">{taskStats.overdue}</p>
                 <p className="text-xs text-muted-foreground">Overdue</p>
               </div>
+            </div>
+          )}
+
+          {inlineError && (
+            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              {inlineError}
             </div>
           )}
 
@@ -724,7 +762,7 @@ export default function EmployeeDetailPage() {
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     {empTasks.length === 0
-                      ? "No tasks assigned. Click \"Assign Task\" to get started."
+                      ? "No tasks linked. Click \"Link Task\" to get started."
                       : "No tasks match the current filters."}
                   </TableCell>
                 </TableRow>
@@ -757,20 +795,38 @@ export default function EmployeeDetailPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={`capitalize ${taskStatusColors[task.status] || ""}`}
-                        >
-                          {task.status.replace("_", " ")}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <Select value={task.status} onValueChange={(v) => handleInlineUpdate(task.id, "status", v)}>
+                            <SelectTrigger className={`h-7 w-[130px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${taskStatusColors[task.status] || ""}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="in_progress">In Progress</SelectItem>
+                              <SelectItem value="completed">Completed</SelectItem>
+                              <SelectItem value="cancelled">Cancelled</SelectItem>
+                              <SelectItem value="blocked">Blocked</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {savingField[`${task.id}-status`] && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                          {savedField[`${task.id}-status`] && <Check className="h-3 w-3 text-green-600" />}
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={`capitalize ${priorityColors[task.priority] || ""}`}
-                        >
-                          {task.priority}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <Select value={task.priority} onValueChange={(v) => handleInlineUpdate(task.id, "priority", v)}>
+                            <SelectTrigger className={`h-7 w-[100px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${priorityColors[task.priority] || ""}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="low">Low</SelectItem>
+                              <SelectItem value="medium">Medium</SelectItem>
+                              <SelectItem value="high">High</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {savingField[`${task.id}-priority`] && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                          {savedField[`${task.id}-priority`] && <Check className="h-3 w-3 text-green-600" />}
+                        </div>
                       </TableCell>
                       <TableCell className="text-sm">
                         {task.start_date
@@ -814,15 +870,15 @@ export default function EmployeeDetailPage() {
       <AlertDialog open={!!removeTaskId} onOpenChange={(open) => !open && setRemoveTaskId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Assignment</AlertDialogTitle>
+            <AlertDialogTitle>Unlink Task</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove {employeeName(employee)} from task &quot;{empTasks.find((t) => t.id === removeTaskId)?.title}&quot;? This will not delete the task.
+              Unlink &quot;{empTasks.find((t) => t.id === removeTaskId)?.title}&quot; from {employeeName(employee)}? This will not delete the task.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => removeTaskId && handleRemoveAssignment(removeTaskId)}>
-              Remove
+              Unlink
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

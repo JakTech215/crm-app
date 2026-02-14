@@ -68,6 +68,8 @@ import {
   MessageSquare,
   Search,
   X,
+  Loader2,
+  Check,
 } from "lucide-react";
 
 interface Contact {
@@ -126,6 +128,8 @@ const taskStatusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   in_progress: "bg-blue-100 text-blue-800",
   completed: "bg-green-100 text-green-800",
+  cancelled: "bg-gray-100 text-gray-800",
+  blocked: "bg-red-100 text-red-800",
 };
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
@@ -197,6 +201,9 @@ export default function ContactDetailPage() {
   const [taskPriorityFilter, setTaskPriorityFilter] = useState("all");
   const [taskSortBy, setTaskSortBy] = useState("due_date");
   const [unlinkTaskId, setUnlinkTaskId] = useState<string | null>(null);
+  const [savingField, setSavingField] = useState<Record<string, boolean>>({});
+  const [savedField, setSavedField] = useState<Record<string, boolean>>({});
+  const [inlineError, setInlineError] = useState<string | null>(null);
 
   const fetchContact = async () => {
     const { data } = await supabase
@@ -306,6 +313,33 @@ export default function ContactDetailPage() {
     await supabase.from("tasks").update({ contact_id: null }).eq("id", taskId);
     setUnlinkTaskId(null);
     fetchContactTasks();
+  };
+
+  const handleInlineUpdate = async (taskId: string, field: string, value: string) => {
+    const key = `${taskId}-${field}`;
+    setSavingField((prev) => ({ ...prev, [key]: true }));
+    setSavedField((prev) => ({ ...prev, [key]: false }));
+    setInlineError(null);
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ [field]: value })
+      .eq("id", taskId);
+
+    setSavingField((prev) => ({ ...prev, [key]: false }));
+
+    if (error) {
+      setInlineError(`Failed to update ${field}: ${error.message}`);
+      return;
+    }
+
+    setContactTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, [field]: value } : t))
+    );
+    setSavedField((prev) => ({ ...prev, [key]: true }));
+    setTimeout(() => {
+      setSavedField((prev) => ({ ...prev, [key]: false }));
+    }, 2000);
   };
 
   const fetchStatuses = async () => {
@@ -967,6 +1001,12 @@ export default function ContactDetailPage() {
             </div>
           )}
 
+          {inlineError && (
+            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              {inlineError}
+            </div>
+          )}
+
           {/* Filters */}
           {contactTasks.length > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1074,20 +1114,38 @@ export default function ContactDetailPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={`capitalize ${taskStatusColors[task.status] || ""}`}
-                        >
-                          {task.status.replace("_", " ")}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <Select value={task.status} onValueChange={(v) => handleInlineUpdate(task.id, "status", v)}>
+                            <SelectTrigger className={`h-7 w-[130px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${taskStatusColors[task.status] || ""}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="in_progress">In Progress</SelectItem>
+                              <SelectItem value="completed">Completed</SelectItem>
+                              <SelectItem value="cancelled">Cancelled</SelectItem>
+                              <SelectItem value="blocked">Blocked</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {savingField[`${task.id}-status`] && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                          {savedField[`${task.id}-status`] && <Check className="h-3 w-3 text-green-600" />}
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={`capitalize ${priorityColors[task.priority] || ""}`}
-                        >
-                          {task.priority}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <Select value={task.priority} onValueChange={(v) => handleInlineUpdate(task.id, "priority", v)}>
+                            <SelectTrigger className={`h-7 w-[100px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${priorityColors[task.priority] || ""}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="low">Low</SelectItem>
+                              <SelectItem value="medium">Medium</SelectItem>
+                              <SelectItem value="high">High</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {savingField[`${task.id}-priority`] && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                          {savedField[`${task.id}-priority`] && <Check className="h-3 w-3 text-green-600" />}
+                        </div>
                       </TableCell>
                       <TableCell className="text-sm">
                         {task.start_date

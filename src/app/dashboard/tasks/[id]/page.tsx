@@ -194,6 +194,8 @@ export default function TaskDetailPage() {
   const [childTasks, setChildTasks] = useState<{ id: string; title: string; status: string }[]>([]);
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [workflowChain, setWorkflowChain] = useState<{ id: string; name: string; delayDays: number }[]>([]);
+  const [seriesTasks, setSeriesTasks] = useState<{ id: string; title: string; status: string; due_date: string | null }[]>([]);
+  const [templateName, setTemplateName] = useState<string | null>(null);
 
   // Delete state
   const [deleting, setDeleting] = useState(false);
@@ -338,6 +340,19 @@ export default function TaskDetailPage() {
     setTaskTypes(data || []);
   };
 
+  const fetchSeriesTasks = async () => {
+    if (!task) return;
+    const sourceId = task.recurrence_source_task_id || (task.is_recurring ? task.id : null);
+    if (!sourceId) { setSeriesTasks([]); return; }
+
+    const { data } = await supabase
+      .from("tasks")
+      .select("id, title, status, due_date")
+      .or(`recurrence_source_task_id.eq.${sourceId},id.eq.${sourceId}`)
+      .order("due_date", { ascending: true });
+    setSeriesTasks(data || []);
+  };
+
   const fetchWorkflowChain = async (templateId: string) => {
     const { data: allTemplates } = await supabase.from("task_templates").select("id, name").order("name");
     const { data: steps } = await supabase.from("task_workflow_steps").select("template_id, next_template_id, delay_days");
@@ -406,6 +421,27 @@ export default function TaskDetailPage() {
       fetchWorkflowChain(task.template_id);
     } else {
       setWorkflowChain([]);
+    }
+  }, [task?.template_id]);
+
+  useEffect(() => {
+    if (task && (task.recurrence_source_task_id || task.is_recurring)) {
+      fetchSeriesTasks();
+    } else {
+      setSeriesTasks([]);
+    }
+  }, [task?.recurrence_source_task_id, task?.is_recurring, task?.id]);
+
+  useEffect(() => {
+    if (task?.template_id) {
+      supabase
+        .from("task_templates")
+        .select("name")
+        .eq("id", task.template_id)
+        .single()
+        .then(({ data }) => setTemplateName(data?.name || null));
+    } else {
+      setTemplateName(null);
     }
   }, [task?.template_id]);
 
@@ -589,63 +625,6 @@ export default function TaskDetailPage() {
         }
       } catch (e) {
         console.error("Failed to create follow-up task:", e);
-      }
-    }
-
-    // Auto-create next recurring task on completion
-    if (editForm.status === "completed" && task && task.status !== "completed" && task.is_recurring && task.recurrence_frequency && task.recurrence_unit) {
-      try {
-        // Guard: check no pending recurring child already exists
-        const { data: existingRecurring } = await supabase
-          .from("tasks")
-          .select("id")
-          .eq("parent_task_id", taskId)
-          .eq("is_recurring", true)
-          .neq("status", "completed")
-          .neq("status", "cancelled")
-          .limit(1);
-
-        if (!existingRecurring || existingRecurring.length === 0) {
-          // Calculate next due date
-          const d = new Date();
-          if (task.recurrence_unit === "days") d.setDate(d.getDate() + task.recurrence_frequency);
-          else if (task.recurrence_unit === "weeks") d.setDate(d.getDate() + task.recurrence_frequency * 7);
-          else if (task.recurrence_unit === "months") d.setMonth(d.getMonth() + task.recurrence_frequency);
-          const nextDueDate = d.toISOString().split("T")[0];
-
-          const { data: { user } } = await supabase.auth.getUser();
-
-          const { data: newRecurringTask, error: recurError } = await supabase.from("tasks").insert({
-            title: task.title,
-            description: task.description || null,
-            priority: task.priority,
-            status: "pending",
-            due_date: nextDueDate,
-            contact_id: task.contact_id || null,
-            parent_task_id: taskId,
-            template_id: task.template_id || null,
-            task_type_id: task.task_type_id || null,
-            is_recurring: true,
-            recurrence_frequency: task.recurrence_frequency,
-            recurrence_unit: task.recurrence_unit,
-            recurrence_source_task_id: task.recurrence_source_task_id || taskId,
-            created_by: user?.id,
-          }).select().single();
-
-          if (recurError) {
-            console.error("Failed to create recurring task:", recurError);
-          } else if (newRecurringTask) {
-            // Copy assignees to new recurring task
-            const currentAssignees = task.task_assignees.map((a) => a.employee_id);
-            if (currentAssignees.length > 0) {
-              await supabase.from("task_assignees").insert(
-                currentAssignees.map((empId) => ({ task_id: newRecurringTask.id, employee_id: empId }))
-              );
-            }
-          }
-        }
-      } catch (e) {
-        console.error("Failed to create recurring task:", e);
       }
     }
 
@@ -1274,6 +1253,12 @@ export default function TaskDetailPage() {
                 </div>
               ) : null;
             })()}
+            {templateName && (
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Template</p>
+                <Badge variant="outline" className="mt-1">{templateName}</Badge>
+              </div>
+            )}
             {task.is_recurring && (
               <div className="flex items-center justify-between">
                 <div>
@@ -1288,7 +1273,12 @@ export default function TaskDetailPage() {
                   size="sm"
                   className="h-7 text-xs"
                   onClick={async () => {
-                    await supabase.from("tasks").update({ is_recurring: false, recurrence_frequency: null, recurrence_unit: null }).eq("id", taskId);
+                    await supabase.from("tasks").update({
+                      is_recurring: false,
+                      recurrence_frequency: null,
+                      recurrence_unit: null,
+                      recurrence_source_task_id: null
+                    }).eq("id", taskId);
                     fetchTask();
                   }}
                 >
@@ -1715,6 +1705,44 @@ export default function TaskDetailPage() {
                       <Badge variant="secondary" className={`capitalize ${statusColors[ct.status] || ""}`}>
                         {ct.status.replace("_", " ")}
                       </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+          {seriesTasks.length > 1 && (
+            <>
+              <Separator />
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-muted-foreground">Recurring Series</p>
+                  <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700">
+                    <RefreshCw className="mr-1 h-3 w-3" />
+                    Occurrence {seriesTasks.findIndex((t) => t.id === taskId) + 1} of {seriesTasks.length}
+                  </Badge>
+                </div>
+                <div className="space-y-1 mt-2 max-h-48 overflow-y-auto">
+                  {seriesTasks.map((st) => (
+                    <div
+                      key={st.id}
+                      className={`flex items-center justify-between rounded-lg border p-2 cursor-pointer hover:bg-muted/50 ${st.id === taskId ? "border-primary bg-muted/30" : ""}`}
+                      onClick={() => { if (st.id !== taskId) router.push(`/dashboard/tasks/${st.id}`); }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{st.title}</span>
+                        {st.id === taskId && <Badge variant="outline" className="text-xs">Current</Badge>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {st.due_date && (
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(st.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                        )}
+                        <Badge variant="secondary" className={`capitalize text-xs ${statusColors[st.status] || ""}`}>
+                          {st.status.replace("_", " ")}
+                        </Badge>
+                      </div>
                     </div>
                   ))}
                 </div>

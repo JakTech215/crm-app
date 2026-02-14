@@ -56,6 +56,7 @@ import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Pencil, Trash2, Plus, X, Search, Loader2, Check, Calendar, StickyNote } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
+import { todayCST, formatDate, formatDateTime, isBeforeToday, isTodayOrFuture } from "@/lib/dates";
 
 interface Employee {
   id: string;
@@ -452,17 +453,6 @@ export default function EmployeeDetailPage() {
     setDeleting(false);
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  };
-
   const statusColor = (status: string) => {
     if (status === "active") return "bg-green-100 text-green-800";
     if (status === "on_leave") return "bg-yellow-100 text-yellow-800";
@@ -477,12 +467,12 @@ export default function EmployeeDetailPage() {
     completed: empTasks.filter((t) => t.status === "completed").length,
     overdue: empTasks.filter((t) => {
       if (!t.due_date || t.status === "completed") return false;
-      return new Date(t.due_date) < new Date();
+      return isBeforeToday(t.due_date);
     }).length,
   };
 
   // Filter and sort tasks
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayCST();
   const filteredTasks = empTasks
     .filter((t) => {
       if (statusFilter !== "all" && t.status !== statusFilter) return false;
@@ -728,7 +718,7 @@ export default function EmployeeDetailPage() {
           <Separator />
           <div>
             <p className="text-sm font-medium text-muted-foreground">Created</p>
-            <p className="mt-1">{formatDate(employee.created_at)}</p>
+            <p className="mt-1">{formatDateTime(employee.created_at)}</p>
           </div>
         </CardContent>
       </Card>
@@ -911,7 +901,7 @@ export default function EmployeeDetailPage() {
                 </TableRow>
               ) : (
                 filteredTasks.map((task) => {
-                  const isOverdue = task.due_date && task.status !== "completed" && new Date(task.due_date) < new Date();
+                  const isOverdue = task.due_date && task.status !== "completed" && isBeforeToday(task.due_date);
                   return (
                     <TableRow key={task.id}>
                       <TableCell>
@@ -973,14 +963,14 @@ export default function EmployeeDetailPage() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {task.start_date
-                          ? new Date(task.start_date).toLocaleDateString()
+                          ? formatDate(task.start_date)
                           : <span className="text-muted-foreground">&mdash;</span>}
                       </TableCell>
                       <TableCell>
                         {task.due_date ? (
                           <div>
                             <span className={`text-sm ${isOverdue ? "text-red-600 font-medium" : ""}`}>
-                              {new Date(task.due_date).toLocaleDateString()}
+                              {formatDate(task.due_date)}
                             </span>
                             {isOverdue && (
                               <p className="text-xs text-red-600">Overdue</p>
@@ -1034,14 +1024,14 @@ export default function EmployeeDetailPage() {
               <div className="rounded-lg border p-3 text-center">
                 <p className="text-2xl font-bold text-blue-600">
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  {employeeEvents.filter((e: any) => e.event_date && new Date(e.event_date) >= new Date()).length}
+                  {employeeEvents.filter((e: any) => e.event_date && isTodayOrFuture(e.event_date)).length}
                 </p>
                 <p className="text-xs text-muted-foreground">Upcoming</p>
               </div>
               <div className="rounded-lg border p-3 text-center">
                 <p className="text-2xl font-bold text-gray-600">
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  {employeeEvents.filter((e: any) => e.event_date && new Date(e.event_date) < new Date()).length}
+                  {employeeEvents.filter((e: any) => e.event_date && isBeforeToday(e.event_date)).length}
                 </p>
                 <p className="text-xs text-muted-foreground">Past</p>
               </div>
@@ -1082,7 +1072,7 @@ export default function EmployeeDetailPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {event.event_date
-                        ? new Date(event.event_date).toLocaleDateString()
+                        ? formatDate(event.event_date)
                         : <span className="text-muted-foreground">&mdash;</span>}
                     </TableCell>
                     <TableCell className="text-sm">
@@ -1205,7 +1195,7 @@ export default function EmployeeDetailPage() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {formatDate(note.created_at)}
+                    {formatDateTime(note.created_at)}
                   </p>
                 </div>
               ))}

@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/popover";
 import { ArrowLeft, Pencil, Trash2, Plus, Diamond, Search, X, Loader2, Check, Calendar, StickyNote } from "lucide-react";
 import Link from "next/link";
+import { todayCST, formatDate, formatDateTime, isBeforeToday } from "@/lib/dates";
 
 interface Contact {
   id: string;
@@ -548,12 +549,12 @@ export default function ProjectDetailPage() {
     completed: tasks.filter((t) => t.status === "completed").length,
     overdue: tasks.filter((t) => {
       if (!t.due_date || t.status === "completed") return false;
-      return new Date(t.due_date) < new Date();
+      return isBeforeToday(t.due_date);
     }).length,
   };
 
   // Filter and sort tasks
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayCST();
   const filteredTasks = tasks
     .filter((t) => {
       if (taskStatusFilter !== "all" && t.status !== taskStatusFilter) return false;
@@ -811,7 +812,7 @@ export default function ProjectDetailPage() {
             <div>
               <p className="text-sm font-medium text-muted-foreground">Created</p>
               <p className="mt-1">
-                {new Date(project.created_at).toLocaleDateString()}
+                {formatDate(project.created_at)}
               </p>
             </div>
             {project.contacts && (
@@ -1017,7 +1018,7 @@ export default function ProjectDetailPage() {
                 </TableRow>
               ) : (
                 filteredTasks.map((task) => {
-                  const isOverdue = task.due_date && task.status !== "completed" && new Date(task.due_date) < new Date();
+                  const isOverdue = task.due_date && task.status !== "completed" && isBeforeToday(task.due_date);
                   return (
                     <TableRow key={task.id}>
                       <TableCell>
@@ -1115,14 +1116,14 @@ export default function ProjectDetailPage() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {task.start_date
-                          ? new Date(task.start_date).toLocaleDateString()
+                          ? formatDate(task.start_date)
                           : <span className="text-muted-foreground">&mdash;</span>}
                       </TableCell>
                       <TableCell>
                         {task.due_date ? (
                           <div>
                             <span className={`text-sm ${isOverdue ? "text-red-600 font-medium" : ""}`}>
-                              {new Date(task.due_date).toLocaleDateString()}
+                              {formatDate(task.due_date)}
                             </span>
                             {isOverdue && (
                               <p className="text-xs text-red-600">Overdue</p>
@@ -1241,7 +1242,7 @@ export default function ProjectDetailPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {event.event_date
-                        ? new Date(event.event_date).toLocaleDateString()
+                        ? formatDate(event.event_date)
                         : <span className="text-muted-foreground">&mdash;</span>}
                     </TableCell>
                     <TableCell className="text-sm">
@@ -1365,13 +1366,7 @@ export default function ProjectDetailPage() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm whitespace-pre-wrap line-clamp-3">{note.content}</p>
                         <p className="text-xs text-muted-foreground mt-2">
-                          {new Date(note.created_at).toLocaleDateString(undefined, {
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {formatDateTime(note.created_at)}
                         </p>
                       </div>
                       <Button

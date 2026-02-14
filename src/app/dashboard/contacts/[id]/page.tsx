@@ -73,6 +73,7 @@ import {
   Calendar,
   StickyNote,
 } from "lucide-react";
+import { todayCST, formatDate, formatDateTime, isBeforeToday, nowUTC } from "@/lib/dates";
 
 interface Contact {
   id: string;
@@ -495,7 +496,7 @@ export default function ContactDetailPage() {
         .update({
           content: noteForm.content,
           note_type: noteForm.note_type,
-          updated_at: new Date().toISOString(),
+          updated_at: nowUTC(),
         })
         .eq("id", editingNote.id);
 
@@ -620,16 +621,7 @@ export default function ContactDetailPage() {
   const noteTypeLabel = (type: string) =>
     NOTE_TYPES.find((n) => n.value === type)?.label || type;
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  };
+  // Use imported formatDateTime for timestamps with time info
 
   // Task stats
   const taskStats = {
@@ -639,12 +631,12 @@ export default function ContactDetailPage() {
     completed: contactTasks.filter((t) => t.status === "completed").length,
     overdue: contactTasks.filter((t) => {
       if (!t.due_date || t.status === "completed") return false;
-      return new Date(t.due_date) < new Date();
+      return isBeforeToday(t.due_date);
     }).length,
   };
 
   // Filter and sort tasks
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayCST();
   const filteredContactTasks = contactTasks
     .filter((t) => {
       if (taskStatusFilter !== "all" && t.status !== taskStatusFilter) return false;
@@ -683,7 +675,7 @@ export default function ContactDetailPage() {
   const availableTasks = allTasks.filter((t) => !linkedTaskIds.has(t.id));
 
   // Event stats
-  const todayDate = new Date().toISOString().split("T")[0];
+  const todayDate = todayCST();
   const eventStats = {
     total: contactEvents.length,
     upcoming: contactEvents.filter((e) => e.event_date && e.event_date >= todayDate).length,
@@ -934,7 +926,7 @@ export default function ContactDetailPage() {
                 <p className="text-sm font-medium text-muted-foreground">
                   Created
                 </p>
-                <p className="mt-1">{formatDate(contact.created_at)}</p>
+                <p className="mt-1">{formatDateTime(contact.created_at)}</p>
               </div>
             </CardContent>
           </Card>
@@ -1043,7 +1035,7 @@ export default function ContactDetailPage() {
                             {noteTypeLabel(note.note_type)}
                           </Badge>
                           <span className="text-xs text-muted-foreground">
-                            {formatDate(note.created_at)}
+                            {formatDateTime(note.created_at)}
                             {note.updated_at !== note.created_at && " (edited)"}
                           </span>
                         </div>
@@ -1257,7 +1249,7 @@ export default function ContactDetailPage() {
                 </TableRow>
               ) : (
                 filteredContactTasks.map((task) => {
-                  const isOverdue = task.due_date && task.status !== "completed" && new Date(task.due_date) < new Date();
+                  const isOverdue = task.due_date && task.status !== "completed" && isBeforeToday(task.due_date);
                   return (
                     <TableRow key={task.id}>
                       <TableCell>
@@ -1334,14 +1326,14 @@ export default function ContactDetailPage() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {task.start_date
-                          ? new Date(task.start_date).toLocaleDateString()
+                          ? formatDate(task.start_date)
                           : <span className="text-muted-foreground">&mdash;</span>}
                       </TableCell>
                       <TableCell>
                         {task.due_date ? (
                           <div>
                             <span className={`text-sm ${isOverdue ? "text-red-600 font-medium" : ""}`}>
-                              {new Date(task.due_date).toLocaleDateString()}
+                              {formatDate(task.due_date)}
                             </span>
                             {isOverdue && (
                               <p className="text-xs text-red-600">Overdue</p>
@@ -1458,7 +1450,7 @@ export default function ContactDetailPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {event.event_date
-                        ? new Date(event.event_date).toLocaleDateString()
+                        ? formatDate(event.event_date)
                         : <span className="text-muted-foreground">&mdash;</span>}
                     </TableCell>
                     <TableCell className="text-sm">
@@ -1578,7 +1570,7 @@ export default function ContactDetailPage() {
                   </p>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">
-                      {formatDate(note.created_at)}
+                      {formatDateTime(note.created_at)}
                     </span>
                     <Button
                       variant="ghost"

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { formatRelativeTime as fmtRelTime } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -89,20 +90,6 @@ interface EventOption {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const formatRelativeTime = (dateStr: string) => {
-  const now = new Date();
-  const date = new Date(dateStr);
-  const diffMs = now.getTime() - date.getTime();
-  const mins = Math.floor(diffMs / 60000);
-  const hours = Math.floor(mins / 60);
-  const days = Math.floor(hours / 24);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 30) return `${days}d ago`;
-  return date.toLocaleDateString();
-};
 
 const contactName = (c: { first_name: string; last_name: string | null }) =>
   `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
@@ -812,7 +799,7 @@ export default function NotesPage() {
 
                   {/* Timestamp */}
                   <p className="text-xs text-muted-foreground mt-3">
-                    {formatRelativeTime(note.created_at)}
+                    {fmtRelTime(note.created_at)}
                   </p>
 
                   {/* Linked entity badges */}

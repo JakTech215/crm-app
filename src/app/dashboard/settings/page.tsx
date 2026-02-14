@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Plus, Pencil, Trash2, Mail, MessageSquare, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { nowCST, formatDateMedium } from "@/lib/dates";
 
 // ---------- Types ----------
 
@@ -862,7 +863,7 @@ function TaskTemplatesSection() {
                                 const dates: string[] = [];
                                 const count = form.recurrence_count ? parseInt(form.recurrence_count) : 5;
                                 for (let i = 0; i < count; i++) {
-                                  const d = new Date();
+                                  const d = nowCST();
                                   if (dueAmount) {
                                     if (dueUnit === "hours") d.setHours(d.getHours() + dueAmount);
                                     else if (dueUnit === "days") d.setDate(d.getDate() + dueAmount);
@@ -875,7 +876,8 @@ function TaskTemplatesSection() {
                                     else if (unit === "weeks") d.setDate(d.getDate() + offset * 7);
                                     else if (unit === "months") d.setMonth(d.getMonth() + offset);
                                   }
-                                  dates.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }));
+                                  const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                                  dates.push(formatDateMedium(dateStr));
                                 }
                                 return dates.map((date, i) => (
                                   <p key={i} className="text-xs text-muted-foreground pl-2">{i + 1}. {date}</p>

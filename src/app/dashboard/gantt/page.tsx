@@ -36,6 +36,8 @@ import {
   X,
   RefreshCw,
 } from "lucide-react";
+import { formatDateLong, nowCST } from "@/lib/dates";
+import { getFederalHolidays, buildHolidayMap } from "@/lib/holidays";
 
 interface GanttTask {
   id: string;
@@ -111,7 +113,7 @@ export default function GanttPage() {
   const [loading, setLoading] = useState(true);
   const [zoom, setZoom] = useState<ZoomLevel>("week");
   const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
+    const d = nowCST();
     d.setDate(d.getDate() - 7);
     return d;
   });
@@ -143,6 +145,8 @@ export default function GanttPage() {
     searchParams.get("employee") || "all"
   );
   const [showEvents, setShowEvents] = useState(true);
+  const [showHolidays, setShowHolidays] = useState(true);
+  const [holidayMap, setHolidayMap] = useState<Record<string, string[]>>({});
 
   // Sync filters to URL
   const syncFiltersToUrl = useCallback(() => {
@@ -329,6 +333,21 @@ export default function GanttPage() {
       finalTasks.push(...eventRows);
     }
 
+    // Fetch holidays (federal + custom)
+    try {
+      const [fedHolidays, customResult] = await Promise.all([
+        getFederalHolidays(),
+        supabase.from("holidays").select("date, name"),
+      ]);
+      const allHolidays = [
+        ...fedHolidays,
+        ...((customResult.data || []) as { date: string; name: string }[]),
+      ];
+      setHolidayMap(buildHolidayMap(allHolidays));
+    } catch {
+      // Holidays are non-critical, continue without them
+    }
+
     setTasks(finalTasks);
     setDependencies((depData || []) as Dependency[]);
     setProjects(projData || []);
@@ -448,7 +467,7 @@ export default function GanttPage() {
     return (elapsedMs / totalMs) * totalWidth;
   };
 
-  const todayX = dateToX(new Date().toISOString());
+  const todayX = dateToX(nowCST().toISOString());
 
   // Group filtered tasks by project
   const grouped: { project: string | null; projectId: string | null; tasks: GanttTask[] }[] = [];
@@ -600,7 +619,7 @@ export default function GanttPage() {
             variant="outline"
             size="sm"
             onClick={() => {
-              const d = new Date();
+              const d = nowCST();
               d.setDate(d.getDate() - 7);
               setStartDate(d);
             }}
@@ -756,6 +775,13 @@ export default function GanttPage() {
                   />
                   <span className="text-sm">Show events</span>
                 </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={showHolidays}
+                    onCheckedChange={(checked) => setShowHolidays(!!checked)}
+                  />
+                  <span className="text-sm">Show holidays</span>
+                </label>
               </div>
               {activeFilterCount > 0 && (
                 <Button variant="ghost" size="sm" onClick={clearAllFilters}>
@@ -889,7 +915,7 @@ export default function GanttPage() {
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Date: </span>
-                                    <span>{new Date(row.task!.start_date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</span>
+                                    <span>{formatDateLong(row.task!.start_date!)}</span>
                                   </div>
                                   {row.task!.contact_name && (
                                     <div>
@@ -1018,6 +1044,34 @@ export default function GanttPage() {
                       />
                     ))}
 
+                    {/* Holiday markers */}
+                    {showHolidays && Object.entries(holidayMap).map(([dateStr, names]) => {
+                      const hx = dateToX(dateStr);
+                      if (hx < -20 || hx > totalWidth + 20) return null;
+                      const bandWidth = zoom === "day" ? colWidth : zoom === "week" ? Math.max(colWidth / 7, 4) : Math.max(colWidth / 30, 4);
+                      return (
+                        <div key={`holiday-${dateStr}`}>
+                          <div
+                            className="absolute top-0 bottom-0 bg-emerald-100/50 z-[1]"
+                            style={{ left: hx, width: bandWidth }}
+                            title={names.join(", ")}
+                          />
+                          <div
+                            className="absolute top-0 w-0.5 bottom-0 bg-emerald-400/60 z-[2]"
+                            style={{ left: hx }}
+                          />
+                          <div
+                            className="absolute z-[15] -translate-x-1/2 top-1 pointer-events-none"
+                            style={{ left: hx + bandWidth / 2 }}
+                          >
+                            <span className="text-[9px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 py-0.5 whitespace-nowrap shadow-sm">
+                              {names[0]}{names.length > 1 ? ` +${names.length - 1}` : ""}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
                     {/* Today marker */}
                     {todayX >= 0 && todayX <= totalWidth && (
                       <div
@@ -1056,7 +1110,7 @@ export default function GanttPage() {
                               width: diamondSize,
                               height: diamondSize,
                             }}
-                            title={`${task.title} (${task.event_type})\n${new Date(task.start_date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}`}
+                            title={`${task.title} (${task.event_type})\n${formatDateLong(task.start_date!)}`}
                             onClick={() => router.push(`/dashboard/events/${task.id}`)}
                           />
                         );
@@ -1091,7 +1145,7 @@ export default function GanttPage() {
                                     width: markerSize,
                                     height: markerSize,
                                   }}
-                                  title={`Occurrence ${j + 1} of ${task.occurrences.length}\n${new Date(occ.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}\nStatus: ${occ.status.replace("_", " ")}`}
+                                  title={`Occurrence ${j + 1} of ${task.occurrences.length}\n${formatDateLong(occ.date)}\nStatus: ${occ.status.replace("_", " ")}`}
                                   onClick={() => router.push(`/dashboard/tasks/${occ.id}`)}
                                 />
                               );
@@ -1198,6 +1252,10 @@ export default function GanttPage() {
                 <div className="flex items-center gap-1">
                   <div className="h-3 w-3 bg-purple-500 rotate-45 border border-purple-700" />
                   <span className="text-xs ml-0.5">Event</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-3 w-5 bg-emerald-100 border border-emerald-400 rounded-sm" />
+                  <span className="text-xs">Holiday</span>
                 </div>
                 <span className="text-xs text-muted-foreground ml-4">Priority (left border):</span>
                 <div className="flex items-center gap-1">

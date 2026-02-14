@@ -57,6 +57,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, Bell, X, FolderKanban, RefreshCw, Loader2, Check, StickyNote } from "lucide-react";
+import { todayCST, formatDate, formatDateShort, formatDateTime, nowUTC, isBeforeToday, addDaysToDate } from "@/lib/dates";
 
 interface Employee {
   id: string;
@@ -611,13 +612,22 @@ export default function TaskDetailPage() {
             const amount = nextTemplate.due_amount || nextTemplate.default_due_days;
             const unit = nextTemplate.due_unit || "days";
             if (amount) {
-              const d = new Date();
-              d.setDate(d.getDate() + delayDays);
-              if (unit === "hours") d.setHours(d.getHours() + amount);
-              else if (unit === "days") d.setDate(d.getDate() + amount);
-              else if (unit === "weeks") d.setDate(d.getDate() + amount * 7);
-              else if (unit === "months") d.setMonth(d.getMonth() + amount);
-              dueDate = d.toISOString().split("T")[0];
+              const baseDateStr = addDaysToDate(todayCST(), delayDays);
+              if (unit === "hours") {
+                // hours: just use todayCST + delay as the date
+                dueDate = baseDateStr;
+              } else if (unit === "days") {
+                dueDate = addDaysToDate(baseDateStr, amount);
+              } else if (unit === "weeks") {
+                dueDate = addDaysToDate(baseDateStr, amount * 7);
+              } else if (unit === "months") {
+                const d = new Date(baseDateStr + "T12:00:00");
+                d.setMonth(d.getMonth() + amount);
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, "0");
+                const dd = String(d.getDate()).padStart(2, "0");
+                dueDate = `${yyyy}-${mm}-${dd}`;
+              }
             }
 
             const { data: { user } } = await supabase.auth.getUser();
@@ -774,7 +784,7 @@ export default function TaskDetailPage() {
     setSavedField(null);
     const updateData: Record<string, unknown> = { [field]: value };
     if (field === "status" && value === "completed") {
-      updateData.completed_at = new Date().toISOString();
+      updateData.completed_at = nowUTC();
     }
     await supabase.from("tasks").update(updateData).eq("id", task.id);
     setTask({ ...task, [field]: value });
@@ -1069,12 +1079,11 @@ export default function TaskDetailPage() {
                         size="sm"
                         className="h-6 text-xs px-2"
                         onClick={() => {
-                          const base = editForm.start_date ? new Date(editForm.start_date + "T00:00:00") : new Date();
-                          base.setDate(base.getDate() + q.days);
-                          const due = base.toISOString().split("T")[0];
+                          const startStr = editForm.start_date || todayCST();
+                          const due = addDaysToDate(startStr, q.days);
                           setEditForm((prev) => ({
                             ...prev,
-                            start_date: prev.start_date || new Date().toISOString().split("T")[0],
+                            start_date: prev.start_date || todayCST(),
                             due_date: due,
                           }));
                         }}
@@ -1272,23 +1281,22 @@ export default function TaskDetailPage() {
                 </p>
                 {task.due_date ? (
                   <div className="mt-1">
-                    <p>{new Date(task.due_date).toLocaleDateString()}</p>
+                    <p>{formatDate(task.due_date)}</p>
                     {task.status !== "completed" && (() => {
-                      const due = new Date(task.due_date);
+                      const overdue = isBeforeToday(task.due_date);
+                      const due = new Date(task.due_date + "T12:00:00");
                       const now = new Date();
-                      const diffMs = due.getTime() - now.getTime();
-                      const absDiffMs = Math.abs(diffMs);
+                      const absDiffMs = Math.abs(due.getTime() - now.getTime());
                       const hours = Math.floor(absDiffMs / (1000 * 60 * 60));
                       const days = Math.floor(hours / 24);
-                      const isOverdue = diffMs < 0;
                       let text: string;
                       if (days > 30) text = `${Math.floor(days / 30)} month(s)`;
                       else if (days > 0) text = `${days} day(s)`;
                       else if (hours > 0) text = `${hours} hour(s)`;
                       else text = "less than 1 hour";
                       return (
-                        <p className={`text-xs ${isOverdue ? "text-red-600" : "text-muted-foreground"}`}>
-                          {isOverdue ? `Overdue by ${text}` : `Due in ${text}`}
+                        <p className={`text-xs ${overdue ? "text-red-600" : "text-muted-foreground"}`}>
+                          {overdue ? `Overdue by ${text}` : `Due in ${text}`}
                         </p>
                       );
                     })()}
@@ -1790,7 +1798,7 @@ export default function TaskDetailPage() {
                       <div className="flex items-center gap-2">
                         {st.due_date && (
                           <span className="text-xs text-muted-foreground">
-                            {new Date(st.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            {formatDateShort(st.due_date)}
                           </span>
                         )}
                         <Badge variant="secondary" className={`capitalize text-xs ${statusColors[st.status] || ""}`}>
@@ -1860,13 +1868,7 @@ export default function TaskDetailPage() {
                   </button>
                   <p className="text-sm whitespace-pre-wrap pr-8">{note.content}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {new Date(note.created_at).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
+                    {formatDateTime(note.created_at)}
                   </p>
                 </div>
               ))}

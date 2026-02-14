@@ -35,6 +35,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { RefreshCw } from "lucide-react";
+import { formatDate } from "@/lib/dates";
 
 interface Employee {
   id: string;
@@ -573,7 +574,7 @@ export default function TaskHistoryPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {new Date(task.created_at).toLocaleDateString()}
+                      {formatDate(task.created_at)}
                     </TableCell>
                   </TableRow>
                 ))

@@ -58,6 +58,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Plus, Users, Diamond, Search, Bell, RefreshCw, Loader2, Check, Trash2 } from "lucide-react";
+import { todayCST, formatDate, formatDateLong, formatRelativeTime as formatRelativeTimeUtil, nowUTC, isBeforeToday, addDaysToDate } from "@/lib/dates";
 
 const COLOR_MAP: Record<string, string> = {
   gray: "bg-gray-100 text-gray-800",
@@ -147,12 +148,19 @@ interface TaskType {
   color: string;
 }
 
+const toDateStr = (d: Date): string => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 const computeOccurrences = (startDate: string, endDate: string, frequency: number, unit: string): string[] => {
   const dates: string[] = [];
-  const end = new Date(endDate + "T00:00:00");
-  let current = new Date(startDate + "T00:00:00");
+  const end = new Date(endDate + "T12:00:00");
+  let current = new Date(startDate + "T12:00:00");
   while (current <= end) {
-    dates.push(current.toISOString().split("T")[0]);
+    dates.push(toDateStr(current));
     const next = new Date(current);
     if (unit === "days") next.setDate(next.getDate() + frequency);
     else if (unit === "weeks") next.setDate(next.getDate() + frequency * 7);
@@ -374,15 +382,15 @@ export default function TasksPage() {
 
     if (tmpl.is_recurring) {
       // For recurring templates, set title/description/priority but calculate due_date from count
-      const startDate = form.start_date || new Date().toISOString().split("T")[0];
+      const startDate = form.start_date || todayCST();
       let dueDate = "";
       if (tmpl.recurrence_frequency && tmpl.recurrence_unit && tmpl.recurrence_count) {
-        const d = new Date(startDate + "T00:00:00");
+        const d = new Date(startDate + "T12:00:00");
         const totalOffset = tmpl.recurrence_frequency * (tmpl.recurrence_count - 1);
         if (tmpl.recurrence_unit === "days") d.setDate(d.getDate() + totalOffset);
         else if (tmpl.recurrence_unit === "weeks") d.setDate(d.getDate() + totalOffset * 7);
         else if (tmpl.recurrence_unit === "months") d.setMonth(d.getMonth() + totalOffset);
-        dueDate = d.toISOString().split("T")[0];
+        dueDate = toDateStr(d);
       }
       setForm({
         ...form,
@@ -403,7 +411,7 @@ export default function TasksPage() {
         else if (unit === "days") d.setDate(d.getDate() + amount);
         else if (unit === "weeks") d.setDate(d.getDate() + amount * 7);
         else if (unit === "months") d.setMonth(d.getMonth() + amount);
-        dueDate = d.toISOString().split("T")[0];
+        dueDate = toDateStr(d);
       }
       setForm({
         ...form,
@@ -608,7 +616,7 @@ export default function TasksPage() {
     setSavedCell(null);
     const updateData: Record<string, unknown> = { [field]: value };
     if (field === "status" && value === "completed") {
-      updateData.completed_at = new Date().toISOString();
+      updateData.completed_at = nowUTC();
     }
     await supabase.from("tasks").update(updateData).eq("id", taskId);
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } : t));
@@ -645,22 +653,10 @@ export default function TasksPage() {
     setTimeout(() => setDeleteMessage(null), 3000);
   };
 
-  const formatRelativeTime = (dateStr: string) => {
-    const due = new Date(dateStr);
-    const now = new Date();
-    const diffMs = due.getTime() - now.getTime();
-    const absDiffMs = Math.abs(diffMs);
-    const hours = Math.floor(absDiffMs / (1000 * 60 * 60));
-    const days = Math.floor(hours / 24);
-    const isOverdue = diffMs < 0;
-
-    let text: string;
-    if (days > 30) text = `${Math.floor(days / 30)}mo`;
-    else if (days > 0) text = `${days}d`;
-    else if (hours > 0) text = `${hours}h`;
-    else text = "<1h";
-
-    return isOverdue
+  const dueDateRelative = (dateStr: string) => {
+    const overdue = isBeforeToday(dateStr);
+    const text = formatRelativeTimeUtil(dateStr);
+    return overdue
       ? { text: `${text} overdue`, className: "text-red-600" }
       : { text: `in ${text}`, className: "text-muted-foreground" };
   };
@@ -880,9 +876,9 @@ export default function TasksPage() {
               <TableCell>
                 {task.due_date ? (
                   <div>
-                    <div className="text-sm">{new Date(task.due_date).toLocaleDateString()}</div>
+                    <div className="text-sm">{formatDate(task.due_date)}</div>
                     {task.status !== "completed" && (() => {
-                      const rel = formatRelativeTime(task.due_date);
+                      const rel = dueDateRelative(task.due_date);
                       return <div className={`text-xs ${rel.className}`}>{rel.text}</div>;
                     })()}
                   </div>
@@ -987,12 +983,12 @@ export default function TasksPage() {
                           const val = e.target.value;
                           const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
                           if (tmpl?.is_recurring && tmpl.recurrence_frequency && tmpl.recurrence_unit && tmpl.recurrence_count && val) {
-                            const d = new Date(val + "T00:00:00");
+                            const d = new Date(val + "T12:00:00");
                             const totalOffset = tmpl.recurrence_frequency * (tmpl.recurrence_count - 1);
                             if (tmpl.recurrence_unit === "days") d.setDate(d.getDate() + totalOffset);
                             else if (tmpl.recurrence_unit === "weeks") d.setDate(d.getDate() + totalOffset * 7);
                             else if (tmpl.recurrence_unit === "months") d.setMonth(d.getMonth() + totalOffset);
-                            const calculatedEnd = d.toISOString().split("T")[0];
+                            const calculatedEnd = toDateStr(d);
                             setForm((prev) => ({ ...prev, start_date: val, due_date: calculatedEnd }));
                           } else {
                             setForm((prev) => ({
@@ -1043,12 +1039,11 @@ export default function TasksPage() {
                           size="sm"
                           className="h-7 text-xs px-2"
                           onClick={() => {
-                            const base = form.start_date ? new Date(form.start_date + "T00:00:00") : new Date();
-                            base.setDate(base.getDate() + q.days);
-                            const due = base.toISOString().split("T")[0];
+                            const startStr = form.start_date || todayCST();
+                            const due = addDaysToDate(startStr, q.days);
                             setForm((prev) => ({
                               ...prev,
-                              start_date: prev.start_date || new Date().toISOString().split("T")[0],
+                              start_date: prev.start_date || todayCST(),
                               due_date: due,
                             }));
                           }}
@@ -1082,7 +1077,7 @@ export default function TasksPage() {
                             <div className="max-h-32 overflow-y-auto space-y-0.5">
                               {recurringDates.map((date, i) => (
                                 <p key={i} className="text-xs text-muted-foreground pl-2">
-                                  {i + 1}. {new Date(date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+                                  {i + 1}. {formatDateLong(date)}
                                 </p>
                               ))}
                             </div>

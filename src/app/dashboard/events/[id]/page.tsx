@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { formatDate, formatDateTime, formatTime, isBeforeToday } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -539,6 +540,11 @@ export default function EventDetailPage() {
               <Badge className={eventTypeColors[event.event_type] || eventTypeColors.other}>
                 {event.event_type}
               </Badge>
+              {event.event_date && isBeforeToday(event.event_date) && (
+                <Badge variant="outline" className="text-muted-foreground font-normal">
+                  Past event
+                </Badge>
+              )}
             </div>
             <p className="text-muted-foreground">Event details and attendees</p>
           </div>
@@ -637,7 +643,14 @@ export default function EventDetailPage() {
                     id="edit_event_date"
                     type="date"
                     value={editForm.event_date}
-                    onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })}
+                    onChange={(e) => {
+                      const newDate = e.target.value;
+                      const updates: Partial<typeof editForm> = { event_date: newDate };
+                      if (newDate && editForm.status !== "cancelled") {
+                        updates.status = isBeforeToday(newDate) ? "completed" : "scheduled";
+                      }
+                      setEditForm({ ...editForm, ...updates });
+                    }}
                   />
                 </div>
                 <div className="grid gap-2">
@@ -842,14 +855,14 @@ export default function EventDetailPage() {
                 <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                 <p>
                   {event.event_date
-                    ? new Date(event.event_date + "T00:00:00").toLocaleDateString()
+                    ? formatDate(event.event_date)
                     : "Not set"}
                 </p>
               </div>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Time</p>
-              <p className="mt-1">{event.event_time || "Not set"}</p>
+              <p className="mt-1">{event.event_time ? formatTime(event.event_time) : "Not set"}</p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Location</p>
@@ -1002,8 +1015,7 @@ export default function EventDetailPage() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                {new Date(note.created_at).toLocaleDateString()}{" "}
-                {new Date(note.created_at).toLocaleTimeString()}
+                {formatDateTime(note.created_at)}
               </p>
             </div>
           ))}

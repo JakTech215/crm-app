@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { todayCST, formatDateShort, formatMonthYear, nowUTC, nowCST, futureDateCST, formatRelativeTime as fmtRelTime, daysFromToday } from "@/lib/dates";
+import { getFederalHolidays, buildHolidayMap } from "@/lib/holidays";
 import {
   Card,
   CardContent,
@@ -157,8 +159,9 @@ export default function DashboardPage() {
   const [dashEvents, setDashEvents] = useState<DashboardEvent[]>([]);
   const [dashNotes, setDashNotes] = useState<DashboardNote[]>([]);
   const [calendarTaskMap, setCalendarTaskMap] = useState<Record<string, CalendarDayData>>({});
+  const [holidayMap, setHolidayMap] = useState<Record<string, string[]>>({});
   const [calendarBaseDate, setCalendarBaseDate] = useState(() => {
-    const now = new Date();
+    const now = nowCST();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
@@ -166,7 +169,7 @@ export default function DashboardPage() {
   const [savingCell, setSavingCell] = useState<string | null>(null);
   const [savedCell, setSavedCell] = useState<string | null>(null);
 
-  const todayStr = useMemo(() => formatDateKey(new Date()), []);
+  const todayStr = useMemo(() => todayCST(), []);
 
   // Compute the 3-month range for calendar fetch
   const calendarRange = useMemo(() => {
@@ -183,7 +186,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      const today = new Date().toISOString().split("T")[0];
+      const today = todayCST();
 
       // Stats
       const [contactsRes, activeContactsRes, projectsRes, activeProjectsRes, tasksRes, pendingTasksRes, employeesRes] = await Promise.all([
@@ -262,7 +265,6 @@ export default function DashboardPage() {
 
         if (overdueTasks && overdueTasks.length > 0) {
           const enriched = await enrichTasks(overdueTasks as Record<string, unknown>[]);
-          const todayMs = new Date(today).getTime();
           setOverdue(overdueTasks.map((t: Record<string, unknown>, i: number) => ({
             id: t.id as string,
             title: t.title as string,
@@ -270,7 +272,7 @@ export default function DashboardPage() {
             priority: t.priority as string,
             status: (t.status as string) || "pending",
             ...enriched[i],
-            days_overdue: Math.floor((todayMs - new Date(t.due_date as string).getTime()) / (1000 * 60 * 60 * 24)),
+            days_overdue: daysFromToday(t.due_date as string),
           })));
         } else {
           setOverdue([]);
@@ -304,7 +306,7 @@ export default function DashboardPage() {
 
       // Upcoming tasks (next 14 days)
       try {
-        const endDate = (() => { const d = new Date(); d.setDate(d.getDate() + 14); return d.toISOString().split("T")[0]; })();
+        const endDate = futureDateCST(14);
         const { data: upcomingTasks } = await supabase
           .from("tasks")
           .select("id, title, due_date, priority, status, contact_id, contacts:contact_id(id, first_name, last_name)")
@@ -356,6 +358,22 @@ export default function DashboardPage() {
         console.error("Failed to fetch notes:", e);
       }
 
+      // Fetch holidays
+      try {
+        const federalHolidays = await getFederalHolidays();
+        // Also fetch custom holidays from DB
+        const { data: dbHolidays } = await supabase
+          .from("holidays")
+          .select("date, name");
+        const allHolidays = [
+          ...federalHolidays.map((h) => ({ date: h.date, name: h.name })),
+          ...(dbHolidays || []).map((h: { date: string; name: string }) => ({ date: h.date, name: h.name })),
+        ];
+        setHolidayMap(buildHolidayMap(allHolidays));
+      } catch (e) {
+        console.error("Failed to fetch holidays:", e);
+      }
+
       setLoading(false);
     };
 
@@ -363,7 +381,7 @@ export default function DashboardPage() {
   }, [calendarRange.start, calendarRange.end]);
 
   const handleMarkComplete = async (taskId: string) => {
-    await supabase.from("tasks").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", taskId);
+    await supabase.from("tasks").update({ status: "completed", completed_at: nowUTC() }).eq("id", taskId);
     setOverdue((prev) => prev.filter((t) => t.id !== taskId));
   };
 
@@ -373,7 +391,7 @@ export default function DashboardPage() {
     setSavedCell(null);
     const updateData: Record<string, unknown> = { [field]: value };
     if (field === "status" && value === "completed") {
-      updateData.completed_at = new Date().toISOString();
+      updateData.completed_at = nowUTC();
     }
     await supabase.from("tasks").update(updateData).eq("id", taskId);
     // Update both lists
@@ -382,11 +400,6 @@ export default function DashboardPage() {
     setSavingCell(null);
     setSavedCell(key);
     setTimeout(() => setSavedCell((prev) => prev === key ? null : prev), 1500);
-  };
-
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr + "T00:00:00");
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
   // Calendar rendering helpers
@@ -402,7 +415,7 @@ export default function DashboardPage() {
   const renderMonth = (year: number, month: number) => {
     const daysInMonth = getDaysInMonth(year, month);
     const firstDay = getFirstDayOfWeek(year, month);
-    const monthName = new Date(year, month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const monthName = formatMonthYear(new Date(year, month, 1));
     const days: (number | null)[] = [];
 
     for (let i = 0; i < firstDay; i++) days.push(null);
@@ -425,21 +438,25 @@ export default function DashboardPage() {
             const isSelected = dateKey === selectedCalendarDate;
             const isOverdue = dateKey < todayStr && taskCount > 0;
             const hasMilestone = dayData?.tasks.some((t) => t.is_milestone) || false;
+            const dayHolidays = holidayMap[dateKey];
+            const isHoliday = !!dayHolidays;
 
             return (
               <div
                 key={dateKey}
                 className={`h-10 flex flex-col items-center justify-start pt-0.5 cursor-pointer rounded-md transition-colors text-xs
                   ${isToday ? "ring-2 ring-blue-500 ring-inset" : ""}
-                  ${isSelected ? "bg-blue-100" : isOverdue ? "bg-red-50" : "hover:bg-muted/50"}
+                  ${isSelected ? "bg-blue-100" : isHoliday ? "bg-emerald-50" : isOverdue ? "bg-red-50" : "hover:bg-muted/50"}
                 `}
                 onClick={() => setSelectedCalendarDate(dateKey === selectedCalendarDate ? null : dateKey)}
+                title={isHoliday ? dayHolidays.join(", ") : undefined}
               >
-                <span className={`text-xs leading-none ${isToday ? "font-bold text-blue-600" : ""}`}>{day}</span>
-                {taskCount > 0 && (
+                <span className={`text-xs leading-none ${isToday ? "font-bold text-blue-600" : isHoliday ? "font-semibold text-emerald-700" : ""}`}>{day}</span>
+                {(taskCount > 0 || isHoliday) && (
                   <div className="flex items-center gap-0.5 mt-0.5">
+                    {isHoliday && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
                     {hasMilestone && <Star className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500" />}
-                    {dayData!.tasks.slice(0, hasMilestone ? 2 : 3).map((t, ti) => (
+                    {dayData?.tasks.slice(0, hasMilestone ? 2 : 3).map((t, ti) => (
                       <div key={ti} className={`w-1.5 h-1.5 rounded-full ${priorityDotColors[t.priority] || "bg-gray-400"}`} />
                     ))}
                     {taskCount > (hasMilestone ? 2 : 3) && (
@@ -500,7 +517,7 @@ export default function DashboardPage() {
             </Badge>
           )}
           <span className="text-xs text-muted-foreground">
-            {formatDate(task.due_date)}
+            {formatDateShort(task.due_date)}
           </span>
           {showOverdue && (
             <Button
@@ -630,7 +647,7 @@ export default function DashboardPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  const now = new Date();
+                  const now = nowCST();
                   setCalendarBaseDate(new Date(now.getFullYear(), now.getMonth(), 1));
                 }}
               >
@@ -661,6 +678,7 @@ export default function DashboardPage() {
             <span className="flex items-center gap-1"><Star className="h-3 w-3 text-yellow-500 fill-yellow-500" /> Milestone</span>
             <span className="flex items-center gap-1"><div className="w-3 h-3 rounded ring-2 ring-blue-500" /> Today</span>
             <span className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-red-50 border" /> Overdue</span>
+            <span className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-emerald-50 border border-emerald-200" /> Holiday</span>
           </div>
 
           {/* Selected date task list */}
@@ -668,14 +686,24 @@ export default function DashboardPage() {
             <div className="mt-4 pt-3 border-t">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-semibold">
-                  Tasks on {formatDate(selectedCalendarDate)}
+                  Tasks on {formatDateShort(selectedCalendarDate)}
                   {selectedDayTasks.length > 0 && ` (${selectedDayTasks.length})`}
                 </h4>
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedCalendarDate(null)}>
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              {selectedDayTasks.length === 0 ? (
+              {holidayMap[selectedCalendarDate] && (
+                <div className="mb-3 space-y-1">
+                  {holidayMap[selectedCalendarDate].map((name, i) => (
+                    <div key={i} className="flex items-center gap-2 px-2 py-1 rounded-md bg-emerald-50 text-emerald-800 text-sm">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                      {name}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {selectedDayTasks.length === 0 && !holidayMap[selectedCalendarDate] ? (
                 <p className="text-sm text-muted-foreground">No tasks on this date.</p>
               ) : (
                 <div className="space-y-2">
@@ -728,7 +756,7 @@ export default function DashboardPage() {
                       </Badge>
                       <span className="text-sm font-medium">{evt.title}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground">{formatDate(evt.event_date)}</span>
+                    <span className="text-xs text-muted-foreground">{formatDateShort(evt.event_date)}</span>
                   </div>
                 ))}
               </div>
@@ -758,7 +786,7 @@ export default function DashboardPage() {
                   >
                     <p className="text-sm line-clamp-2">{note.content}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {new Date(note.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      {fmtRelTime(note.created_at)}
                     </p>
                   </div>
                 ))}

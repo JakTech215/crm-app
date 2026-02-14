@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search } from "lucide-react";
+import { todayCST, formatDateShort } from "@/lib/dates";
 
 interface Employee {
   id: string;
@@ -89,7 +90,7 @@ export default function EmployeesPage() {
   };
 
   const fetchEmployeeTasks = async () => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayCST();
     const { data: assignments } = await supabase
       .from("task_assignees")
       .select("task_id, employee_id");
@@ -373,7 +374,7 @@ export default function EmployeesPage() {
                               {t.title}
                               {t.due_date && (
                                 <span className="text-muted-foreground ml-1">
-                                  ({new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
+                                  ({formatDateShort(t.due_date)})
                                 </span>
                               )}
                             </div>

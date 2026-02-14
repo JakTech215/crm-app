@@ -34,6 +34,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { RefreshCw, Loader2, Check } from "lucide-react";
+import { todayCST, formatDate, formatRelativeTime as fmtRelTime, nowUTC } from "@/lib/dates";
 
 interface Employee {
   id: string;
@@ -74,26 +75,6 @@ interface Task {
 
 const contactName = (c: { first_name: string; last_name: string | null }) =>
   `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
-
-const formatRelativeTime = (dateStr: string) => {
-  const due = new Date(dateStr);
-  const now = new Date();
-  const diffMs = due.getTime() - now.getTime();
-  const absDiffMs = Math.abs(diffMs);
-  const hours = Math.floor(absDiffMs / (1000 * 60 * 60));
-  const days = Math.floor(hours / 24);
-  const isOverdue = diffMs < 0;
-
-  let text: string;
-  if (days > 30) text = `${Math.floor(days / 30)}mo`;
-  else if (days > 0) text = `${days}d`;
-  else if (hours > 0) text = `${hours}h`;
-  else text = "<1h";
-
-  return isOverdue
-    ? { text: `${text} overdue`, className: "text-red-600" }
-    : { text: `in ${text}`, className: "text-muted-foreground" };
-};
 
 const priorityColors: Record<string, string> = {
   low: "bg-slate-100 text-slate-800",
@@ -150,7 +131,7 @@ export default function UpcomingTasksPage() {
   const [groupBy, setGroupBy] = useState("none");
 
   const fetchTasks = async () => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayCST();
 
     const { data, error } = await supabase
       .from("tasks")
@@ -255,7 +236,7 @@ export default function UpcomingTasksPage() {
     setSavedCell(null);
     const updateData: Record<string, unknown> = { [field]: value };
     if (field === "status" && value === "completed") {
-      updateData.completed_at = new Date().toISOString();
+      updateData.completed_at = nowUTC();
     }
     await supabase.from("tasks").update(updateData).eq("id", taskId);
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } : t));
@@ -431,14 +412,9 @@ export default function UpcomingTasksPage() {
         {task.due_date ? (
           <div>
             <div className="text-sm">
-              {new Date(task.due_date).toLocaleDateString()}
+              {formatDate(task.due_date)}
             </div>
-            {(() => {
-              const rel = formatRelativeTime(task.due_date);
-              return (
-                <div className={`text-xs ${rel.className}`}>{rel.text}</div>
-              );
-            })()}
+            <div className="text-xs text-muted-foreground">{fmtRelTime(task.due_date)}</div>
           </div>
         ) : (
           "\u2014"

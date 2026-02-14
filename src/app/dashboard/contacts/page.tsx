@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Mail, MessageSquare } from "lucide-react";
+import { todayCST, formatDateShort } from "@/lib/dates";
 
 interface Contact {
   id: string;
@@ -117,7 +118,7 @@ export default function ContactsPage() {
   };
 
   const fetchContactTasks = async () => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayCST();
     const { data } = await supabase
       .from("tasks")
       .select("id, title, due_date, contact_id")
@@ -408,7 +409,7 @@ export default function ContactsPage() {
                               {t.title}
                               {t.due_date && (
                                 <span className="text-muted-foreground ml-1">
-                                  ({new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
+                                  ({formatDateShort(t.due_date)})
                                 </span>
                               )}
                             </div>

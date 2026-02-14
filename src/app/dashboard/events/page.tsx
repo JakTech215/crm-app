@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { formatDate as fmtDate, formatTime, nowUTC, isBeforeToday } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -145,24 +146,6 @@ const employeeName = (e: { first_name: string; last_name: string }) =>
 const contactName = (c: { first_name: string; last_name: string | null }) =>
   `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
 
-const formatDate = (dateStr: string) => {
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-};
-
-const formatTime = (timeStr: string | null) => {
-  if (!timeStr) return null;
-  const [hours, minutes] = timeStr.split(":");
-  const h = parseInt(hours, 10);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return `${h12}:${minutes} ${ampm}`;
-};
 
 // ---------------------------------------------------------------------------
 // Default form state
@@ -306,7 +289,7 @@ export default function EventsPage() {
 
     await supabase
       .from("events")
-      .update({ status: value, updated_at: new Date().toISOString() })
+      .update({ status: value, updated_at: nowUTC() })
       .eq("id", eventId);
 
     setEvents((prev) =>
@@ -380,7 +363,7 @@ export default function EventsPage() {
       // ----- Update -----
       const { error: updateError } = await supabase
         .from("events")
-        .update({ ...payload, updated_at: new Date().toISOString() })
+        .update({ ...payload, updated_at: nowUTC() })
         .eq("id", editingId);
 
       if (updateError) {
@@ -570,9 +553,14 @@ export default function EventsPage() {
                       id="event_date"
                       type="date"
                       value={form.event_date}
-                      onChange={(e) =>
-                        setForm({ ...form, event_date: e.target.value })
-                      }
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        const updates: Partial<typeof form> = { event_date: newDate };
+                        if (newDate && form.status !== "cancelled") {
+                          updates.status = isBeforeToday(newDate) ? "completed" : "scheduled";
+                        }
+                        setForm({ ...form, ...updates });
+                      }}
                       required
                     />
                   </div>
@@ -931,17 +919,22 @@ export default function EventsPage() {
                 </TableRow>
               ) : (
                 filteredEvents.map((ev) => (
-                  <TableRow key={ev.id} className="hover:bg-muted/50">
+                  <TableRow key={ev.id} className={`hover:bg-muted/50${isBeforeToday(ev.event_date) ? " opacity-70" : ""}`}>
                     {/* Title */}
                     <TableCell>
-                      <span
-                        className="font-medium text-primary hover:underline cursor-pointer"
-                        onClick={() =>
-                          router.push(`/dashboard/events/${ev.id}`)
-                        }
-                      >
-                        {ev.title}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="font-medium text-primary hover:underline cursor-pointer"
+                          onClick={() =>
+                            router.push(`/dashboard/events/${ev.id}`)
+                          }
+                        >
+                          {ev.title}
+                        </span>
+                        {isBeforeToday(ev.event_date) && (
+                          <span className="text-xs text-muted-foreground">(past)</span>
+                        )}
+                      </div>
                       {ev.location && (
                         <div className="text-xs text-muted-foreground truncate max-w-xs">
                           {ev.location}
@@ -951,7 +944,7 @@ export default function EventsPage() {
 
                     {/* Event Date */}
                     <TableCell className="whitespace-nowrap">
-                      {formatDate(ev.event_date)}
+                      {fmtDate(ev.event_date)}
                     </TableCell>
 
                     {/* Time */}

@@ -46,7 +46,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
+
 import { Plus, Users, Diamond, Search, Bell, RefreshCw } from "lucide-react";
 
 const COLOR_MAP: Record<string, string> = {
@@ -123,6 +123,7 @@ interface TaskTemplate {
   is_recurring: boolean;
   recurrence_frequency: number | null;
   recurrence_unit: string | null;
+  recurrence_count: number | null;
 }
 
 interface TaskType {
@@ -246,7 +247,7 @@ export default function TasksPage() {
   const fetchTemplates = async () => {
     const { data } = await supabase
       .from("task_templates")
-      .select("id, name, description, default_priority, default_due_days, due_amount, due_unit, task_type_id, is_recurring, recurrence_frequency, recurrence_unit")
+      .select("id, name, description, default_priority, default_due_days, due_amount, due_unit, task_type_id, is_recurring, recurrence_frequency, recurrence_unit, recurrence_count")
       .order("name");
     setTemplates(data || []);
   };
@@ -313,28 +314,51 @@ export default function TasksPage() {
     const tmpl = templates.find((t) => t.id === templateId);
     if (!tmpl) return;
 
-    let dueDate = "";
-    const amount = tmpl.due_amount || tmpl.default_due_days;
-    const unit = tmpl.due_unit || "days";
-    if (amount) {
-      const d = new Date();
-      if (unit === "hours") d.setHours(d.getHours() + amount);
-      else if (unit === "days") d.setDate(d.getDate() + amount);
-      else if (unit === "weeks") d.setDate(d.getDate() + amount * 7);
-      else if (unit === "months") d.setMonth(d.getMonth() + amount);
-      dueDate = d.toISOString().split("T")[0];
-    }
-
-    setForm({
-      ...form,
-      title: tmpl.name,
-      description: tmpl.description || "",
-      priority: tmpl.default_priority,
-      due_date: dueDate || form.due_date,
-    });
     setSelectedTemplateId(templateId);
     setSelectedTaskTypeId(tmpl.task_type_id || "");
     fetchChain(templateId);
+
+    if (tmpl.is_recurring) {
+      // For recurring templates, set title/description/priority but calculate due_date from count
+      const startDate = form.start_date || new Date().toISOString().split("T")[0];
+      let dueDate = "";
+      if (tmpl.recurrence_frequency && tmpl.recurrence_unit && tmpl.recurrence_count) {
+        const d = new Date(startDate + "T00:00:00");
+        const totalOffset = tmpl.recurrence_frequency * (tmpl.recurrence_count - 1);
+        if (tmpl.recurrence_unit === "days") d.setDate(d.getDate() + totalOffset);
+        else if (tmpl.recurrence_unit === "weeks") d.setDate(d.getDate() + totalOffset * 7);
+        else if (tmpl.recurrence_unit === "months") d.setMonth(d.getMonth() + totalOffset);
+        dueDate = d.toISOString().split("T")[0];
+      }
+      setForm({
+        ...form,
+        title: tmpl.name,
+        description: tmpl.description || "",
+        priority: tmpl.default_priority,
+        start_date: startDate,
+        due_date: dueDate || form.due_date,
+      });
+    } else {
+      // For non-recurring: calculate due_date from due_amount/unit
+      let dueDate = "";
+      const amount = tmpl.due_amount || tmpl.default_due_days;
+      const unit = tmpl.due_unit || "days";
+      if (amount) {
+        const d = new Date();
+        if (unit === "hours") d.setHours(d.getHours() + amount);
+        else if (unit === "days") d.setDate(d.getDate() + amount);
+        else if (unit === "weeks") d.setDate(d.getDate() + amount * 7);
+        else if (unit === "months") d.setMonth(d.getMonth() + amount);
+        dueDate = d.toISOString().split("T")[0];
+      }
+      setForm({
+        ...form,
+        title: tmpl.name,
+        description: tmpl.description || "",
+        priority: tmpl.default_priority,
+        due_date: dueDate || form.due_date,
+      });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -708,91 +732,189 @@ export default function TasksPage() {
                   </div>
                 )}
 
-                <div className="grid gap-2">
-                  <Label>Start from Template <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                  <Select
-                    value={selectedTemplateId || "none"}
-                    onValueChange={(value) => applyTemplate(value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="None - Create blank task" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None - Create blank task</SelectItem>
-                      {templates.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          <span className="flex items-center gap-2">
-                            {t.name}
-                            {(() => {
-                              const tt = taskTypes.find((x) => x.id === t.task_type_id);
-                              return tt ? <Badge variant="secondary" className={`text-xs ${COLOR_MAP[tt.color] || ""}`}>{tt.name}</Badge> : null;
-                            })()}
-                            {t.is_recurring && <RefreshCw className="h-3 w-3 text-muted-foreground" />}
-                          </span>
-                        </SelectItem>
+                {/* Template & Schedule Section */}
+                <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
+                  <p className="text-sm font-medium">Template & Schedule</p>
+
+                  <div className="grid gap-2">
+                    <Label>Start from Template <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                    <Select
+                      value={selectedTemplateId || "none"}
+                      onValueChange={(value) => applyTemplate(value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="None - Create blank task" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None - Create blank task</SelectItem>
+                        {templates.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            <span className="flex items-center gap-2">
+                              {t.name}
+                              {(() => {
+                                const tt = taskTypes.find((x) => x.id === t.task_type_id);
+                                return tt ? <Badge variant="secondary" className={`text-xs ${COLOR_MAP[tt.color] || ""}`}>{tt.name}</Badge> : null;
+                              })()}
+                              {t.is_recurring && <RefreshCw className="h-3 w-3 text-muted-foreground" />}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="start_date">
+                        {(() => {
+                          const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
+                          return tmpl?.is_recurring ? "First Occurrence *" : "Start Date";
+                        })()}
+                      </Label>
+                      <Input
+                        id="start_date"
+                        type="date"
+                        value={form.start_date}
+                        required={(() => {
+                          const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
+                          return !!tmpl?.is_recurring;
+                        })()}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
+                          if (tmpl?.is_recurring && tmpl.recurrence_frequency && tmpl.recurrence_unit && tmpl.recurrence_count && val) {
+                            const d = new Date(val + "T00:00:00");
+                            const totalOffset = tmpl.recurrence_frequency * (tmpl.recurrence_count - 1);
+                            if (tmpl.recurrence_unit === "days") d.setDate(d.getDate() + totalOffset);
+                            else if (tmpl.recurrence_unit === "weeks") d.setDate(d.getDate() + totalOffset * 7);
+                            else if (tmpl.recurrence_unit === "months") d.setMonth(d.getMonth() + totalOffset);
+                            const calculatedEnd = d.toISOString().split("T")[0];
+                            setForm((prev) => ({ ...prev, start_date: val, due_date: calculatedEnd }));
+                          } else {
+                            setForm((prev) => ({
+                              ...prev,
+                              start_date: val,
+                              due_date: prev.due_date || val,
+                            }));
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="due_date">
+                        {(() => {
+                          const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
+                          return tmpl?.is_recurring ? "Recurrence End Date" : "Due Date";
+                        })()}
+                      </Label>
+                      <Input
+                        id="due_date"
+                        type="date"
+                        value={form.due_date}
+                        onChange={(e) =>
+                          setForm({ ...form, due_date: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Quick duration buttons - only for non-recurring */}
+                  {!(() => {
+                    const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
+                    return tmpl?.is_recurring;
+                  })() && (
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: "4h", days: 0 },
+                        { label: "1d", days: 1 },
+                        { label: "3d", days: 3 },
+                        { label: "1w", days: 7 },
+                        { label: "2w", days: 14 },
+                        { label: "1m", days: 30 },
+                      ].map((q) => (
+                        <Button
+                          key={q.label}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs px-2"
+                          onClick={() => {
+                            const base = form.start_date ? new Date(form.start_date + "T00:00:00") : new Date();
+                            base.setDate(base.getDate() + q.days);
+                            const due = base.toISOString().split("T")[0];
+                            setForm((prev) => ({
+                              ...prev,
+                              start_date: prev.start_date || new Date().toISOString().split("T")[0],
+                              due_date: due,
+                            }));
+                          }}
+                        >
+                          {q.label}
+                        </Button>
                       ))}
-                    </SelectContent>
-                  </Select>
+                    </div>
+                  )}
+
+                  {/* Recurring dates preview */}
+                  {(() => {
+                    const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
+                    if (!tmpl?.is_recurring) return null;
+
+                    const defaultCount = tmpl.recurrence_count || null;
+                    const overrideWarning = defaultCount && recurringDates.length > 0 && recurringDates.length !== defaultCount;
+
+                    return (
+                      <div className="rounded border bg-background p-3 space-y-2">
+                        <div className="flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 rounded px-2 py-1">
+                          <RefreshCw className="h-3 w-3" />
+                          Recurring — every {tmpl.recurrence_frequency} {tmpl.recurrence_unit}
+                          {defaultCount && <span className="ml-1">({defaultCount} occurrences)</span>}
+                        </div>
+                        {recurringDates.length > 0 ? (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground">
+                              This will create {recurringDates.length} task{recurringDates.length !== 1 ? "s" : ""}:
+                            </p>
+                            <div className="max-h-32 overflow-y-auto space-y-0.5">
+                              {recurringDates.map((date, i) => (
+                                <p key={i} className="text-xs text-muted-foreground pl-2">
+                                  {i + 1}. {new Date(date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+                                </p>
+                              ))}
+                            </div>
+                            {overrideWarning && (
+                              <p className="text-xs text-amber-600 bg-amber-50 rounded px-2 py-1">
+                                Template default is {defaultCount} occurrence{defaultCount !== 1 ? "s" : ""}, but date range will create {recurringDates.length}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Set start date and end date to preview occurrences
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Workflow chain preview (non-recurring feature) */}
+                  {templateChain.length > 0 && (
+                    <div className="rounded border bg-background p-3 space-y-1">
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        Follow-up tasks on completion:
+                      </div>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <Badge variant="default" className="text-xs">{templates.find((t) => t.id === selectedTemplateId)?.name}</Badge>
+                        {templateChain.map((step, i) => (
+                          <span key={i} className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground">—{step.delayDays}d→</span>
+                            <Badge variant="outline" className="text-xs">{step.name}</Badge>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-
-                {selectedTemplateId && (
-                  <Card className="border-dashed bg-muted/30">
-                    <CardContent className="p-3 space-y-2">
-                      {(() => {
-                        const tmpl = templates.find((t) => t.id === selectedTemplateId);
-                        if (!tmpl) return null;
-                        return (
-                          <>
-                            {tmpl.is_recurring && (
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 rounded px-2 py-1">
-                                  <RefreshCw className="h-3 w-3" />
-                                  This is a recurring template — every {tmpl.recurrence_frequency} {tmpl.recurrence_unit}
-                                </div>
-                                {recurringDates.length > 0 ? (
-                                  <div className="space-y-1">
-                                    <p className="text-xs font-medium text-muted-foreground">
-                                      This will create {recurringDates.length} task{recurringDates.length !== 1 ? "s" : ""} on:
-                                    </p>
-                                    <div className="max-h-32 overflow-y-auto space-y-0.5">
-                                      {recurringDates.map((date, i) => (
-                                        <p key={i} className="text-xs text-muted-foreground pl-2">
-                                          {i + 1}. {new Date(date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
-                                        </p>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <p className="text-xs text-muted-foreground">
-                                    Set &quot;First Occurrence&quot; and &quot;Recurrence End Date&quot; to preview occurrences
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                            {templateChain.length > 0 && (
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                  Follow-up tasks on completion:
-                                </div>
-                                <div className="flex items-center gap-1 flex-wrap">
-                                  <Badge variant="default" className="text-xs">{tmpl.name}</Badge>
-                                  {templateChain.map((step, i) => (
-                                    <span key={i} className="flex items-center gap-1">
-                                      <span className="text-xs text-muted-foreground">—{step.delayDays}d→</span>
-                                      <Badge variant="outline" className="text-xs">{step.name}</Badge>
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </CardContent>
-                  </Card>
-                )}
-
-                <Separator />
 
                 <div className="grid gap-2">
                   <Label htmlFor="title">Title *</Label>
@@ -908,84 +1030,6 @@ export default function TasksPage() {
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="start_date">
-                      {(() => {
-                        const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
-                        return tmpl?.is_recurring ? "First Occurrence *" : "Start Date";
-                      })()}
-                    </Label>
-                    <Input
-                      id="start_date"
-                      type="date"
-                      value={form.start_date}
-                      required={(() => {
-                        const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
-                        return !!tmpl?.is_recurring;
-                      })()}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setForm((prev) => ({
-                          ...prev,
-                          start_date: val,
-                          due_date: prev.due_date || val,
-                        }));
-                      }}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="due_date">
-                      {(() => {
-                        const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
-                        return tmpl?.is_recurring ? "Recurrence End Date" : "Due Date";
-                      })()}
-                    </Label>
-                    <Input
-                      id="due_date"
-                      type="date"
-                      value={form.due_date}
-                      onChange={(e) =>
-                        setForm({ ...form, due_date: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-                {!(() => {
-                  const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
-                  return tmpl?.is_recurring;
-                })() && (
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "4h", days: 0 },
-                      { label: "1d", days: 1 },
-                      { label: "3d", days: 3 },
-                      { label: "1w", days: 7 },
-                      { label: "2w", days: 14 },
-                      { label: "1m", days: 30 },
-                    ].map((q) => (
-                      <Button
-                        key={q.label}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs px-2"
-                        onClick={() => {
-                          const base = form.start_date ? new Date(form.start_date + "T00:00:00") : new Date();
-                          base.setDate(base.getDate() + q.days);
-                          const due = base.toISOString().split("T")[0];
-                          setForm((prev) => ({
-                            ...prev,
-                            start_date: prev.start_date || new Date().toISOString().split("T")[0],
-                            due_date: due,
-                          }));
-                        }}
-                      >
-                        {q.label}
-                      </Button>
-                    ))}
-                  </div>
-                )}
                 <div className="grid gap-2">
                   <Label>Assign Employees</Label>
                   <Popover>

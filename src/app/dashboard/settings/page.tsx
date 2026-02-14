@@ -59,6 +59,7 @@ interface TaskTemplate {
   is_recurring: boolean;
   recurrence_frequency: number | null;
   recurrence_unit: string | null;
+  recurrence_count: number | null;
 }
 
 interface TaskType {
@@ -539,6 +540,7 @@ function TaskTemplatesSection() {
     is_recurring: false,
     recurrence_frequency: "",
     recurrence_unit: "days",
+    recurrence_count: "",
   });
 
   const fetchData = async () => {
@@ -577,7 +579,7 @@ function TaskTemplatesSection() {
   useEffect(() => { fetchData(); }, []);
 
   const resetForm = () => {
-    setForm({ name: "", description: "", default_priority: "medium", due_amount: "", due_unit: "days", send_email_reminder: false, send_sms_reminder: false, task_type_id: "", is_recurring: false, recurrence_frequency: "", recurrence_unit: "days" });
+    setForm({ name: "", description: "", default_priority: "medium", due_amount: "", due_unit: "days", send_email_reminder: false, send_sms_reminder: false, task_type_id: "", is_recurring: false, recurrence_frequency: "", recurrence_unit: "days", recurrence_count: "" });
     setFormSteps([]);
     setRecurringExpanded(false);
     setChainExpanded(false);
@@ -603,6 +605,7 @@ function TaskTemplatesSection() {
       is_recurring: form.is_recurring,
       recurrence_frequency: form.is_recurring && form.recurrence_frequency ? parseInt(form.recurrence_frequency) : null,
       recurrence_unit: form.is_recurring && form.recurrence_frequency ? form.recurrence_unit : null,
+      recurrence_count: form.is_recurring && form.recurrence_count ? parseInt(form.recurrence_count) : null,
     };
 
     let templateId = editing?.id;
@@ -652,6 +655,7 @@ function TaskTemplatesSection() {
       is_recurring: t.is_recurring || false,
       recurrence_frequency: t.recurrence_frequency?.toString() || "",
       recurrence_unit: t.recurrence_unit || "days",
+      recurrence_count: t.recurrence_count?.toString() || "",
     });
     const steps = workflowSteps[t.id] || [];
     setFormSteps(steps.map((s) => ({
@@ -840,16 +844,24 @@ function TaskTemplatesSection() {
                               </Select>
                             </div>
                           </div>
+                          <div className="grid gap-2">
+                            <Label htmlFor="tt-rec-count">Number of Occurrences</Label>
+                            <Input id="tt-rec-count" type="number" min="1" max="100" placeholder="e.g. 5" value={form.recurrence_count} onChange={(e) => setForm({ ...form, recurrence_count: e.target.value })} />
+                            {form.recurrence_count && parseInt(form.recurrence_count) > 0 && (
+                              <p className="text-xs text-muted-foreground">Create {form.recurrence_count} task{parseInt(form.recurrence_count) !== 1 ? "s" : ""}</p>
+                            )}
+                          </div>
                           {form.recurrence_frequency && parseInt(form.recurrence_frequency) > 0 && (
                             <div className="space-y-1">
-                              <p className="text-xs font-medium text-muted-foreground">Next 5 occurrences:</p>
+                              <p className="text-xs font-medium text-muted-foreground">Preview occurrences:</p>
                               {(() => {
                                 const freq = parseInt(form.recurrence_frequency);
                                 const unit = form.recurrence_unit;
                                 const dueAmount = form.due_amount ? parseInt(form.due_amount) : 0;
                                 const dueUnit = form.due_unit;
                                 const dates: string[] = [];
-                                for (let i = 0; i < 5; i++) {
+                                const count = form.recurrence_count ? parseInt(form.recurrence_count) : 5;
+                                for (let i = 0; i < count; i++) {
                                   const d = new Date();
                                   if (dueAmount) {
                                     if (dueUnit === "hours") d.setHours(d.getHours() + dueAmount);
@@ -1058,7 +1070,7 @@ function TaskTemplatesSection() {
                       {t.is_recurring && (
                         <span className="flex items-center gap-1 text-xs text-muted-foreground">
                           <RefreshCw className="h-3 w-3" />
-                          Every {t.recurrence_frequency} {t.recurrence_unit}
+                          Every {t.recurrence_frequency} {t.recurrence_unit}{t.recurrence_count ? ` × ${t.recurrence_count}` : ""}
                         </span>
                       )}
                       {t.due_amount && t.due_unit ? (

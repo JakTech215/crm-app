@@ -47,6 +47,9 @@ interface GanttTask {
   project_ids: string[];
   project_names: string[];
   assignee_ids: string[];
+  assignee_names: string[];
+  contact_id: string | null;
+  contact_name: string | null;
 }
 
 interface Dependency {
@@ -157,7 +160,7 @@ export default function GanttPage() {
       await Promise.all([
         supabase
           .from("tasks")
-          .select("id, title, status, priority, start_date, due_date, is_milestone")
+          .select("id, title, status, priority, start_date, due_date, is_milestone, contact_id, contacts:contact_id(id, first_name, last_name)")
           .order("start_date"),
         supabase.from("task_dependencies").select("task_id, depends_on_task_id, dependency_type, lag_days"),
         supabase.from("projects").select("id, name").order("name"),
@@ -185,22 +188,31 @@ export default function GanttPage() {
       projMap[p.id] = p.name;
     });
 
+    const empNameMap: Record<string, string> = {};
+    (empData || []).forEach((e: Employee) => {
+      empNameMap[e.id] = `${e.first_name} ${e.last_name}`;
+    });
+
     const enriched = (taskData || []).map(
-      (t: {
-        id: string;
-        title: string;
-        status: string;
-        priority: string;
-        start_date: string | null;
-        due_date: string | null;
-        is_milestone: boolean;
-      }) => {
-        const projectIds = taskProjectsMap[t.id] || [];
+      (t: Record<string, unknown>) => {
+        const id = t.id as string;
+        const contactObj = Array.isArray(t.contacts) ? t.contacts[0] : t.contacts;
+        const projectIds = taskProjectsMap[id] || [];
+        const aIds = taskAssigneesMap[id] || [];
         return {
-          ...t,
+          id,
+          title: t.title as string,
+          status: t.status as string,
+          priority: t.priority as string,
+          start_date: t.start_date as string | null,
+          due_date: t.due_date as string | null,
+          is_milestone: t.is_milestone as boolean,
           project_ids: projectIds,
           project_names: projectIds.map((pid) => projMap[pid]).filter(Boolean),
-          assignee_ids: taskAssigneesMap[t.id] || [],
+          assignee_ids: aIds,
+          assignee_names: aIds.map((eid) => empNameMap[eid]).filter(Boolean),
+          contact_id: (t.contact_id as string | null),
+          contact_name: contactObj ? `${(contactObj as { first_name: string; last_name: string | null }).first_name}${(contactObj as { last_name: string | null }).last_name ? ` ${(contactObj as { last_name: string | null }).last_name}` : ""}` : null,
         };
       }
     );
@@ -324,7 +336,7 @@ export default function GanttPage() {
   const todayX = dateToX(new Date().toISOString());
 
   // Group filtered tasks by project
-  const grouped: { project: string | null; tasks: GanttTask[] }[] = [];
+  const grouped: { project: string | null; projectId: string | null; tasks: GanttTask[] }[] = [];
   const projectGroups = new Map<string, GanttTask[]>();
   const unassigned: GanttTask[] = [];
 
@@ -340,16 +352,16 @@ export default function GanttPage() {
   }
   for (const p of projects) {
     if (projectGroups.has(p.name)) {
-      grouped.push({ project: p.name, tasks: projectGroups.get(p.name)! });
+      grouped.push({ project: p.name, projectId: p.id, tasks: projectGroups.get(p.name)! });
     }
   }
   if (unassigned.length > 0) {
-    grouped.push({ project: null, tasks: unassigned });
+    grouped.push({ project: null, projectId: null, tasks: unassigned });
   }
 
-  const allRows: { type: "header" | "task"; label: string; task?: GanttTask; rowKey: string }[] = [];
+  const allRows: { type: "header" | "task"; label: string; task?: GanttTask; projectId?: string | null; rowKey: string }[] = [];
   for (const g of grouped) {
-    allRows.push({ type: "header", label: g.project || "No Project", rowKey: `hdr-${g.project || "none"}` });
+    allRows.push({ type: "header", label: g.project || "No Project", projectId: g.projectId, rowKey: `hdr-${g.project || "none"}` });
     for (const t of g.tasks) {
       allRows.push({ type: "task", label: t.title, task: t, rowKey: `task-${t.id}-${g.project || "none"}` });
     }
@@ -703,16 +715,88 @@ export default function GanttPage() {
                       }}
                     >
                       {row.type === "header" ? (
-                        <span className="truncate">{row.label}</span>
-                      ) : (
-                        <div className="flex items-center gap-2 truncate">
-                          <div
-                            className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                              STATUS_COLORS[row.task?.status || ""] || "bg-gray-400"
-                            }`}
-                          />
+                        row.projectId ? (
+                          <span
+                            className="truncate text-blue-600 hover:underline cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/dashboard/projects/${row.projectId}`);
+                            }}
+                          >
+                            {row.label}
+                          </span>
+                        ) : (
                           <span className="truncate">{row.label}</span>
-                        </div>
+                        )
+                      ) : (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <div
+                              className="flex items-center gap-2 truncate w-full"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div
+                                className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                                  STATUS_COLORS[row.task?.status || ""] || "bg-gray-400"
+                                }`}
+                              />
+                              <span className="truncate">{row.label}</span>
+                            </div>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-56 p-3" align="start" side="right">
+                            <div className="space-y-2">
+                              <div
+                                className="font-medium text-sm text-blue-600 hover:underline cursor-pointer"
+                                onClick={() => router.push(`/dashboard/tasks/${row.task!.id}`)}
+                              >
+                                {row.task!.title}
+                              </div>
+                              <div className="text-xs space-y-1.5">
+                                <div>
+                                  <span className="text-muted-foreground">Contact: </span>
+                                  {row.task!.contact_name ? (
+                                    <span
+                                      className="text-blue-600 hover:underline cursor-pointer"
+                                      onClick={() => router.push(`/dashboard/contacts/${row.task!.contact_id}`)}
+                                    >
+                                      {row.task!.contact_name}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Projects: </span>
+                                  {row.task!.project_names.length > 0 ? (
+                                    <span>
+                                      {row.task!.project_ids.map((pid, i) => (
+                                        <span key={pid}>
+                                          {i > 0 && ", "}
+                                          <span
+                                            className="text-blue-600 hover:underline cursor-pointer"
+                                            onClick={() => router.push(`/dashboard/projects/${pid}`)}
+                                          >
+                                            {row.task!.project_names[i]}
+                                          </span>
+                                        </span>
+                                      ))}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Assignees: </span>
+                                  {row.task!.assignee_names.length > 0 ? (
+                                    <span>{row.task!.assignee_names.join(", ")}</span>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
                       )}
                     </div>
                   ))}
@@ -787,7 +871,7 @@ export default function GanttPage() {
                             top: i * ROW_HEIGHT + 10,
                             height: ROW_HEIGHT - 20,
                           }}
-                          title={`${row.task.title} (${row.task.status})`}
+                          title={`${row.task.title} (${row.task.status})${row.task.contact_name ? `\nContact: ${row.task.contact_name}` : ""}${row.task.assignee_names.length > 0 ? `\nAssigned: ${row.task.assignee_names.join(", ")}` : ""}${row.task.project_names.length > 0 ? `\nProjects: ${row.task.project_names.join(", ")}` : ""}`}
                           onClick={() => router.push(`/dashboard/tasks/${row.task!.id}`)}
                         />
                       );

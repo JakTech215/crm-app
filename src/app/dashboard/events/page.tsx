@@ -563,6 +563,9 @@ export default function EventsPage() {
                       }}
                       required
                     />
+                    {form.event_date && (
+                      <span className="text-xs text-muted-foreground">{fmtDate(form.event_date)}</span>
+                    )}
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="event_time">

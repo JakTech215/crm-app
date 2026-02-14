@@ -43,5 +43,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Redirect /auth/register to /auth/login (signup disabled)
+  if (request.nextUrl.pathname === "/auth/register") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/login";
+    return NextResponse.redirect(url);
+  }
+
   return supabaseResponse;
 }

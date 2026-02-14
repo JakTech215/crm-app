@@ -652,6 +652,9 @@ export default function EventDetailPage() {
                       setEditForm({ ...editForm, ...updates });
                     }}
                   />
+                  {editForm.event_date && (
+                    <span className="text-xs text-muted-foreground">{formatDate(editForm.event_date)}</span>
+                  )}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit_event_time">Event Time</Label>

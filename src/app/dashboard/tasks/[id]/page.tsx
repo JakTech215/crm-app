@@ -57,7 +57,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, Bell, X, FolderKanban, RefreshCw, Loader2, Check, StickyNote } from "lucide-react";
-import { todayCST, formatDate, formatDateShort, formatDateTime, nowUTC, isBeforeToday, addDaysToDate } from "@/lib/dates";
+import { todayCST, formatDate, formatDateTime, nowUTC, isBeforeToday, addDaysToDate } from "@/lib/dates";
 
 interface Employee {
   id: string;
@@ -1052,6 +1052,9 @@ export default function TaskDetailPage() {
                       }));
                     }}
                   />
+                  {editForm.start_date && (
+                    <span className="text-xs text-muted-foreground">{formatDate(editForm.start_date)}</span>
+                  )}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit_due_date">Due Date</Label>
@@ -1063,6 +1066,9 @@ export default function TaskDetailPage() {
                       setEditForm({ ...editForm, due_date: e.target.value })
                     }
                   />
+                  {editForm.due_date && (
+                    <span className="text-xs text-muted-foreground">{formatDate(editForm.due_date)}</span>
+                  )}
                   <div className="flex flex-wrap gap-1">
                     {[
                       { label: "4h", days: 0 },
@@ -1798,7 +1804,7 @@ export default function TaskDetailPage() {
                       <div className="flex items-center gap-2">
                         {st.due_date && (
                           <span className="text-xs text-muted-foreground">
-                            {formatDateShort(st.due_date)}
+                            {formatDate(st.due_date)}
                           </span>
                         )}
                         <Badge variant="secondary" className={`capitalize text-xs ${statusColors[st.status] || ""}`}>

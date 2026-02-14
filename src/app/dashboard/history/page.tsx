@@ -395,6 +395,9 @@ export default function TaskHistoryPage() {
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
               />
+              {dateFrom && (
+                <span className="text-xs text-muted-foreground">{formatDate(dateFrom)}</span>
+              )}
             </div>
 
             <div className="grid gap-2">
@@ -404,6 +407,9 @@ export default function TaskHistoryPage() {
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
               />
+              {dateTo && (
+                <span className="text-xs text-muted-foreground">{formatDate(dateTo)}</span>
+              )}
             </div>
           </div>
 

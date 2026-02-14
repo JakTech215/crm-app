@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search } from "lucide-react";
-import { todayCST, formatDateShort } from "@/lib/dates";
+import { todayCST, formatDate } from "@/lib/dates";
 
 interface Contact {
   id: string;
@@ -343,6 +343,9 @@ export default function ProjectsPage() {
                         setForm({ ...form, start_date: e.target.value })
                       }
                     />
+                    {form.start_date && (
+                      <span className="text-xs text-muted-foreground">{formatDate(form.start_date)}</span>
+                    )}
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="due_date">Due Date</Label>
@@ -354,6 +357,9 @@ export default function ProjectsPage() {
                         setForm({ ...form, due_date: e.target.value })
                       }
                     />
+                    {form.due_date && (
+                      <span className="text-xs text-muted-foreground">{formatDate(form.due_date)}</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -474,7 +480,7 @@ export default function ProjectsPage() {
                               {t.title}
                               {t.due_date && (
                                 <span className="text-muted-foreground ml-1">
-                                  ({formatDateShort(t.due_date)})
+                                  ({formatDate(t.due_date)})
                                 </span>
                               )}
                             </div>
@@ -484,8 +490,8 @@ export default function ProjectsPage() {
                         <span className="text-muted-foreground text-xs">—</span>
                       )}
                     </TableCell>
-                    <TableCell>{project.start_date || "—"}</TableCell>
-                    <TableCell>{project.due_date || "—"}</TableCell>
+                    <TableCell>{project.start_date ? formatDate(project.start_date) : "—"}</TableCell>
+                    <TableCell>{project.due_date ? formatDate(project.due_date) : "—"}</TableCell>
                   </TableRow>
                 ))
               )}

@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { todayCST, formatDateShort, formatMonthYear, nowUTC, nowCST, futureDateCST, formatRelativeTime as fmtRelTime, daysFromToday } from "@/lib/dates";
+import { todayCST, formatDate, formatDateLong, formatTime, formatMonthYear, nowUTC, nowCST, futureDateCST, formatRelativeTime as fmtRelTime, daysFromToday } from "@/lib/dates";
 import { getFederalHolidays, buildHolidayMap } from "@/lib/holidays";
 import {
   Card,
@@ -36,6 +36,12 @@ import {
   Calendar,
   StickyNote,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 
 interface StatCard {
   title: string;
@@ -108,6 +114,21 @@ interface CalendarDayData {
   tasks: CalendarTask[];
 }
 
+interface CalendarEvent {
+  id: string;
+  title: string;
+  event_type: string;
+  event_time: string | null;
+}
+
+const eventTypeEmoji: Record<string, string> = {
+  meeting: "📅",
+  deadline: "🎯",
+  milestone: "⭐",
+  appointment: "📋",
+  other: "📌",
+};
+
 const priorityColors: Record<string, string> = {
   low: "bg-slate-100 text-slate-800",
   medium: "bg-blue-100 text-blue-800",
@@ -159,6 +180,7 @@ export default function DashboardPage() {
   const [dashEvents, setDashEvents] = useState<DashboardEvent[]>([]);
   const [dashNotes, setDashNotes] = useState<DashboardNote[]>([]);
   const [calendarTaskMap, setCalendarTaskMap] = useState<Record<string, CalendarDayData>>({});
+  const [calendarEventMap, setCalendarEventMap] = useState<Record<string, CalendarEvent[]>>({});
   const [holidayMap, setHolidayMap] = useState<Record<string, string[]>>({});
   const [calendarBaseDate, setCalendarBaseDate] = useState(() => {
     const now = nowCST();
@@ -304,6 +326,27 @@ export default function DashboardPage() {
         console.error("Failed to fetch calendar tasks:", e);
       }
 
+      // Calendar events
+      try {
+        const { data: calEvents } = await supabase
+          .from("events")
+          .select("id, title, event_date, event_type, event_time")
+          .gte("event_date", calendarRange.start)
+          .lte("event_date", calendarRange.end)
+          .order("event_time", { ascending: true });
+
+        const evtMap: Record<string, CalendarEvent[]> = {};
+        if (calEvents) {
+          for (const e of calEvents as { id: string; title: string; event_date: string; event_type: string; event_time: string | null }[]) {
+            if (!evtMap[e.event_date]) evtMap[e.event_date] = [];
+            evtMap[e.event_date].push({ id: e.id, title: e.title, event_type: e.event_type, event_time: e.event_time });
+          }
+        }
+        setCalendarEventMap(evtMap);
+      } catch (e) {
+        console.error("Failed to fetch calendar events:", e);
+      }
+
       // Upcoming tasks (next 14 days)
       try {
         const endDate = futureDateCST(14);
@@ -433,38 +476,119 @@ export default function DashboardPage() {
 
             const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
             const dayData = calendarTaskMap[dateKey];
-            const taskCount = dayData?.tasks.length || 0;
+            const dayTasks = dayData?.tasks || [];
+            const taskCount = dayTasks.length;
+            const dayEvents = calendarEventMap[dateKey] || [];
+            const dayHols = holidayMap[dateKey] || [];
             const isToday = dateKey === todayStr;
             const isSelected = dateKey === selectedCalendarDate;
             const isOverdue = dateKey < todayStr && taskCount > 0;
-            const hasMilestone = dayData?.tasks.some((t) => t.is_milestone) || false;
-            const dayHolidays = holidayMap[dateKey];
-            const isHoliday = !!dayHolidays;
+            const hasMilestone = dayTasks.some((t) => t.is_milestone);
+            const isHoliday = dayHols.length > 0;
+            const totalItems = taskCount + dayEvents.length + dayHols.length;
 
             return (
-              <div
-                key={dateKey}
-                className={`h-10 flex flex-col items-center justify-start pt-0.5 cursor-pointer rounded-md transition-colors text-xs
-                  ${isToday ? "ring-2 ring-blue-500 ring-inset" : ""}
-                  ${isSelected ? "bg-blue-100" : isHoliday ? "bg-emerald-50" : isOverdue ? "bg-red-50" : "hover:bg-muted/50"}
-                `}
-                onClick={() => setSelectedCalendarDate(dateKey === selectedCalendarDate ? null : dateKey)}
-                title={isHoliday ? dayHolidays.join(", ") : undefined}
-              >
-                <span className={`text-xs leading-none ${isToday ? "font-bold text-blue-600" : isHoliday ? "font-semibold text-emerald-700" : ""}`}>{day}</span>
-                {(taskCount > 0 || isHoliday) && (
-                  <div className="flex items-center gap-0.5 mt-0.5">
-                    {isHoliday && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
-                    {hasMilestone && <Star className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500" />}
-                    {dayData?.tasks.slice(0, hasMilestone ? 2 : 3).map((t, ti) => (
-                      <div key={ti} className={`w-1.5 h-1.5 rounded-full ${priorityDotColors[t.priority] || "bg-gray-400"}`} />
-                    ))}
-                    {taskCount > (hasMilestone ? 2 : 3) && (
-                      <span className="text-[8px] text-muted-foreground">+{taskCount - (hasMilestone ? 2 : 3)}</span>
+              <Tooltip key={dateKey}>
+                <TooltipTrigger asChild>
+                  <div
+                    className={`h-10 flex flex-col items-center justify-start pt-0.5 cursor-pointer rounded-md transition-colors text-xs
+                      ${isToday ? "ring-2 ring-blue-500 ring-inset" : ""}
+                      ${isSelected ? "bg-blue-100" : isHoliday ? "bg-emerald-50" : isOverdue ? "bg-red-50" : "hover:bg-muted/50"}
+                    `}
+                    onClick={() => setSelectedCalendarDate(dateKey === selectedCalendarDate ? null : dateKey)}
+                  >
+                    <span className={`text-xs leading-none ${isToday ? "font-bold text-blue-600" : isHoliday ? "font-semibold text-emerald-700" : ""}`}>{day}</span>
+                    {(taskCount > 0 || isHoliday || dayEvents.length > 0) && (
+                      <div className="flex items-center gap-0.5 mt-0.5">
+                        {isHoliday && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                        {hasMilestone && <Star className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500" />}
+                        {dayTasks.slice(0, hasMilestone ? 2 : 3).map((t, ti) => (
+                          <div key={ti} className={`w-1.5 h-1.5 rounded-full ${priorityDotColors[t.priority] || "bg-gray-400"}`} />
+                        ))}
+                        {taskCount > (hasMilestone ? 2 : 3) && (
+                          <span className="text-[8px] text-muted-foreground">+{taskCount - (hasMilestone ? 2 : 3)}</span>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
+                </TooltipTrigger>
+                <TooltipContent
+                  className="max-w-[300px] p-0 bg-popover text-popover-foreground border shadow-lg"
+                  sideOffset={8}
+                  side="bottom"
+                  align="center"
+                >
+                  <div className="px-3 py-1.5 border-b bg-muted/30">
+                    <p className="font-semibold text-xs">{formatDateLong(dateKey)}</p>
+                  </div>
+                  <div className="px-3 py-2 space-y-2">
+                    {totalItems === 0 ? (
+                      <p className="text-xs text-muted-foreground">No events scheduled</p>
+                    ) : totalItems > 10 ? (
+                      <div className="text-xs text-muted-foreground">
+                        {taskCount > 0 && <span>{taskCount} task{taskCount !== 1 ? "s" : ""}</span>}
+                        {taskCount > 0 && dayEvents.length > 0 && ", "}
+                        {dayEvents.length > 0 && <span>{dayEvents.length} event{dayEvents.length !== 1 ? "s" : ""}</span>}
+                        {(taskCount > 0 || dayEvents.length > 0) && dayHols.length > 0 && ", "}
+                        {dayHols.length > 0 && <span>{dayHols.length} holiday{dayHols.length !== 1 ? "s" : ""}</span>}
+                        <p className="mt-1">Click to view all</p>
+                      </div>
+                    ) : (
+                      <>
+                        {dayTasks.length > 0 && (
+                          <div>
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
+                              Tasks ({dayTasks.length})
+                            </p>
+                            {dayTasks.slice(0, 4).map((t) => (
+                              <div key={t.id} className="flex items-center gap-1.5 text-xs py-0.5">
+                                <div className={`w-2 h-2 rounded-full shrink-0 ${priorityDotColors[t.priority] || "bg-gray-400"}`} />
+                                <span className="truncate">{t.title}</span>
+                                <span className="text-muted-foreground shrink-0 capitalize">({t.priority})</span>
+                              </div>
+                            ))}
+                            {dayTasks.length > 4 && (
+                              <p className="text-[10px] text-muted-foreground pl-3.5">+{dayTasks.length - 4} more</p>
+                            )}
+                          </div>
+                        )}
+                        {dayEvents.length > 0 && (
+                          <div>
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
+                              Events ({dayEvents.length})
+                            </p>
+                            {dayEvents.slice(0, 4).map((ev) => (
+                              <div key={ev.id} className="flex items-center gap-1.5 text-xs py-0.5">
+                                <span className="shrink-0">{eventTypeEmoji[ev.event_type] || "📌"}</span>
+                                <span className="truncate">{ev.title}</span>
+                                {ev.event_time && (
+                                  <span className="text-muted-foreground shrink-0">— {formatTime(ev.event_time)}</span>
+                                )}
+                              </div>
+                            ))}
+                            {dayEvents.length > 4 && (
+                              <p className="text-[10px] text-muted-foreground pl-3.5">+{dayEvents.length - 4} more</p>
+                            )}
+                          </div>
+                        )}
+                        {dayHols.length > 0 && (
+                          <div>
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
+                              Holidays ({dayHols.length})
+                            </p>
+                            {dayHols.map((name, hi) => (
+                              <div key={hi} className="flex items-center gap-1.5 text-xs py-0.5">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                                <span>{name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
             );
           })}
         </div>
@@ -517,7 +641,7 @@ export default function DashboardPage() {
             </Badge>
           )}
           <span className="text-xs text-muted-foreground">
-            {formatDateShort(task.due_date)}
+            {formatDate(task.due_date)}
           </span>
           {showOverdue && (
             <Button
@@ -666,9 +790,11 @@ export default function DashboardPage() {
           <CardDescription>Task schedule across 3 months</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-6">
-            {months.map((m) => renderMonth(m.year, m.month))}
-          </div>
+          <TooltipProvider delayDuration={0}>
+            <div className="grid grid-cols-3 gap-6">
+              {months.map((m) => renderMonth(m.year, m.month))}
+            </div>
+          </TooltipProvider>
 
           {/* Legend */}
           <div className="flex items-center gap-4 mt-4 pt-3 border-t text-xs text-muted-foreground">
@@ -686,7 +812,7 @@ export default function DashboardPage() {
             <div className="mt-4 pt-3 border-t">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-semibold">
-                  Tasks on {formatDateShort(selectedCalendarDate)}
+                  Tasks on {formatDate(selectedCalendarDate)}
                   {selectedDayTasks.length > 0 && ` (${selectedDayTasks.length})`}
                 </h4>
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedCalendarDate(null)}>
@@ -756,7 +882,7 @@ export default function DashboardPage() {
                       </Badge>
                       <span className="text-sm font-medium">{evt.title}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground">{formatDateShort(evt.event_date)}</span>
+                    <span className="text-xs text-muted-foreground">{formatDate(evt.event_date)}</span>
                   </div>
                 ))}
               </div>

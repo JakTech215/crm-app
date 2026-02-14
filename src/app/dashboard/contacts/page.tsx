@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Mail, MessageSquare } from "lucide-react";
-import { todayCST, formatDateShort } from "@/lib/dates";
+import { todayCST, formatDate } from "@/lib/dates";
 
 interface Contact {
   id: string;
@@ -409,7 +409,7 @@ export default function ContactsPage() {
                               {t.title}
                               {t.due_date && (
                                 <span className="text-muted-foreground ml-1">
-                                  ({formatDateShort(t.due_date)})
+                                  ({formatDate(t.due_date)})
                                 </span>
                               )}
                             </div>

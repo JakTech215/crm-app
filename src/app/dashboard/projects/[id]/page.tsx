@@ -758,6 +758,9 @@ export default function ProjectDetailPage() {
                     value={editForm.start_date}
                     onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })}
                   />
+                  {editForm.start_date && (
+                    <span className="text-xs text-muted-foreground">{formatDate(editForm.start_date)}</span>
+                  )}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit_due_date">Due Date</Label>
@@ -767,6 +770,9 @@ export default function ProjectDetailPage() {
                     value={editForm.due_date}
                     onChange={(e) => setEditForm({ ...editForm, due_date: e.target.value })}
                   />
+                  {editForm.due_date && (
+                    <span className="text-xs text-muted-foreground">{formatDate(editForm.due_date)}</span>
+                  )}
                 </div>
               </div>
             </div>

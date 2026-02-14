@@ -33,8 +33,27 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Pencil, Trash2, Mail, MessageSquare, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
-import { nowCST, formatDateMedium } from "@/lib/dates";
+import { Plus, Pencil, Trash2, Mail, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Shield, UserPlus } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { nowCST, formatDate } from "@/lib/dates";
 
 // ---------- Types ----------
 
@@ -877,7 +896,7 @@ function TaskTemplatesSection() {
                                     else if (unit === "months") d.setMonth(d.getMonth() + offset);
                                   }
                                   const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-                                  dates.push(formatDateMedium(dateStr));
+                                  dates.push(formatDate(dateStr));
                                 }
                                 return dates.map((date, i) => (
                                   <p key={i} className="text-xs text-muted-foreground pl-2">{i + 1}. {date}</p>
@@ -1209,6 +1228,272 @@ function NotificationsSection() {
 }
 
 // ================================================================
+// User Management Section (Admin Only)
+// ================================================================
+
+interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+  created_at: string;
+}
+
+function UserManagementSection() {
+  const supabase = createClient();
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checkingRole, setCheckingRole] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [form, setForm] = useState({ email: "", full_name: "", role: "user" });
+
+  const checkAdmin = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setCheckingRole(false); return; }
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    setIsAdmin(profile?.role === "admin");
+    setCheckingRole(false);
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch("/api/admin/users");
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data);
+      }
+    } catch {
+      // Non-admin will get 403
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    checkAdmin();
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) fetchUsers();
+  }, [isAdmin]);
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to invite user");
+        setSaving(false);
+        return;
+      }
+      setSuccess(`Invitation sent to ${form.email}`);
+      setForm({ email: "", full_name: "", role: "user" });
+      setOpen(false);
+      fetchUsers();
+    } catch {
+      setError("Failed to invite user");
+    }
+    setSaving(false);
+  };
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    const res = await fetch("/api/admin/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: userId, role: newRole }),
+    });
+    if (res.ok) fetchUsers();
+  };
+
+  const handleDelete = async (userId: string) => {
+    const res = await fetch("/api/admin/users", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: userId }),
+    });
+    if (res.ok) fetchUsers();
+  };
+
+  if (checkingRole) {
+    return <Card><CardContent className="py-8 text-center text-muted-foreground">Checking permissions...</CardContent></Card>;
+  }
+
+  if (!isAdmin) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Access Denied</h3>
+          <p className="text-muted-foreground">
+            Only administrators can manage users. Contact your administrator for access.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle>User Management</CardTitle>
+          <CardDescription>Invite and manage user accounts. Users receive an email to set their password.</CardDescription>
+          {error && <div className="rounded-md bg-destructive/10 p-2 text-sm text-destructive mt-2">{error}</div>}
+          {success && <div className="rounded-md bg-green-50 p-2 text-sm text-green-700 mt-2">{success}</div>}
+        </div>
+        <Dialog open={open} onOpenChange={(o) => { if (!o) { setForm({ email: "", full_name: "", role: "user" }); setError(null); } setOpen(o); }}>
+          <DialogTrigger asChild>
+            <Button>
+              <UserPlus className="mr-2 h-4 w-4" />
+              Invite User
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <form onSubmit={handleInvite}>
+              <DialogHeader>
+                <DialogTitle>Invite User</DialogTitle>
+                <DialogDescription>
+                  Send an invitation email. The user will set their own password.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="invite-email">Email *</Label>
+                  <Input
+                    id="invite-email"
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    required
+                    placeholder="user@example.com"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="invite-name">Full Name</Label>
+                  <Input
+                    id="invite-name"
+                    value={form.full_name}
+                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                    placeholder="John Doe"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="invite-role">Role</Label>
+                  <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="viewer">Viewer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Admin: Full access including user management. User: Standard access. Viewer: Read-only.
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={saving}>
+                  {saving ? "Sending..." : "Send Invitation"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="text-center py-8 text-muted-foreground">Loading users...</div>
+        ) : users.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No users found. Click &quot;Invite User&quot; to add the first user.
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Invited</TableHead>
+                <TableHead className="w-16">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell className="font-medium">{u.email}</TableCell>
+                  <TableCell>{u.full_name || "\u2014"}</TableCell>
+                  <TableCell>
+                    <Select value={u.role} onValueChange={(v) => handleRoleChange(u.id, v)}>
+                      <SelectTrigger className="h-7 w-24 border-0 shadow-none capitalize">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="user">User</SelectItem>
+                        <SelectItem value="viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {formatDate(u.created_at)}
+                  </TableCell>
+                  <TableCell>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete User</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete {u.email} and revoke their access. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => handleDelete(u.id)}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ================================================================
 // Settings Page
 // ================================================================
 
@@ -1229,6 +1514,7 @@ export default function SettingsPage() {
           <TabsTrigger value="task-templates">Task Templates</TabsTrigger>
           <TabsTrigger value="task-types">Task Types</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="users">User Management</TabsTrigger>
         </TabsList>
         <TabsContent value="contact-statuses">
           <ContactStatusesSection />
@@ -1244,6 +1530,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="notifications">
           <NotificationsSection />
+        </TabsContent>
+        <TabsContent value="users">
+          <UserManagementSection />
         </TabsContent>
       </Tabs>
     </div>

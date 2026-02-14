@@ -999,6 +999,9 @@ export default function TasksPage() {
                           }
                         }}
                       />
+                      {form.start_date && (
+                        <span className="text-xs text-muted-foreground">{formatDate(form.start_date)}</span>
+                      )}
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="due_date">
@@ -1015,6 +1018,9 @@ export default function TasksPage() {
                           setForm({ ...form, due_date: e.target.value })
                         }
                       />
+                      {form.due_date && (
+                        <span className="text-xs text-muted-foreground">{formatDate(form.due_date)}</span>
+                      )}
                     </div>
                   </div>
 

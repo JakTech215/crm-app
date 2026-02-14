@@ -36,7 +36,7 @@ import {
   X,
   RefreshCw,
 } from "lucide-react";
-import { formatDateLong, nowCST } from "@/lib/dates";
+import { formatDate, formatDateLong, nowCST } from "@/lib/dates";
 import { getFederalHolidays, buildHolidayMap } from "@/lib/holidays";
 
 interface GanttTask {
@@ -528,13 +528,14 @@ export default function GanttPage() {
   };
 
   const formatHeader = (d: Date) => {
-    if (zoom === "day") return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const toStr = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    if (zoom === "day") return formatDate(toStr(d));
     if (zoom === "week") {
       const end = new Date(d);
       end.setDate(end.getDate() + 6);
-      return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${end.toLocaleDateString("en-US", { day: "numeric" })}`;
+      return `${formatDate(toStr(d))} - ${formatDate(toStr(end))}`;
     }
-    return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    return formatDate(toStr(d));
   };
 
   // Active filter badges
@@ -746,6 +747,9 @@ export default function GanttPage() {
                   value={filterDateFrom}
                   onChange={(e) => setFilterDateFrom(e.target.value)}
                 />
+                {filterDateFrom && (
+                  <span className="text-xs text-muted-foreground">{formatDate(filterDateFrom)}</span>
+                )}
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs">Date To</Label>
@@ -755,6 +759,9 @@ export default function GanttPage() {
                   value={filterDateTo}
                   onChange={(e) => setFilterDateTo(e.target.value)}
                 />
+                {filterDateTo && (
+                  <span className="text-xs text-muted-foreground">{formatDate(filterDateTo)}</span>
+                )}
               </div>
             </div>
 

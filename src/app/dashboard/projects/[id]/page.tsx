@@ -98,6 +98,11 @@ interface ProjectTask {
 const employeeName = (e: { first_name: string; last_name: string }) =>
   `${e.first_name} ${e.last_name}`;
 
+interface TaskProject {
+  id: string;
+  name: string;
+}
+
 interface StatusOption {
   id: string;
   name: string;
@@ -149,6 +154,7 @@ export default function ProjectDetailPage() {
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [projectStatuses, setProjectStatuses] = useState<StatusOption[]>(FALLBACK_STATUSES);
+  const [taskProjectMap, setTaskProjectMap] = useState<Record<string, TaskProject[]>>({});
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -248,6 +254,37 @@ export default function ProjectDetailPage() {
     }));
 
     setTasks(enriched);
+
+    // Fetch other project links for these tasks (excluding current project)
+    const { data: allPtLinks } = await supabase
+      .from("project_tasks")
+      .select("task_id, project_id")
+      .in("task_id", taskIds)
+      .neq("project_id", projectId);
+
+    if (allPtLinks && allPtLinks.length > 0) {
+      const otherProjectIds = [...new Set(allPtLinks.map((pt: { project_id: string }) => pt.project_id))];
+      const { data: projData } = await supabase
+        .from("projects")
+        .select("id, name")
+        .in("id", otherProjectIds);
+
+      const projNameMap: Record<string, string> = {};
+      if (projData) for (const p of projData) projNameMap[p.id] = p.name;
+
+      const tpMap: Record<string, TaskProject[]> = {};
+      for (const pt of allPtLinks as { task_id: string; project_id: string }[]) {
+        const name = projNameMap[pt.project_id];
+        if (name) {
+          if (!tpMap[pt.task_id]) tpMap[pt.task_id] = [];
+          tpMap[pt.task_id].push({ id: pt.project_id, name });
+        }
+      }
+      setTaskProjectMap(tpMap);
+    } else {
+      setTaskProjectMap({});
+    }
+
     setTasksLoading(false);
   };
 
@@ -792,6 +829,7 @@ export default function ProjectDetailPage() {
               <TableRow>
                 <TableHead>Task</TableHead>
                 <TableHead>Contact</TableHead>
+                <TableHead>Other Projects</TableHead>
                 <TableHead>Assignees</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Priority</TableHead>
@@ -803,13 +841,13 @@ export default function ProjectDetailPage() {
             <TableBody>
               {tasksLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
+                  <TableCell colSpan={9} className="text-center py-8">
                     Loading...
                   </TableCell>
                 </TableRow>
               ) : filteredTasks.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     {tasks.length === 0
                       ? "No tasks linked. Click \"Link Task\" to get started."
                       : "No tasks match the current filters."}
@@ -836,7 +874,7 @@ export default function ProjectDetailPage() {
                       <TableCell>
                         {task.contacts ? (
                           <span
-                            className="cursor-pointer hover:underline"
+                            className="text-blue-600 hover:underline cursor-pointer"
                             onClick={() => router.push(`/dashboard/contacts/${task.contact_id}`)}
                           >
                             {contactName(task.contacts)}
@@ -844,6 +882,27 @@ export default function ProjectDetailPage() {
                         ) : (
                           <span className="text-muted-foreground">&mdash;</span>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const otherProjects = taskProjectMap[task.id];
+                          if (!otherProjects || otherProjects.length === 0) {
+                            return <span className="text-muted-foreground">&mdash;</span>;
+                          }
+                          return (
+                            <div className="flex flex-wrap gap-1">
+                              {otherProjects.map((p) => (
+                                <span
+                                  key={p.id}
+                                  className="text-blue-600 hover:underline cursor-pointer text-sm"
+                                  onClick={() => router.push(`/dashboard/projects/${p.id}`)}
+                                >
+                                  {p.name}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         {task.task_assignees?.length > 0 ? (

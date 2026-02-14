@@ -103,6 +103,11 @@ interface TaskAssigneeInfo {
   employees: { first_name: string; last_name: string };
 }
 
+interface TaskProject {
+  id: string;
+  name: string;
+}
+
 interface ContactTask {
   id: string;
   title: string;
@@ -111,7 +116,7 @@ interface ContactTask {
   start_date: string | null;
   due_date: string | null;
   task_assignees: TaskAssigneeInfo[];
-  projectName: string | null;
+  projects: TaskProject[];
 }
 
 const employeeName = (e: { first_name: string; last_name: string }) =>
@@ -272,10 +277,14 @@ export default function ContactDetailPage() {
         for (const p of projects) projectNameMap[p.id] = p.name;
       }
     }
-    const taskProjectMap: Record<string, string> = {};
+    const taskProjectMap: Record<string, TaskProject[]> = {};
     if (projectLinks) {
       for (const pl of projectLinks as { task_id: string; project_id: string }[]) {
-        if (projectNameMap[pl.project_id]) taskProjectMap[pl.task_id] = projectNameMap[pl.project_id];
+        const name = projectNameMap[pl.project_id];
+        if (name) {
+          if (!taskProjectMap[pl.task_id]) taskProjectMap[pl.task_id] = [];
+          taskProjectMap[pl.task_id].push({ id: pl.project_id, name });
+        }
       }
     }
 
@@ -287,7 +296,7 @@ export default function ContactDetailPage() {
       start_date: t.start_date as string | null,
       due_date: t.due_date as string | null,
       task_assignees: assigneeMap[t.id as string] || [],
-      projectName: taskProjectMap[t.id as string] || null,
+      projects: taskProjectMap[t.id as string] || [],
     }));
 
     setContactTasks(enriched);
@@ -1060,7 +1069,7 @@ export default function ContactDetailPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Task</TableHead>
-                <TableHead>Project</TableHead>
+                <TableHead>Projects</TableHead>
                 <TableHead>Assignees</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Priority</TableHead>
@@ -1098,7 +1107,21 @@ export default function ContactDetailPage() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        {task.projectName || <span className="text-muted-foreground">&mdash;</span>}
+                        {task.projects.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {task.projects.map((p) => (
+                              <span
+                                key={p.id}
+                                className="text-blue-600 hover:underline cursor-pointer text-sm"
+                                onClick={() => router.push(`/dashboard/projects/${p.id}`)}
+                              >
+                                {p.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">&mdash;</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {task.task_assignees?.length > 0 ? (

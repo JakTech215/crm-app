@@ -56,7 +56,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, Bell, X, FolderKanban, RefreshCw, Loader2, Check, StickyNote } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, X, FolderKanban, RefreshCw, Loader2, Check, StickyNote } from "lucide-react";
 import { todayCST, formatDate, formatDateTime, nowUTC, isBeforeToday, addDaysToDate } from "@/lib/dates";
 
 interface Employee {
@@ -179,7 +179,6 @@ export default function TaskDetailPage() {
     start_date: "",
     due_date: "",
     is_milestone: false,
-    send_notification: false,
     task_type_id: "",
     is_recurring: false,
     recurrence_frequency: "",
@@ -508,7 +507,6 @@ export default function TaskDetailPage() {
       start_date: task.start_date || "",
       due_date: task.due_date || "",
       is_milestone: task.is_milestone,
-      send_notification: false,
       task_type_id: task.task_type_id || "",
       is_recurring: task.is_recurring || false,
       recurrence_frequency: task.recurrence_frequency?.toString() || "",
@@ -1197,18 +1195,6 @@ export default function TaskDetailPage() {
                   </div>
                 )}
               </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={editForm.send_notification}
-                  onCheckedChange={(checked) =>
-                    setEditForm({ ...editForm, send_notification: !!checked })
-                  }
-                />
-                <div className="flex items-center gap-1.5">
-                  <Bell className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Send notification</span>
-                </div>
-              </label>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={savingEdit}>

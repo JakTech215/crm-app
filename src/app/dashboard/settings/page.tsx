@@ -33,7 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Pencil, Trash2, Mail, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Shield, UserPlus, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, RefreshCw, ChevronDown, ChevronUp, Shield, UserPlus, Download } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,8 +72,6 @@ interface TaskTemplate {
   default_due_days: number | null;
   due_amount: number | null;
   due_unit: string | null;
-  send_email_reminder: boolean;
-  send_sms_reminder: boolean;
   category: string | null;
   task_type_id: string | null;
   is_recurring: boolean;
@@ -554,8 +552,6 @@ function TaskTemplatesSection() {
     default_priority: "medium",
     due_amount: "",
     due_unit: "days",
-    send_email_reminder: false,
-    send_sms_reminder: false,
     task_type_id: "",
     is_recurring: false,
     recurrence_frequency: "",
@@ -599,7 +595,7 @@ function TaskTemplatesSection() {
   useEffect(() => { fetchData(); }, []);
 
   const resetForm = () => {
-    setForm({ name: "", description: "", default_priority: "medium", due_amount: "", due_unit: "days", send_email_reminder: false, send_sms_reminder: false, task_type_id: "", is_recurring: false, recurrence_frequency: "", recurrence_unit: "days", recurrence_count: "" });
+    setForm({ name: "", description: "", default_priority: "medium", due_amount: "", due_unit: "days", task_type_id: "", is_recurring: false, recurrence_frequency: "", recurrence_unit: "days", recurrence_count: "" });
     setFormSteps([]);
     setRecurringExpanded(false);
     setChainExpanded(false);
@@ -619,8 +615,6 @@ function TaskTemplatesSection() {
       default_due_days: dueAmount && form.due_unit === "days" ? dueAmount : null,
       due_amount: dueAmount,
       due_unit: dueAmount ? form.due_unit : null,
-      send_email_reminder: form.send_email_reminder,
-      send_sms_reminder: form.send_sms_reminder,
       task_type_id: form.task_type_id || null,
       is_recurring: form.is_recurring,
       recurrence_frequency: form.is_recurring && form.recurrence_frequency ? parseInt(form.recurrence_frequency) : null,
@@ -669,8 +663,6 @@ function TaskTemplatesSection() {
       default_priority: t.default_priority,
       due_amount: t.due_amount?.toString() || t.default_due_days?.toString() || "",
       due_unit: t.due_unit || "days",
-      send_email_reminder: t.send_email_reminder || false,
-      send_sms_reminder: t.send_sms_reminder || false,
       task_type_id: t.task_type_id || "",
       is_recurring: t.is_recurring || false,
       recurrence_frequency: t.recurrence_frequency?.toString() || "",
@@ -1040,28 +1032,6 @@ function TaskTemplatesSection() {
                   )}
                 </div>
 
-                <Separator />
-
-                {/* Reminders */}
-                <div className="space-y-2">
-                  <Label>Reminders</Label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={form.send_email_reminder}
-                      onCheckedChange={(checked) => setForm({ ...form, send_email_reminder: !!checked })}
-                    />
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">Send email reminder</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={form.send_sms_reminder}
-                      onCheckedChange={(checked) => setForm({ ...form, send_sms_reminder: !!checked })}
-                    />
-                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">Send SMS reminder</span>
-                  </label>
-                </div>
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={saving}>{saving ? "Saving..." : editing ? "Update" : "Create"}</Button>
@@ -1099,12 +1069,6 @@ function TaskTemplatesSection() {
                       ) : t.default_due_days ? (
                         <span className="text-xs text-muted-foreground">{t.default_due_days} days</span>
                       ) : null}
-                      {t.send_email_reminder && (
-                        <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                      )}
-                      {t.send_sms_reminder && (
-                        <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                      )}
                       {(workflowSteps[t.id]?.length || 0) > 0 && (
                         <Badge variant="outline" className="text-xs">{workflowSteps[t.id].length} follow-up{workflowSteps[t.id].length !== 1 ? "s" : ""}</Badge>
                       )}

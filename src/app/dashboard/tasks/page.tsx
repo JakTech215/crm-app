@@ -57,7 +57,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Users, Diamond, Search, Bell, RefreshCw, Loader2, Check, Trash2 } from "lucide-react";
+import { Plus, Users, Diamond, Search, RefreshCw, Loader2, Check, Trash2 } from "lucide-react";
 import { todayCST, formatDate, formatDateLong, formatRelativeTime as formatRelativeTimeUtil, nowUTC, isBeforeToday, addDaysToDate } from "@/lib/dates";
 
 const COLOR_MAP: Record<string, string> = {
@@ -202,7 +202,6 @@ export default function TasksPage() {
     start_date: "",
     due_date: "",
     is_milestone: false,
-    send_notification: false,
   });
 
   const fetchTasks = async () => {
@@ -571,7 +570,6 @@ export default function TasksPage() {
       start_date: "",
       due_date: "",
       is_milestone: false,
-      send_notification: false,
     });
     setSelectedTemplateId("");
     setSelectedEmployees([]);
@@ -1286,18 +1284,6 @@ export default function TasksPage() {
                     <span className="text-sm font-medium">
                       Mark as milestone
                     </span>
-                  </div>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={form.send_notification}
-                    onCheckedChange={(checked) =>
-                      setForm({ ...form, send_notification: !!checked })
-                    }
-                  />
-                  <div className="flex items-center gap-1.5">
-                    <Bell className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Send notification</span>
                   </div>
                 </label>
               </div>

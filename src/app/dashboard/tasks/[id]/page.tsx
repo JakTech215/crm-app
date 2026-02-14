@@ -1279,7 +1279,7 @@ export default function TaskDetailPage() {
                 <p className="text-sm font-medium text-muted-foreground">
                   Start Date
                 </p>
-                <p className="mt-1">{task.start_date || "Not set"}</p>
+                <p className="mt-1">{task.start_date ? formatDate(task.start_date) : "Not set"}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">

@@ -809,11 +809,11 @@ export default function ProjectDetailPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Start Date</p>
-              <p className="mt-1">{project.start_date || "Not set"}</p>
+              <p className="mt-1">{project.start_date ? formatDate(project.start_date) : "Not set"}</p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Due Date</p>
-              <p className="mt-1">{project.due_date || "Not set"}</p>
+              <p className="mt-1">{project.due_date ? formatDate(project.due_date) : "Not set"}</p>
             </div>
             <div>
               <p className="text-sm font-medium text-muted-foreground">Created</p>

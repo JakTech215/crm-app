@@ -28,6 +28,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { RefreshCw } from "lucide-react";
 
 interface Employee {
@@ -114,7 +119,10 @@ interface TaskType {
   color: string;
 }
 
-
+interface TaskProject {
+  id: string;
+  name: string;
+}
 
 export default function UpcomingTasksPage() {
   const supabase = createClient();
@@ -123,6 +131,7 @@ export default function UpcomingTasksPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
+  const [taskProjectMap, setTaskProjectMap] = useState<Record<string, TaskProject[]>>({});
 
   // Filters
   const [assigneeFilter, setAssigneeFilter] = useState("all");
@@ -171,6 +180,44 @@ export default function UpcomingTasksPage() {
     }));
 
     setTasks(tasksWithAssignees as Task[]);
+
+    // Fetch project links from project_tasks junction table
+    if (taskIds.length > 0) {
+      const { data: projectTasks } = await supabase
+        .from("project_tasks")
+        .select("task_id, project_id")
+        .in("task_id", taskIds);
+
+      if (projectTasks && projectTasks.length > 0) {
+        const projectIds = [
+          ...new Set(projectTasks.map((pt: { project_id: string }) => pt.project_id)),
+        ];
+
+        const { data: projectData } = await supabase
+          .from("projects")
+          .select("id, name")
+          .in("id", projectIds);
+
+        const projectNameMap: Record<string, string> = {};
+        if (projectData) {
+          for (const p of projectData) {
+            projectNameMap[p.id] = p.name;
+          }
+        }
+
+        const tpMap: Record<string, TaskProject[]> = {};
+        for (const pt of projectTasks as { task_id: string; project_id: string }[]) {
+          const name = projectNameMap[pt.project_id];
+          if (name) {
+            if (!tpMap[pt.task_id]) tpMap[pt.task_id] = [];
+            tpMap[pt.task_id].push({ id: pt.project_id, name });
+          }
+        }
+
+        setTaskProjectMap(tpMap);
+      }
+    }
+
     setLoading(false);
   };
 
@@ -240,7 +287,73 @@ export default function UpcomingTasksPage() {
         })()}
       </TableCell>
       <TableCell>
-        {task.contacts ? contactName(task.contacts) : "\u2014"}
+        {task.contacts ? (
+          <span
+            className="text-blue-600 hover:underline cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push(`/dashboard/contacts/${task.contacts!.id}`);
+            }}
+          >
+            {contactName(task.contacts)}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">{"\u2014"}</span>
+        )}
+      </TableCell>
+      <TableCell>
+        {(() => {
+          const taskProjects = taskProjectMap[task.id];
+          if (!taskProjects || taskProjects.length === 0) {
+            return <span className="text-muted-foreground">{"\u2014"}</span>;
+          }
+          if (taskProjects.length <= 2) {
+            return (
+              <div className="flex flex-wrap gap-1">
+                {taskProjects.map((p) => (
+                  <span
+                    key={p.id}
+                    className="text-blue-600 hover:underline cursor-pointer text-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/dashboard/projects/${p.id}`);
+                    }}
+                  >
+                    {p.name}
+                  </span>
+                ))}
+              </div>
+            );
+          }
+          return (
+            <Popover>
+              <PopoverTrigger asChild>
+                <span
+                  className="text-blue-600 hover:underline cursor-pointer text-sm"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {taskProjects.length} Projects
+                </span>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-2" align="start" onClick={(e) => e.stopPropagation()}>
+                <div className="space-y-1">
+                  {taskProjects.map((p) => (
+                    <div
+                      key={p.id}
+                      className="text-sm text-blue-600 hover:underline cursor-pointer px-2 py-1 rounded hover:bg-muted"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/dashboard/projects/${p.id}`);
+                      }}
+                    >
+                      {p.name}
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          );
+        })()}
       </TableCell>
       <TableCell>
         {task.task_assignees?.length > 0 ? (
@@ -290,6 +403,7 @@ export default function UpcomingTasksPage() {
           <TableHead>Task</TableHead>
           <TableHead>Type</TableHead>
           <TableHead>Contact</TableHead>
+          <TableHead>Projects</TableHead>
           <TableHead>Assignees</TableHead>
           <TableHead>Priority</TableHead>
           <TableHead>Due Date</TableHead>
@@ -298,14 +412,14 @@ export default function UpcomingTasksPage() {
       <TableBody>
         {loading ? (
           <TableRow>
-            <TableCell colSpan={6} className="text-center py-8">
+            <TableCell colSpan={7} className="text-center py-8">
               Loading...
             </TableCell>
           </TableRow>
         ) : taskList.length === 0 ? (
           <TableRow>
             <TableCell
-              colSpan={6}
+              colSpan={7}
               className="text-center text-muted-foreground py-8"
             >
               No upcoming tasks found.

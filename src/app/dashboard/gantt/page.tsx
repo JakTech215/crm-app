@@ -166,7 +166,7 @@ export default function GanttPage() {
       await Promise.all([
         supabase
           .from("tasks")
-          .select("id, title, status, priority, start_date, due_date, is_milestone, is_recurring, recurrence_source_task_id, recurrence_frequency, recurrence_unit, contact_id, contacts:contact_id(id, first_name, last_name)")
+          .select("*, contacts:contact_id(id, first_name, last_name)")
           .order("start_date"),
         supabase.from("task_dependencies").select("task_id, depends_on_task_id, dependency_type, lag_days"),
         supabase.from("projects").select("id, name").order("name"),

@@ -13,6 +13,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Users,
   FolderKanban,
   CheckSquare,
@@ -22,6 +29,8 @@ import {
   ChevronRight,
   Star,
   X,
+  Loader2,
+  Check,
 } from "lucide-react";
 
 interface StatCard {
@@ -52,6 +61,7 @@ interface UpcomingTask {
   title: string;
   due_date: string;
   priority: string;
+  status: string;
   contact: TaskContact | null;
   projects: TaskProject[];
   assignees: TaskAssignee[];
@@ -78,6 +88,14 @@ const priorityColors: Record<string, string> = {
   medium: "bg-blue-100 text-blue-800",
   high: "bg-orange-100 text-orange-800",
   urgent: "bg-red-100 text-red-800",
+};
+
+const statusColors: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-800",
+  in_progress: "bg-blue-100 text-blue-800",
+  completed: "bg-green-100 text-green-800",
+  cancelled: "bg-gray-100 text-gray-800",
+  blocked: "bg-red-100 text-red-800",
 };
 
 const priorityDotColors: Record<string, string> = {
@@ -120,6 +138,8 @@ export default function DashboardPage() {
   });
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [savingCell, setSavingCell] = useState<string | null>(null);
+  const [savedCell, setSavedCell] = useState<string | null>(null);
 
   const todayStr = useMemo(() => formatDateKey(new Date()), []);
 
@@ -209,7 +229,7 @@ export default function DashboardPage() {
       try {
         const { data: overdueTasks } = await supabase
           .from("tasks")
-          .select("id, title, due_date, priority, contact_id, contacts:contact_id(id, first_name, last_name)")
+          .select("id, title, due_date, priority, status, contact_id, contacts:contact_id(id, first_name, last_name)")
           .neq("status", "completed")
           .lt("due_date", today)
           .order("due_date", { ascending: true })
@@ -223,6 +243,7 @@ export default function DashboardPage() {
             title: t.title as string,
             due_date: t.due_date as string,
             priority: t.priority as string,
+            status: (t.status as string) || "pending",
             ...enriched[i],
             days_overdue: Math.floor((todayMs - new Date(t.due_date as string).getTime()) / (1000 * 60 * 60 * 24)),
           })));
@@ -261,7 +282,7 @@ export default function DashboardPage() {
         const endDate = (() => { const d = new Date(); d.setDate(d.getDate() + 14); return d.toISOString().split("T")[0]; })();
         const { data: upcomingTasks } = await supabase
           .from("tasks")
-          .select("id, title, due_date, priority, contact_id, contacts:contact_id(id, first_name, last_name)")
+          .select("id, title, due_date, priority, status, contact_id, contacts:contact_id(id, first_name, last_name)")
           .neq("status", "completed")
           .gte("due_date", today)
           .lte("due_date", endDate)
@@ -275,6 +296,7 @@ export default function DashboardPage() {
             title: t.title as string,
             due_date: t.due_date as string,
             priority: t.priority as string,
+            status: (t.status as string) || "pending",
             ...enriched[i],
           })));
         } else {
@@ -293,6 +315,23 @@ export default function DashboardPage() {
   const handleMarkComplete = async (taskId: string) => {
     await supabase.from("tasks").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", taskId);
     setOverdue((prev) => prev.filter((t) => t.id !== taskId));
+  };
+
+  const handleDashboardInlineUpdate = async (taskId: string, field: string, value: string) => {
+    const key = `${taskId}-${field}`;
+    setSavingCell(key);
+    setSavedCell(null);
+    const updateData: Record<string, unknown> = { [field]: value };
+    if (field === "status" && value === "completed") {
+      updateData.completed_at = new Date().toISOString();
+    }
+    await supabase.from("tasks").update(updateData).eq("id", taskId);
+    // Update both lists
+    setOverdue((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } as typeof t : t));
+    setUpcoming((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } : t));
+    setSavingCell(null);
+    setSavedCell(key);
+    setTimeout(() => setSavedCell((prev) => prev === key ? null : prev), 1500);
   };
 
   const formatDate = (dateStr: string) => {
@@ -376,10 +415,33 @@ export default function DashboardPage() {
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Badge variant="secondary" className={`capitalize ${priorityColors[task.priority] || ""}`}>
-            {task.priority}
-          </Badge>
+          <Select value={task.priority} onValueChange={(v) => handleDashboardInlineUpdate(task.id, "priority", v)}>
+            <SelectTrigger className={`h-7 w-[100px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${priorityColors[task.priority] || ""}`} onClick={(e) => e.stopPropagation()}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="low">Low</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+            </SelectContent>
+          </Select>
+          {savingCell === `${task.id}-priority` && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          {savedCell === `${task.id}-priority` && <Check className="h-3 w-3 text-green-600" />}
           <span className="text-sm font-medium">{task.title}</span>
+          <Select value={task.status || "pending"} onValueChange={(v) => handleDashboardInlineUpdate(task.id, "status", v)}>
+            <SelectTrigger className={`h-7 w-[130px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${statusColors[task.status || "pending"] || ""}`} onClick={(e) => e.stopPropagation()}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="in_progress">In Progress</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="blocked">Blocked</SelectItem>
+            </SelectContent>
+          </Select>
+          {savingCell === `${task.id}-status` && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          {savedCell === `${task.id}-status` && <Check className="h-3 w-3 text-green-600" />}
         </div>
         <div className="flex items-center gap-2">
           {showOverdue && "days_overdue" in task && (

@@ -641,13 +641,13 @@ export default function GanttPage() {
 
               {/* Employee filter */}
               <div className="grid gap-1.5">
-                <Label className="text-xs">Assignee</Label>
+                <Label className="text-xs">Employee</Label>
                 <Select value={filterEmployee} onValueChange={setFilterEmployee}>
                   <SelectTrigger className="h-9">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Assignees</SelectItem>
+                    <SelectItem value="all">All Employees</SelectItem>
                     {employees.map((e) => (
                       <SelectItem key={e.id} value={e.id}>
                         {employeeName(e)}
@@ -843,7 +843,7 @@ export default function GanttPage() {
                                   )}
                                 </div>
                                 <div>
-                                  <span className="text-muted-foreground">Assignees: </span>
+                                  <span className="text-muted-foreground">Employees: </span>
                                   {row.task!.assignee_names.length > 0 ? (
                                     <span>{row.task!.assignee_names.join(", ")}</span>
                                   ) : (

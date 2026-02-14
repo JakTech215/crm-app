@@ -429,7 +429,7 @@ export default function TaskHistoryPage() {
                 <TableHead>Type</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Projects</TableHead>
-                <TableHead>Assignees</TableHead>
+                <TableHead>Employees</TableHead>
                 <TableHead>Priority</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>

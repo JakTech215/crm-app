@@ -47,7 +47,17 @@ import {
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 
-import { Plus, Users, Diamond, Search, Bell, RefreshCw } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Plus, Users, Diamond, Search, Bell, RefreshCw, Loader2, Check, Trash2 } from "lucide-react";
 
 const COLOR_MAP: Record<string, string> = {
   gray: "bg-gray-100 text-gray-800",
@@ -584,6 +594,55 @@ export default function TasksPage() {
     pending: "bg-yellow-100 text-yellow-800",
     in_progress: "bg-blue-100 text-blue-800",
     completed: "bg-green-100 text-green-800",
+    cancelled: "bg-gray-100 text-gray-800",
+    blocked: "bg-red-100 text-red-800",
+  };
+
+  // Inline edit state
+  const [savingCell, setSavingCell] = useState<string | null>(null);
+  const [savedCell, setSavedCell] = useState<string | null>(null);
+
+  const handleInlineUpdate = async (taskId: string, field: string, value: string) => {
+    const key = `${taskId}-${field}`;
+    setSavingCell(key);
+    setSavedCell(null);
+    const updateData: Record<string, unknown> = { [field]: value };
+    if (field === "status" && value === "completed") {
+      updateData.completed_at = new Date().toISOString();
+    }
+    await supabase.from("tasks").update(updateData).eq("id", taskId);
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } : t));
+    setSavingCell(null);
+    setSavedCell(key);
+    setTimeout(() => setSavedCell((prev) => prev === key ? null : prev), 1500);
+  };
+
+  // Delete state
+  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteDeps, setDeleteDeps] = useState<number>(0);
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
+
+  const checkAndDelete = async (taskId: string) => {
+    setDeleteTaskId(taskId);
+    const { count } = await supabase
+      .from("tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("parent_task_id", taskId);
+    setDeleteDeps(count || 0);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTaskId) return;
+    setDeleteLoading(true);
+    await supabase.from("task_assignees").delete().eq("task_id", deleteTaskId);
+    await supabase.from("project_tasks").delete().eq("task_id", deleteTaskId);
+    await supabase.from("tasks").delete().eq("id", deleteTaskId);
+    setTasks((prev) => prev.filter((t) => t.id !== deleteTaskId));
+    setDeleteLoading(false);
+    setDeleteTaskId(null);
+    setDeleteMessage("Task deleted");
+    setTimeout(() => setDeleteMessage(null), 3000);
   };
 
   const formatRelativeTime = (dateStr: string) => {
@@ -628,23 +687,24 @@ export default function TasksPage() {
           <TableHead>Type</TableHead>
           <TableHead>Contact</TableHead>
           <TableHead>Projects</TableHead>
-          <TableHead>Assigned To</TableHead>
+          <TableHead>Employees</TableHead>
           <TableHead>Priority</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Due Date</TableHead>
+          <TableHead className="w-10"></TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {loading ? (
           <TableRow>
-            <TableCell colSpan={8} className="text-center py-8">
+            <TableCell colSpan={9} className="text-center py-8">
               Loading...
             </TableCell>
           </TableRow>
         ) : filteredTasks.length === 0 ? (
           <TableRow>
             <TableCell
-              colSpan={8}
+              colSpan={9}
               className="text-center text-muted-foreground py-8"
             >
               No tasks found.
@@ -661,6 +721,11 @@ export default function TasksPage() {
                 <div className="flex items-center gap-2">
                   {task.is_milestone && (
                     <Diamond className="h-4 w-4 text-amber-500 shrink-0" />
+                  )}
+                  {(task.is_recurring || task.recurrence_source_task_id) && (
+                    <span title="Part of recurring series">
+                      <RefreshCw className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                    </span>
                   )}
                   <div>
                     <div className="font-medium">
@@ -778,21 +843,39 @@ export default function TasksPage() {
                   <span className="text-muted-foreground">—</span>
                 )}
               </TableCell>
-              <TableCell>
-                <Badge
-                  variant="secondary"
-                  className={`capitalize ${priorityColors[task.priority] || ""}`}
-                >
-                  {task.priority}
-                </Badge>
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-1">
+                  <Select value={task.priority} onValueChange={(v) => handleInlineUpdate(task.id, "priority", v)}>
+                    <SelectTrigger className={`h-7 w-[100px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${priorityColors[task.priority] || ""}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {savingCell === `${task.id}-priority` && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                  {savedCell === `${task.id}-priority` && <Check className="h-3 w-3 text-green-600" />}
+                </div>
               </TableCell>
-              <TableCell>
-                <Badge
-                  variant="secondary"
-                  className={`capitalize ${statusColors[task.status] || ""}`}
-                >
-                  {task.status.replace("_", " ")}
-                </Badge>
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-1">
+                  <Select value={task.status} onValueChange={(v) => handleInlineUpdate(task.id, "status", v)}>
+                    <SelectTrigger className={`h-7 w-[130px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${statusColors[task.status] || ""}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                      <SelectItem value="blocked">Blocked</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {savingCell === `${task.id}-status` && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                  {savedCell === `${task.id}-status` && <Check className="h-3 w-3 text-green-600" />}
+                </div>
               </TableCell>
               <TableCell>
                 {task.due_date ? (
@@ -804,6 +887,16 @@ export default function TasksPage() {
                     })()}
                   </div>
                 ) : "—"}
+              </TableCell>
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-red-600"
+                  onClick={() => checkAndDelete(task.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </TableCell>
             </TableRow>
           ))
@@ -1223,6 +1316,38 @@ export default function TasksPage() {
           <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setCreationResult(null)}>Dismiss</Button>
         </div>
       )}
+
+      {deleteMessage && (
+        <div className="rounded-md bg-green-50 border border-green-200 p-3 text-sm text-green-800 flex items-center justify-between">
+          <span>{deleteMessage}</span>
+          <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setDeleteMessage(null)}>Dismiss</Button>
+        </div>
+      )}
+
+      <AlertDialog open={!!deleteTaskId} onOpenChange={(open) => { if (!open) setDeleteTaskId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this task?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteDeps > 0
+                ? `Cannot delete — ${deleteDeps} task${deleteDeps > 1 ? "s" : ""} depend${deleteDeps === 1 ? "s" : ""} on this task.`
+                : "Are you sure? This cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            {deleteDeps === 0 && (
+              <AlertDialogAction
+                onClick={confirmDelete}
+                disabled={deleteLoading}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {deleteLoading ? "Deleting..." : "Delete"}
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="relative w-64">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

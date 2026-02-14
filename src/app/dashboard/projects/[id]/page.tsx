@@ -166,6 +166,7 @@ export default function ProjectDetailPage() {
   const [taskPriorityFilter, setTaskPriorityFilter] = useState("all");
   const [taskSortBy, setTaskSortBy] = useState("due_date");
   const [milestoneOnly, setMilestoneOnly] = useState(false);
+  const [taskFilter, setTaskFilter] = useState<string>("all");
   const [unlinkTaskId, setUnlinkTaskId] = useState<string | null>(null);
   const [savingField, setSavingField] = useState<Record<string, boolean>>({});
   const [savedField, setSavedField] = useState<Record<string, boolean>>({});
@@ -436,6 +437,7 @@ export default function ProjectDetailPage() {
   };
 
   // Filter and sort tasks
+  const today = new Date().toISOString().split("T")[0];
   const filteredTasks = tasks
     .filter((t) => {
       if (taskStatusFilter !== "all" && t.status !== taskStatusFilter) return false;
@@ -444,6 +446,13 @@ export default function ProjectDetailPage() {
       if (taskSearch) {
         const q = taskSearch.toLowerCase();
         if (!t.title.toLowerCase().includes(q)) return false;
+      }
+      // Stat box filter
+      if (taskFilter === "pending" && t.status !== "pending") return false;
+      if (taskFilter === "in_progress" && t.status !== "in_progress") return false;
+      if (taskFilter === "completed" && t.status !== "completed") return false;
+      if (taskFilter === "overdue") {
+        if (!t.due_date || t.due_date >= today || t.status === "completed") return false;
       }
       return true;
     })
@@ -462,6 +471,13 @@ export default function ProjectDetailPage() {
       }
       return 0;
     });
+
+  const taskFilterLabels: Record<string, string> = {
+    pending: "Pending Tasks",
+    in_progress: "In Progress Tasks",
+    completed: "Completed Tasks",
+    overdue: "Overdue Tasks",
+  };
 
   // Tasks available to link (not already linked to this project)
   const linkedTaskIds = new Set(tasks.map((t) => t.id));
@@ -737,23 +753,38 @@ export default function ProjectDetailPage() {
           {/* Stats */}
           {tasks.length > 0 && (
             <div className="grid grid-cols-5 gap-3">
-              <div className="rounded-lg border p-3 text-center">
+              <div
+                className={`rounded-lg border p-3 text-center cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${taskFilter === "all" ? "ring-2 ring-primary bg-muted/30" : ""}`}
+                onClick={() => setTaskFilter("all")}
+              >
                 <p className="text-2xl font-bold">{taskStats.total}</p>
                 <p className="text-xs text-muted-foreground">Total</p>
               </div>
-              <div className="rounded-lg border p-3 text-center">
+              <div
+                className={`rounded-lg border p-3 text-center cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${taskFilter === "pending" ? "ring-2 ring-primary bg-muted/30" : ""}`}
+                onClick={() => setTaskFilter("pending")}
+              >
                 <p className="text-2xl font-bold text-yellow-600">{taskStats.pending}</p>
                 <p className="text-xs text-muted-foreground">Pending</p>
               </div>
-              <div className="rounded-lg border p-3 text-center">
+              <div
+                className={`rounded-lg border p-3 text-center cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${taskFilter === "in_progress" ? "ring-2 ring-primary bg-muted/30" : ""}`}
+                onClick={() => setTaskFilter("in_progress")}
+              >
                 <p className="text-2xl font-bold text-blue-600">{taskStats.in_progress}</p>
                 <p className="text-xs text-muted-foreground">In Progress</p>
               </div>
-              <div className="rounded-lg border p-3 text-center">
+              <div
+                className={`rounded-lg border p-3 text-center cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${taskFilter === "completed" ? "ring-2 ring-primary bg-muted/30" : ""}`}
+                onClick={() => setTaskFilter("completed")}
+              >
                 <p className="text-2xl font-bold text-green-600">{taskStats.completed}</p>
                 <p className="text-xs text-muted-foreground">Completed</p>
               </div>
-              <div className="rounded-lg border p-3 text-center">
+              <div
+                className={`rounded-lg border p-3 text-center cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${taskFilter === "overdue" ? "ring-2 ring-primary bg-muted/30" : ""}`}
+                onClick={() => setTaskFilter("overdue")}
+              >
                 <p className="text-2xl font-bold text-red-600">{taskStats.overdue}</p>
                 <p className="text-xs text-muted-foreground">Overdue</p>
               </div>
@@ -823,6 +854,21 @@ export default function ProjectDetailPage() {
             </div>
           )}
 
+          {/* Active stat filter badge */}
+          {taskFilter !== "all" && (
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="flex items-center gap-1">
+                Filtered: {taskFilterLabels[taskFilter]}
+                <button
+                  className="ml-1 hover:text-destructive"
+                  onClick={() => setTaskFilter("all")}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            </div>
+          )}
+
           {/* Tasks Table */}
           <Table>
             <TableHeader>
@@ -830,7 +876,7 @@ export default function ProjectDetailPage() {
                 <TableHead>Task</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Other Projects</TableHead>
-                <TableHead>Assignees</TableHead>
+                <TableHead>Employees</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Priority</TableHead>
                 <TableHead>Start Date</TableHead>

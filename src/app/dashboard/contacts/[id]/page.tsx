@@ -206,6 +206,7 @@ export default function ContactDetailPage() {
   const [taskPriorityFilter, setTaskPriorityFilter] = useState("all");
   const [taskSortBy, setTaskSortBy] = useState("due_date");
   const [unlinkTaskId, setUnlinkTaskId] = useState<string | null>(null);
+  const [taskFilter, setTaskFilter] = useState<string>("all");
   const [savingField, setSavingField] = useState<Record<string, boolean>>({});
   const [savedField, setSavedField] = useState<Record<string, boolean>>({});
   const [inlineError, setInlineError] = useState<string | null>(null);
@@ -528,6 +529,7 @@ export default function ContactDetailPage() {
   };
 
   // Filter and sort tasks
+  const today = new Date().toISOString().split("T")[0];
   const filteredContactTasks = contactTasks
     .filter((t) => {
       if (taskStatusFilter !== "all" && t.status !== taskStatusFilter) return false;
@@ -535,6 +537,13 @@ export default function ContactDetailPage() {
       if (taskSearch) {
         const q = taskSearch.toLowerCase();
         if (!t.title.toLowerCase().includes(q)) return false;
+      }
+      // Apply stat box filter
+      if (taskFilter === "pending" && t.status !== "pending") return false;
+      if (taskFilter === "in_progress" && t.status !== "in_progress") return false;
+      if (taskFilter === "completed" && t.status !== "completed") return false;
+      if (taskFilter === "overdue") {
+        if (!t.due_date || t.due_date >= today || t.status === "completed") return false;
       }
       return true;
     })
@@ -987,23 +996,38 @@ export default function ContactDetailPage() {
           {/* Stats */}
           {contactTasks.length > 0 && (
             <div className="grid grid-cols-5 gap-3">
-              <div className="rounded-lg border p-3 text-center">
+              <div
+                className={`rounded-lg border p-3 text-center cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${taskFilter === "all" ? "ring-2 ring-primary bg-muted/30" : ""}`}
+                onClick={() => setTaskFilter("all")}
+              >
                 <p className="text-2xl font-bold">{taskStats.total}</p>
                 <p className="text-xs text-muted-foreground">Total</p>
               </div>
-              <div className="rounded-lg border p-3 text-center">
+              <div
+                className={`rounded-lg border p-3 text-center cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${taskFilter === "pending" ? "ring-2 ring-primary bg-muted/30" : ""}`}
+                onClick={() => setTaskFilter("pending")}
+              >
                 <p className="text-2xl font-bold text-yellow-600">{taskStats.pending}</p>
                 <p className="text-xs text-muted-foreground">Pending</p>
               </div>
-              <div className="rounded-lg border p-3 text-center">
+              <div
+                className={`rounded-lg border p-3 text-center cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${taskFilter === "in_progress" ? "ring-2 ring-primary bg-muted/30" : ""}`}
+                onClick={() => setTaskFilter("in_progress")}
+              >
                 <p className="text-2xl font-bold text-blue-600">{taskStats.in_progress}</p>
                 <p className="text-xs text-muted-foreground">In Progress</p>
               </div>
-              <div className="rounded-lg border p-3 text-center">
+              <div
+                className={`rounded-lg border p-3 text-center cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${taskFilter === "completed" ? "ring-2 ring-primary bg-muted/30" : ""}`}
+                onClick={() => setTaskFilter("completed")}
+              >
                 <p className="text-2xl font-bold text-green-600">{taskStats.completed}</p>
                 <p className="text-xs text-muted-foreground">Completed</p>
               </div>
-              <div className="rounded-lg border p-3 text-center">
+              <div
+                className={`rounded-lg border p-3 text-center cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${taskFilter === "overdue" ? "ring-2 ring-primary bg-muted/30" : ""}`}
+                onClick={() => setTaskFilter("overdue")}
+              >
                 <p className="text-2xl font-bold text-red-600">{taskStats.overdue}</p>
                 <p className="text-xs text-muted-foreground">Overdue</p>
               </div>
@@ -1064,13 +1088,28 @@ export default function ContactDetailPage() {
             </div>
           )}
 
+          {/* Clear Filter Badge */}
+          {taskFilter !== "all" && (
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="flex items-center gap-1">
+                Filtered: {taskFilter === "pending" ? "Pending Tasks" : taskFilter === "in_progress" ? "In Progress Tasks" : taskFilter === "completed" ? "Completed Tasks" : "Overdue Tasks"}
+                <button
+                  onClick={() => setTaskFilter("all")}
+                  className="ml-1 rounded-full hover:bg-muted-foreground/20 p-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            </div>
+          )}
+
           {/* Tasks Table */}
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Task</TableHead>
                 <TableHead>Projects</TableHead>
-                <TableHead>Assignees</TableHead>
+                <TableHead>Employees</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Priority</TableHead>
                 <TableHead>Start Date</TableHead>

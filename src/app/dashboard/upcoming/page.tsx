@@ -33,7 +33,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Loader2, Check } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -102,6 +102,14 @@ const priorityColors: Record<string, string> = {
   urgent: "bg-red-100 text-red-800",
 };
 
+const statusColors: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-800",
+  in_progress: "bg-blue-100 text-blue-800",
+  completed: "bg-green-100 text-green-800",
+  cancelled: "bg-gray-100 text-gray-800",
+  blocked: "bg-red-100 text-red-800",
+};
+
 const COLOR_MAP: Record<string, string> = {
   gray: "bg-gray-100 text-gray-800",
   red: "bg-red-100 text-red-800",
@@ -132,6 +140,8 @@ export default function UpcomingTasksPage() {
   const [loading, setLoading] = useState(true);
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [taskProjectMap, setTaskProjectMap] = useState<Record<string, TaskProject[]>>({});
+  const [savingCell, setSavingCell] = useState<string | null>(null);
+  const [savedCell, setSavedCell] = useState<string | null>(null);
 
   // Filters
   const [assigneeFilter, setAssigneeFilter] = useState("all");
@@ -237,6 +247,21 @@ export default function UpcomingTasksPage() {
       .eq("status", "active")
       .order("first_name");
     setEmployees(data || []);
+  };
+
+  const handleInlineUpdate = async (taskId: string, field: string, value: string) => {
+    const key = `${taskId}-${field}`;
+    setSavingCell(key);
+    setSavedCell(null);
+    const updateData: Record<string, unknown> = { [field]: value };
+    if (field === "status" && value === "completed") {
+      updateData.completed_at = new Date().toISOString();
+    }
+    await supabase.from("tasks").update(updateData).eq("id", taskId);
+    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } : t));
+    setSavingCell(null);
+    setSavedCell(key);
+    setTimeout(() => setSavedCell((prev) => prev === key ? null : prev), 1500);
   };
 
   useEffect(() => {
@@ -368,13 +393,39 @@ export default function UpcomingTasksPage() {
           <span className="text-muted-foreground">{"\u2014"}</span>
         )}
       </TableCell>
-      <TableCell>
-        <Badge
-          variant="secondary"
-          className={`capitalize ${priorityColors[task.priority] || ""}`}
-        >
-          {task.priority}
-        </Badge>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1">
+          <Select value={task.priority} onValueChange={(v) => handleInlineUpdate(task.id, "priority", v)}>
+            <SelectTrigger className={`h-7 w-[100px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${priorityColors[task.priority] || ""}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="low">Low</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+            </SelectContent>
+          </Select>
+          {savingCell === `${task.id}-priority` && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          {savedCell === `${task.id}-priority` && <Check className="h-3 w-3 text-green-600" />}
+        </div>
+      </TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1">
+          <Select value={task.status} onValueChange={(v) => handleInlineUpdate(task.id, "status", v)}>
+            <SelectTrigger className={`h-7 w-[110px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${statusColors[task.status] || ""}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="in_progress">In Progress</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="blocked">Blocked</SelectItem>
+            </SelectContent>
+          </Select>
+          {savingCell === `${task.id}-status` && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          {savedCell === `${task.id}-status` && <Check className="h-3 w-3 text-green-600" />}
+        </div>
       </TableCell>
       <TableCell>
         {task.due_date ? (
@@ -404,22 +455,23 @@ export default function UpcomingTasksPage() {
           <TableHead>Type</TableHead>
           <TableHead>Contact</TableHead>
           <TableHead>Projects</TableHead>
-          <TableHead>Assignees</TableHead>
+          <TableHead>Employees</TableHead>
           <TableHead>Priority</TableHead>
+          <TableHead>Status</TableHead>
           <TableHead>Due Date</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {loading ? (
           <TableRow>
-            <TableCell colSpan={7} className="text-center py-8">
+            <TableCell colSpan={8} className="text-center py-8">
               Loading...
             </TableCell>
           </TableRow>
         ) : taskList.length === 0 ? (
           <TableRow>
             <TableCell
-              colSpan={7}
+              colSpan={8}
               className="text-center text-muted-foreground py-8"
             >
               No upcoming tasks found.

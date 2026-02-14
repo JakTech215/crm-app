@@ -32,7 +32,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Pencil, Trash2, Mail, MessageSquare, RefreshCw } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Plus, Pencil, Trash2, Mail, MessageSquare, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 
 // ---------- Types ----------
 
@@ -518,7 +519,14 @@ function TaskTemplatesSection() {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<TaskTemplate | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [workflowSteps, setWorkflowSteps] = useState<Record<string, { next_template_id: string; delay_days: number } | null>>({});
+  const [workflowSteps, setWorkflowSteps] = useState<
+    Record<string, { step_order: number; next_template_id: string; delay_days: number; trigger_condition: string }[]>
+  >({});
+  const [formSteps, setFormSteps] = useState<
+    { next_template_id: string; delay_days: number; trigger_condition: string }[]
+  >([]);
+  const [recurringExpanded, setRecurringExpanded] = useState(false);
+  const [chainExpanded, setChainExpanded] = useState(false);
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -533,18 +541,27 @@ function TaskTemplatesSection() {
     recurrence_unit: "days",
   });
 
-  const fetch = async () => {
+  const fetchData = async () => {
     const { data } = await supabase
       .from("task_templates")
       .select("*")
       .order("name");
     setTemplates(data || []);
 
-    const { data: steps } = await supabase.from("task_workflow_steps").select("template_id, next_template_id, delay_days");
+    const { data: steps } = await supabase
+      .from("task_workflow_steps")
+      .select("*")
+      .order("step_order");
     if (steps) {
-      const map: Record<string, { next_template_id: string; delay_days: number } | null> = {};
-      for (const s of steps) {
-        map[s.template_id] = { next_template_id: s.next_template_id, delay_days: s.delay_days };
+      const map: Record<string, { step_order: number; next_template_id: string; delay_days: number; trigger_condition: string }[]> = {};
+      for (const s of steps as { template_id: string; step_order: number; next_template_id: string; delay_days: number; trigger_condition?: string }[]) {
+        if (!map[s.template_id]) map[s.template_id] = [];
+        map[s.template_id].push({
+          step_order: s.step_order,
+          next_template_id: s.next_template_id,
+          delay_days: s.delay_days,
+          trigger_condition: s.trigger_condition || "on_completion",
+        });
       }
       setWorkflowSteps(map);
     }
@@ -557,10 +574,13 @@ function TaskTemplatesSection() {
     if (types) setTaskTypes(types);
   };
 
-  useEffect(() => { fetch(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const resetForm = () => {
     setForm({ name: "", description: "", default_priority: "medium", due_amount: "", due_unit: "days", send_email_reminder: false, send_sms_reminder: false, task_type_id: "", is_recurring: false, recurrence_frequency: "", recurrence_unit: "days" });
+    setFormSteps([]);
+    setRecurringExpanded(false);
+    setChainExpanded(false);
     setEditing(null);
     setOpen(false);
   };
@@ -584,16 +604,38 @@ function TaskTemplatesSection() {
       recurrence_frequency: form.is_recurring && form.recurrence_frequency ? parseInt(form.recurrence_frequency) : null,
       recurrence_unit: form.is_recurring && form.recurrence_frequency ? form.recurrence_unit : null,
     };
+
+    let templateId = editing?.id;
+
     if (editing) {
       const { error } = await supabase.from("task_templates").update(payload).eq("id", editing.id);
       if (error) { setSaveError(error.message); setSaving(false); return; }
     } else {
-      const { error } = await supabase.from("task_templates").insert(payload);
+      const { data: inserted, error } = await supabase.from("task_templates").insert(payload).select("id").single();
       if (error) { setSaveError(error.message); setSaving(false); return; }
+      templateId = inserted.id;
     }
+
+    // Save workflow steps
+    if (templateId) {
+      await supabase.from("task_workflow_steps").delete().eq("template_id", templateId);
+      const validSteps = formSteps.filter((s) => s.next_template_id);
+      if (validSteps.length > 0) {
+        const stepRows = validSteps.map((s, i) => ({
+          template_id: templateId as string,
+          step_order: i + 1,
+          next_template_id: s.next_template_id,
+          delay_days: s.delay_days,
+          trigger_condition: s.trigger_condition,
+        }));
+        const { error: stepError } = await supabase.from("task_workflow_steps").insert(stepRows);
+        if (stepError) { setSaveError(stepError.message); setSaving(false); return; }
+      }
+    }
+
     setSaving(false);
     resetForm();
-    fetch();
+    fetchData();
   };
 
   const handleEdit = (t: TaskTemplate) => {
@@ -611,13 +653,22 @@ function TaskTemplatesSection() {
       recurrence_frequency: t.recurrence_frequency?.toString() || "",
       recurrence_unit: t.recurrence_unit || "days",
     });
+    const steps = workflowSteps[t.id] || [];
+    setFormSteps(steps.map((s) => ({
+      next_template_id: s.next_template_id,
+      delay_days: s.delay_days,
+      trigger_condition: s.trigger_condition,
+    })));
+    setRecurringExpanded(t.is_recurring || false);
+    setChainExpanded(steps.length > 0);
     setOpen(true);
   };
 
   const handleDelete = async (id: string) => {
+    await supabase.from("task_workflow_steps").delete().eq("template_id", id);
     const { error } = await supabase.from("task_templates").delete().eq("id", id);
     if (error) { setSaveError(error.message); return; }
-    fetch();
+    fetchData();
   };
 
   const priorityColors: Record<string, string> = {
@@ -627,20 +678,30 @@ function TaskTemplatesSection() {
     urgent: "bg-red-100 text-red-800",
   };
 
-  const buildChain = (startId: string): { name: string; delayDays: number }[] => {
-    const chain: { name: string; delayDays: number }[] = [];
+  const buildChain = (startId: string): { name: string; delayDays: number; trigger: string }[] => {
+    const chain: { name: string; delayDays: number; trigger: string }[] = [];
     const visited = new Set<string>();
     let currentId = startId;
     while (currentId && !visited.has(currentId)) {
       visited.add(currentId);
-      const step = workflowSteps[currentId];
-      if (!step || !step.next_template_id) break;
+      const steps = workflowSteps[currentId];
+      if (!steps || steps.length === 0) break;
+      const step = steps[0];
       const nextTmpl = templates.find((t) => t.id === step.next_template_id);
       if (!nextTmpl) break;
-      chain.push({ name: nextTmpl.name, delayDays: step.delay_days });
+      chain.push({ name: nextTmpl.name, delayDays: step.delay_days, trigger: step.trigger_condition });
       currentId = step.next_template_id;
     }
     return chain;
+  };
+
+  const triggerLabel = (trigger: string) => {
+    switch (trigger) {
+      case "on_completion": return "On Completion";
+      case "after_days_from_start": return "After Days from Start";
+      case "on_due_date": return "On Due Date";
+      default: return trigger;
+    }
   };
 
   return (
@@ -655,7 +716,7 @@ function TaskTemplatesSection() {
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="mr-2 h-4 w-4" />New Template</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
             <form onSubmit={handleSave}>
               <DialogHeader>
                 <DialogTitle>{editing ? "Edit Template" : "New Task Template"}</DialogTitle>
@@ -664,14 +725,38 @@ function TaskTemplatesSection() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                {/* Template Name */}
                 <div className="grid gap-2">
                   <Label htmlFor="tt-name">Template Name *</Label>
                   <Input id="tt-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
                 </div>
+
+                {/* Description */}
                 <div className="grid gap-2">
                   <Label htmlFor="tt-desc">Description</Label>
                   <Textarea id="tt-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
                 </div>
+
+                {/* Task Type */}
+                <div className="grid gap-2">
+                  <Label>Task Type</Label>
+                  <Select value={form.task_type_id || "none"} onValueChange={(v) => setForm({ ...form, task_type_id: v === "none" ? "" : v })}>
+                    <SelectTrigger><SelectValue placeholder="No type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No type</SelectItem>
+                      {taskTypes.map((tt) => (
+                        <SelectItem key={tt.id} value={tt.id}>
+                          <span className="flex items-center gap-2">
+                            <span className={`inline-block h-3 w-3 rounded-full ${colorCls(tt.color).split(" ")[0]}`} />
+                            {tt.name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Default Priority */}
                 <div className="grid gap-2">
                   <Label>Default Priority</Label>
                   <Select value={form.default_priority} onValueChange={(v) => setForm({ ...form, default_priority: v })}>
@@ -684,6 +769,8 @@ function TaskTemplatesSection() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Default Due */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="tt-due-amount">Due In</Label>
@@ -702,6 +789,227 @@ function TaskTemplatesSection() {
                     </Select>
                   </div>
                 </div>
+
+                <Separator />
+
+                {/* Recurring Task Settings — collapsible */}
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                  <button
+                    type="button"
+                    className="flex items-center justify-between w-full text-left"
+                    onClick={() => setRecurringExpanded(!recurringExpanded)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <RefreshCw className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Recurring Task Settings</span>
+                      {form.is_recurring && (
+                        <Badge variant="secondary" className="text-xs">Active</Badge>
+                      )}
+                    </div>
+                    {recurringExpanded ? (
+                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </button>
+                  {recurringExpanded && (
+                    <div className="space-y-3 pt-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={form.is_recurring}
+                          onCheckedChange={(checked) => setForm({ ...form, is_recurring: !!checked })}
+                        />
+                        <span className="text-sm">Enable recurring task</span>
+                      </label>
+                      {form.is_recurring && (
+                        <>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-2">
+                              <Label htmlFor="tt-rec-freq">Every</Label>
+                              <Input id="tt-rec-freq" type="number" min="1" placeholder="e.g. 2" value={form.recurrence_frequency} onChange={(e) => setForm({ ...form, recurrence_frequency: e.target.value })} />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Unit</Label>
+                              <Select value={form.recurrence_unit} onValueChange={(v) => setForm({ ...form, recurrence_unit: v })}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="days">Days</SelectItem>
+                                  <SelectItem value="weeks">Weeks</SelectItem>
+                                  <SelectItem value="months">Months</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          {form.recurrence_frequency && parseInt(form.recurrence_frequency) > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-muted-foreground">Next 5 occurrences:</p>
+                              {(() => {
+                                const freq = parseInt(form.recurrence_frequency);
+                                const unit = form.recurrence_unit;
+                                const dueAmount = form.due_amount ? parseInt(form.due_amount) : 0;
+                                const dueUnit = form.due_unit;
+                                const dates: string[] = [];
+                                for (let i = 0; i < 5; i++) {
+                                  const d = new Date();
+                                  if (dueAmount) {
+                                    if (dueUnit === "hours") d.setHours(d.getHours() + dueAmount);
+                                    else if (dueUnit === "days") d.setDate(d.getDate() + dueAmount);
+                                    else if (dueUnit === "weeks") d.setDate(d.getDate() + dueAmount * 7);
+                                    else if (dueUnit === "months") d.setMonth(d.getMonth() + dueAmount);
+                                  }
+                                  if (i > 0) {
+                                    const offset = freq * i;
+                                    if (unit === "days") d.setDate(d.getDate() + offset);
+                                    else if (unit === "weeks") d.setDate(d.getDate() + offset * 7);
+                                    else if (unit === "months") d.setMonth(d.getMonth() + offset);
+                                  }
+                                  dates.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }));
+                                }
+                                return dates.map((date, i) => (
+                                  <p key={i} className="text-xs text-muted-foreground pl-2">{i + 1}. {date}</p>
+                                ));
+                              })()}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Workflow Chain — collapsible */}
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                  <button
+                    type="button"
+                    className="flex items-center justify-between w-full text-left"
+                    onClick={() => setChainExpanded(!chainExpanded)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Workflow Chain</span>
+                      {formSteps.length > 0 && (
+                        <Badge variant="secondary" className="text-xs">{formSteps.length} step{formSteps.length !== 1 ? "s" : ""}</Badge>
+                      )}
+                    </div>
+                    {chainExpanded ? (
+                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </button>
+                  {chainExpanded && (
+                    <div className="space-y-3 pt-2">
+                      {formSteps.length === 0 && (
+                        <p className="text-xs text-muted-foreground">No follow-up steps configured.</p>
+                      )}
+                      {formSteps.map((step, idx) => (
+                        <div key={idx} className="rounded border p-3 space-y-2 bg-background">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-muted-foreground">Step {idx + 1}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => setFormSteps(formSteps.filter((_, i) => i !== idx))}
+                            >
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </Button>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label className="text-xs">Follow-up Template</Label>
+                            <Select
+                              value={step.next_template_id || "none"}
+                              onValueChange={(v) => {
+                                const updated = [...formSteps];
+                                updated[idx] = { ...updated[idx], next_template_id: v === "none" ? "" : v };
+                                setFormSteps(updated);
+                              }}
+                            >
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue placeholder="Select template" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">None</SelectItem>
+                                {templates.filter((tmpl) => tmpl.id !== editing?.id).map((tmpl) => (
+                                  <SelectItem key={tmpl.id} value={tmpl.id}>{tmpl.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="grid gap-2">
+                              <Label className="text-xs">Trigger</Label>
+                              <Select
+                                value={step.trigger_condition}
+                                onValueChange={(v) => {
+                                  const updated = [...formSteps];
+                                  updated[idx] = { ...updated[idx], trigger_condition: v };
+                                  setFormSteps(updated);
+                                }}
+                              >
+                                <SelectTrigger className="h-8 text-sm">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="on_completion">On Completion</SelectItem>
+                                  <SelectItem value="after_days_from_start">After X Days from Start</SelectItem>
+                                  <SelectItem value="on_due_date">On Due Date</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="grid gap-2">
+                              <Label className="text-xs">Delay (days)</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                className="h-8 text-sm"
+                                value={step.delay_days}
+                                onChange={(e) => {
+                                  const updated = [...formSteps];
+                                  updated[idx] = { ...updated[idx], delay_days: parseInt(e.target.value) || 0 };
+                                  setFormSteps(updated);
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => setFormSteps([...formSteps, { next_template_id: "", delay_days: 0, trigger_condition: "on_completion" }])}
+                      >
+                        <Plus className="mr-2 h-3 w-3" />
+                        Add Follow-up Template
+                      </Button>
+                      {formSteps.filter((s) => s.next_template_id).length > 0 && (
+                        <div className="pt-2">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Chain Preview:</p>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <Badge variant="default" className="text-xs">{form.name || "This Template"}</Badge>
+                            {formSteps.filter((s) => s.next_template_id).map((step, i) => {
+                              const tmpl = templates.find((t) => t.id === step.next_template_id);
+                              return (
+                                <span key={i} className="flex items-center gap-1">
+                                  <span className="text-xs text-muted-foreground">
+                                    {"\u2014"}{step.delay_days}d ({triggerLabel(step.trigger_condition)}){"\u2192"}
+                                  </span>
+                                  <Badge variant="outline" className="text-xs">{tmpl?.name || "Unknown"}</Badge>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Reminders */}
                 <div className="space-y-2">
                   <Label>Reminders</Label>
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -720,87 +1028,6 @@ function TaskTemplatesSection() {
                     <MessageSquare className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm">Send SMS reminder</span>
                   </label>
-                </div>
-                <div className="grid gap-2">
-                  <Label>Task Type</Label>
-                  <Select value={form.task_type_id || "none"} onValueChange={(v) => setForm({ ...form, task_type_id: v === "none" ? "" : v })}>
-                    <SelectTrigger><SelectValue placeholder="No type" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No type</SelectItem>
-                      {taskTypes.map((tt) => (
-                        <SelectItem key={tt.id} value={tt.id}>
-                          <span className="flex items-center gap-2">
-                            <span className={`inline-block h-3 w-3 rounded-full ${colorCls(tt.color).split(" ")[0]}`} />
-                            {tt.name}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={form.is_recurring}
-                      onCheckedChange={(checked) => setForm({ ...form, is_recurring: !!checked })}
-                    />
-                    <RefreshCw className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Recurring task</span>
-                  </label>
-                  {form.is_recurring && (
-                    <>
-                      <div className="grid grid-cols-2 gap-4 pl-6">
-                        <div className="grid gap-2">
-                          <Label htmlFor="tt-rec-freq">Every</Label>
-                          <Input id="tt-rec-freq" type="number" min="1" placeholder="e.g. 2" value={form.recurrence_frequency} onChange={(e) => setForm({ ...form, recurrence_frequency: e.target.value })} />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label>Unit</Label>
-                          <Select value={form.recurrence_unit} onValueChange={(v) => setForm({ ...form, recurrence_unit: v })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="days">Days</SelectItem>
-                              <SelectItem value="weeks">Weeks</SelectItem>
-                              <SelectItem value="months">Months</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      {form.recurrence_frequency && parseInt(form.recurrence_frequency) > 0 && (
-                        <div className="pl-6 space-y-1">
-                          <p className="text-xs font-medium text-muted-foreground">Next 5 occurrences:</p>
-                          {(() => {
-                            const freq = parseInt(form.recurrence_frequency);
-                            const unit = form.recurrence_unit;
-                            const dueAmount = form.due_amount ? parseInt(form.due_amount) : 0;
-                            const dueUnit = form.due_unit;
-                            const dates: string[] = [];
-                            for (let i = 0; i < 5; i++) {
-                              const d = new Date();
-                              // Add initial due offset for first occurrence
-                              if (dueAmount) {
-                                if (dueUnit === "hours") d.setHours(d.getHours() + dueAmount);
-                                else if (dueUnit === "days") d.setDate(d.getDate() + dueAmount);
-                                else if (dueUnit === "weeks") d.setDate(d.getDate() + dueAmount * 7);
-                                else if (dueUnit === "months") d.setMonth(d.getMonth() + dueAmount);
-                              }
-                              // Add recurrence offset for subsequent occurrences
-                              if (i > 0) {
-                                const offset = freq * i;
-                                if (unit === "days") d.setDate(d.getDate() + offset);
-                                else if (unit === "weeks") d.setDate(d.getDate() + offset * 7);
-                                else if (unit === "months") d.setMonth(d.getMonth() + offset);
-                              }
-                              dates.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }));
-                            }
-                            return dates.map((date, i) => (
-                              <p key={i} className="text-xs text-muted-foreground pl-2">{i + 1}. {date}</p>
-                            ));
-                          })()}
-                        </div>
-                      )}
-                    </>
-                  )}
                 </div>
               </div>
               <DialogFooter>
@@ -845,6 +1072,9 @@ function TaskTemplatesSection() {
                       {t.send_sms_reminder && (
                         <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
                       )}
+                      {(workflowSteps[t.id]?.length || 0) > 0 && (
+                        <Badge variant="outline" className="text-xs">{workflowSteps[t.id].length} follow-up{workflowSteps[t.id].length !== 1 ? "s" : ""}</Badge>
+                      )}
                     </div>
                     {t.description && <p className="text-sm text-muted-foreground">{t.description}</p>}
                   </div>
@@ -852,62 +1082,6 @@ function TaskTemplatesSection() {
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(t)}><Pencil className="h-3 w-3" /></Button>
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(t.id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 mt-2 text-xs">
-                  <span className="text-muted-foreground">Next step:</span>
-                  <Select
-                    value={workflowSteps[t.id]?.next_template_id || "none"}
-                    onValueChange={async (value) => {
-                      if (value === "none") {
-                        const { error } = await supabase.from("task_workflow_steps").delete().eq("template_id", t.id);
-                        if (error) { setSaveError(error.message); return; }
-                        setWorkflowSteps({ ...workflowSteps, [t.id]: null });
-                      } else {
-                        const { error } = await supabase.from("task_workflow_steps").upsert({
-                          template_id: t.id,
-                          step_order: 1,
-                          next_template_id: value,
-                          delay_days: workflowSteps[t.id]?.delay_days || 0,
-                        }, { onConflict: "template_id,step_order" });
-                        if (error) { setSaveError(error.message); return; }
-                        setWorkflowSteps({ ...workflowSteps, [t.id]: { next_template_id: value, delay_days: workflowSteps[t.id]?.delay_days || 0 } });
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-7 w-40">
-                      <SelectValue placeholder="None" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {templates.filter(tmpl => tmpl.id !== t.id).map(tmpl => (
-                        <SelectItem key={tmpl.id} value={tmpl.id}>{tmpl.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="text-muted-foreground">delay:</span>
-                  <Input
-                    type="number"
-                    className="h-7 w-16 text-xs"
-                    value={workflowSteps[t.id]?.delay_days ?? 0}
-                    onChange={async (e) => {
-                      const days = parseInt(e.target.value) || 0;
-                      const nextId = workflowSteps[t.id]?.next_template_id;
-                      if (nextId) {
-                        const { error } = await supabase.from("task_workflow_steps").upsert({
-                          template_id: t.id,
-                          step_order: 1,
-                          next_template_id: nextId,
-                          delay_days: days,
-                        }, { onConflict: "template_id,step_order" });
-                        if (error) { setSaveError(error.message); return; }
-                      }
-                      setWorkflowSteps({ ...workflowSteps, [t.id]: { next_template_id: nextId || "", delay_days: days } });
-                    }}
-                  />
-                  <span className="text-muted-foreground">days</span>
-                  {workflowSteps[t.id]?.next_template_id && workflowSteps[t.id]?.next_template_id !== "none" && (
-                    <span className="text-muted-foreground italic">triggers on completion</span>
-                  )}
                 </div>
                 {(() => {
                   const chain = buildChain(t.id);

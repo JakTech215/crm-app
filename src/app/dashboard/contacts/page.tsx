@@ -171,7 +171,7 @@ export default function ContactsPage() {
       phone: form.phone || null,
       company: form.company || null,
       status: form.status,
-      user_id: user?.id,
+      created_by: user?.id,
     });
 
     if (insertError) {

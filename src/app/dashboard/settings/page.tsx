@@ -33,7 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Pencil, Trash2, Mail, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Shield, UserPlus } from "lucide-react";
+import { Plus, Pencil, Trash2, Mail, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Shield, UserPlus, Download } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1494,6 +1494,449 @@ function UserManagementSection() {
 }
 
 // ================================================================
+// Holidays Management Section
+// ================================================================
+
+interface Holiday {
+  id: string;
+  name: string;
+  date: string;
+  holiday_type: string;
+  description: string | null;
+  recurring: boolean;
+  created_at: string;
+}
+
+const HOLIDAY_TYPE_COLORS: Record<string, string> = {
+  federal: "bg-blue-100 text-blue-800",
+  company: "bg-purple-100 text-purple-800",
+  personal: "bg-green-100 text-green-800",
+  religious: "bg-amber-100 text-amber-800",
+  other: "bg-gray-100 text-gray-800",
+};
+
+const API_BASE = "https://date.nager.at/api/v3/publicholidays";
+
+function HolidaysSection() {
+  const supabase = createClient();
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [filter, setFilter] = useState("all");
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<Holiday | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    name: "",
+    date: "",
+    holiday_type: "company",
+    recurring: false,
+    description: "",
+  });
+
+  const fetchHolidays = async () => {
+    const { data } = await supabase
+      .from("holidays")
+      .select("*")
+      .order("date", { ascending: true });
+    setHolidays((data as Holiday[]) || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchHolidays();
+  }, []);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const year = new Date().getFullYear();
+      const [res1, res2] = await Promise.all([
+        fetch(`${API_BASE}/${year}/US`),
+        fetch(`${API_BASE}/${year + 1}/US`),
+      ]);
+      if (!res1.ok || !res2.ok) throw new Error("API request failed");
+      const [data1, data2] = await Promise.all([res1.json(), res2.json()]);
+      const all = [...data1, ...data2].filter(
+        (h: { types: string[] }) => h.types.includes("Public")
+      );
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      let count = 0;
+      for (const h of all as { date: string; localName: string; name: string }[]) {
+        const { error } = await supabase.from("holidays").upsert(
+          {
+            name: h.localName || h.name,
+            date: h.date,
+            holiday_type: "federal",
+            recurring: true,
+            created_by: user?.id,
+          },
+          { onConflict: "date,name" }
+        );
+        if (!error) count++;
+      }
+
+      setSyncMessage({
+        text: `Imported ${count} federal holidays for ${year}–${year + 1}`,
+        type: "success",
+      });
+      fetchHolidays();
+    } catch {
+      setSyncMessage({ text: "Failed to sync holidays. Please try again.", type: "error" });
+    }
+    setSyncing(false);
+  };
+
+  const resetForm = () => {
+    setForm({ name: "", date: "", holiday_type: "company", recurring: false, description: "" });
+    setEditing(null);
+    setSaveError(null);
+    setOpen(false);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setSaveError(null);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (editing) {
+      const { error } = await supabase
+        .from("holidays")
+        .update({
+          name: form.name,
+          date: form.date,
+          holiday_type: form.holiday_type,
+          recurring: form.recurring,
+          description: form.description || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editing.id);
+      if (error) {
+        setSaveError(error.message);
+        setSaving(false);
+        return;
+      }
+    } else {
+      const { error } = await supabase.from("holidays").insert({
+        name: form.name,
+        date: form.date,
+        holiday_type: form.holiday_type,
+        recurring: form.recurring,
+        description: form.description || null,
+        created_by: user?.id,
+      });
+      if (error) {
+        setSaveError(error.message);
+        setSaving(false);
+        return;
+      }
+    }
+
+    setSaving(false);
+    resetForm();
+    fetchHolidays();
+  };
+
+  const handleEdit = (h: Holiday) => {
+    setEditing(h);
+    setForm({
+      name: h.name,
+      date: h.date,
+      holiday_type: h.holiday_type,
+      recurring: h.recurring,
+      description: h.description || "",
+    });
+    setSaveError(null);
+    setOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    await supabase.from("holidays").delete().eq("id", id);
+    fetchHolidays();
+  };
+
+  const filtered = holidays.filter((h) => {
+    if (filter === "all") return true;
+    return h.holiday_type === filter;
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Sync Federal Holidays */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Download className="h-4 w-4" />
+                Sync Federal Holidays
+              </CardTitle>
+              <CardDescription>
+                Import US federal holidays from the public API for the current and next year.
+              </CardDescription>
+            </div>
+            <Button onClick={handleSync} disabled={syncing}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing..." : "Sync US Federal Holidays"}
+            </Button>
+          </div>
+          {syncMessage && (
+            <div
+              className={`mt-3 rounded-md p-3 text-sm ${
+                syncMessage.type === "success"
+                  ? "bg-green-50 text-green-700"
+                  : "bg-destructive/10 text-destructive"
+              }`}
+            >
+              {syncMessage.text}
+            </div>
+          )}
+        </CardHeader>
+      </Card>
+
+      {/* Holiday List */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>All Holidays</CardTitle>
+            <CardDescription>
+              {holidays.length} holiday{holidays.length !== 1 ? "s" : ""} total
+              {holidays.filter((h) => h.holiday_type === "federal").length > 0 &&
+                ` (${holidays.filter((h) => h.holiday_type === "federal").length} federal)`}
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-3">
+            <Select value={filter} onValueChange={setFilter}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="federal">Federal</SelectItem>
+                <SelectItem value="company">Company</SelectItem>
+                <SelectItem value="personal">Personal</SelectItem>
+                <SelectItem value="religious">Religious</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+            <Dialog
+              open={open}
+              onOpenChange={(o) => {
+                if (!o) resetForm();
+                else setOpen(true);
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Custom Holiday
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <form onSubmit={handleSave}>
+                  <DialogHeader>
+                    <DialogTitle>{editing ? "Edit Holiday" : "Add Custom Holiday"}</DialogTitle>
+                    <DialogDescription>
+                      {editing
+                        ? "Update the holiday details."
+                        : "Add a custom company, personal, or religious holiday."}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    {saveError && (
+                      <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                        {saveError}
+                      </div>
+                    )}
+                    <div className="grid gap-2">
+                      <Label htmlFor="h-name">Name *</Label>
+                      <Input
+                        id="h-name"
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                        required
+                        placeholder="e.g. Company Retreat Day"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="h-date">Date *</Label>
+                      <Input
+                        id="h-date"
+                        type="date"
+                        value={form.date}
+                        onChange={(e) => setForm({ ...form, date: e.target.value })}
+                        required
+                      />
+                      {form.date && (
+                        <span className="text-xs text-muted-foreground">{formatDate(form.date)}</span>
+                      )}
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="h-type">Type</Label>
+                      <Select
+                        value={form.holiday_type}
+                        onValueChange={(v) => setForm({ ...form, holiday_type: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="company">Company</SelectItem>
+                          <SelectItem value="personal">Personal</SelectItem>
+                          <SelectItem value="religious">Religious</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="h-desc">Description</Label>
+                      <Textarea
+                        id="h-desc"
+                        value={form.description}
+                        onChange={(e) => setForm({ ...form, description: e.target.value })}
+                        placeholder="Optional notes about this holiday"
+                        rows={2}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="h-recurring"
+                        checked={form.recurring}
+                        onCheckedChange={(checked) =>
+                          setForm({ ...form, recurring: !!checked })
+                        }
+                      />
+                      <Label htmlFor="h-recurring" className="font-normal">
+                        Repeats yearly
+                      </Label>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit" disabled={saving}>
+                      {saving ? "Saving..." : editing ? "Save Changes" : "Add Holiday"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground">Loading holidays...</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {filter === "all"
+                ? 'No holidays yet. Click "Sync US Federal Holidays" or "Add Custom Holiday" to get started.'
+                : `No ${filter} holidays found.`}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Recurring</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="w-20">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((h) => (
+                  <TableRow key={h.id}>
+                    <TableCell className="font-medium">{h.name}</TableCell>
+                    <TableCell>{formatDate(h.date)}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="secondary"
+                        className={`capitalize ${HOLIDAY_TYPE_COLORS[h.holiday_type] || ""}`}
+                      >
+                        {h.holiday_type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {h.recurring ? (
+                        <Badge variant="outline" className="text-xs">
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          Yearly
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">One-time</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
+                      {h.description || "—"}
+                    </TableCell>
+                    <TableCell>
+                      {h.holiday_type !== "federal" ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => handleEdit(h)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Holiday</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Delete &quot;{h.name}&quot;? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={() => handleDelete(h.id)}
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px]">
+                          Imported
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ================================================================
 // Settings Page
 // ================================================================
 
@@ -1515,6 +1958,7 @@ export default function SettingsPage() {
           <TabsTrigger value="task-types">Task Types</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="users">User Management</TabsTrigger>
+          <TabsTrigger value="holidays">Holidays</TabsTrigger>
         </TabsList>
         <TabsContent value="contact-statuses">
           <ContactStatusesSection />
@@ -1533,6 +1977,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="users">
           <UserManagementSection />
+        </TabsContent>
+        <TabsContent value="holidays">
+          <HolidaysSection />
         </TabsContent>
       </Tabs>
     </div>

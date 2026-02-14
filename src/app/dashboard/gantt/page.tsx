@@ -162,7 +162,7 @@ export default function GanttPage() {
   }, [syncFiltersToUrl]);
 
   const fetchData = async () => {
-    const [{ data: taskData }, { data: depData }, { data: projData }, { data: ptLinks }, { data: assigneeData }, { data: empData }] =
+    const [taskResult, depResult, projResult, ptResult, assigneeResult, empResult] =
       await Promise.all([
         supabase
           .from("tasks")
@@ -174,6 +174,19 @@ export default function GanttPage() {
         supabase.from("task_assignees").select("task_id, employee_id"),
         supabase.from("employees").select("id, first_name, last_name").eq("status", "active").order("first_name"),
       ]);
+
+    if (taskResult.error) console.error("Gantt: tasks query failed:", taskResult.error);
+    if (projResult.error) console.error("Gantt: projects query failed:", projResult.error);
+    if (ptResult.error) console.error("Gantt: project_tasks query failed:", ptResult.error);
+    if (assigneeResult.error) console.error("Gantt: task_assignees query failed:", assigneeResult.error);
+    if (empResult.error) console.error("Gantt: employees query failed:", empResult.error);
+
+    const taskData = taskResult.data;
+    const depData = depResult.data;
+    const projData = projResult.data;
+    const ptLinks = ptResult.data;
+    const assigneeData = assigneeResult.data;
+    const empData = empResult.data;
 
     // Build task→projects mapping (many-to-many)
     const taskProjectsMap: Record<string, string[]> = {};
@@ -218,7 +231,7 @@ export default function GanttPage() {
           recurrence_frequency: t.recurrence_frequency as number | null,
           recurrence_unit: t.recurrence_unit as string | null,
           occurrences: [] as { id: string; date: string; status: string }[],
-          project_ids: projectIds,
+          project_ids: projectIds.filter((pid) => projMap[pid]),
           project_names: projectIds.map((pid) => projMap[pid]).filter(Boolean),
           assignee_ids: aIds,
           assignee_names: aIds.map((eid) => empNameMap[eid]).filter(Boolean),
@@ -782,7 +795,7 @@ export default function GanttPage() {
                                 }`}
                               />
                               <span className="truncate">{row.label}</span>
-                              {row.task?.occurrences && row.task.occurrences.length > 1 && (
+                              {(row.task?.occurrences?.length ?? 0) > 1 && (
                                 <RefreshCw className="h-3 w-3 shrink-0 text-blue-500" />
                               )}
                             </div>
@@ -837,7 +850,7 @@ export default function GanttPage() {
                                     <span className="text-muted-foreground">—</span>
                                   )}
                                 </div>
-                                {row.task!.occurrences.length > 1 && (
+                                {(row.task!.occurrences?.length ?? 0) > 1 && (
                                   <div className="flex items-center gap-1 text-blue-600">
                                     <RefreshCw className="h-3 w-3 shrink-0" />
                                     <span>
@@ -918,7 +931,7 @@ export default function GanttPage() {
                       const barH = ROW_HEIGHT - 20;
 
                       // Recurring task with occurrence markers (Option B)
-                      if (task.occurrences.length > 1) {
+                      if ((task.occurrences?.length ?? 0) > 1) {
                         return (
                           <div key={`bar-${row.rowKey}`}>
                             {/* Faded range bar */}

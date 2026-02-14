@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -18,7 +18,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -28,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { FilterPanel, FilterDef, FilterValues, defaultFilterValues } from "@/components/filter-panel";
 import {
   Popover,
   PopoverContent,
@@ -121,13 +121,13 @@ export default function UpcomingTasksPage() {
   const [loading, setLoading] = useState(true);
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [taskProjectMap, setTaskProjectMap] = useState<Record<string, TaskProject[]>>({});
+  const [contacts, setContacts] = useState<{ id: string; first_name: string; last_name: string | null }[]>([]);
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [savingCell, setSavingCell] = useState<string | null>(null);
   const [savedCell, setSavedCell] = useState<string | null>(null);
 
   // Filters
-  const [assigneeFilter, setAssigneeFilter] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [filterValues, setFilterValues] = useState<FilterValues>({});
   const [groupBy, setGroupBy] = useState("none");
 
   const fetchTasks = async () => {
@@ -230,6 +230,22 @@ export default function UpcomingTasksPage() {
     setEmployees(data || []);
   };
 
+  const fetchContacts = async () => {
+    const { data } = await supabase
+      .from("contacts")
+      .select("id, first_name, last_name")
+      .order("first_name");
+    setContacts(data || []);
+  };
+
+  const fetchProjects = async () => {
+    const { data } = await supabase
+      .from("projects")
+      .select("id, name")
+      .order("name");
+    setProjects(data || []);
+  };
+
   const handleInlineUpdate = async (taskId: string, field: string, value: string) => {
     const key = `${taskId}-${field}`;
     setSavingCell(key);
@@ -249,27 +265,53 @@ export default function UpcomingTasksPage() {
     fetchTasks();
     fetchEmployees();
     fetchTaskTypes();
+    fetchContacts();
+    fetchProjects();
   }, []);
+
+  const filterDefs: FilterDef[] = useMemo(() => [
+    { type: "multi-select", key: "employees", label: "Employee", options: employees.map(e => ({ value: e.id, label: employeeName(e) })) },
+    { type: "multi-select", key: "contacts", label: "Contact", options: contacts.map(c => ({ value: c.id, label: contactName(c) })) },
+    { type: "multi-select", key: "projects", label: "Project", options: projects.map(p => ({ value: p.id, label: p.name })) },
+    { type: "single-select", key: "priority", label: "Priority", allLabel: "All Priorities", options: [
+      { value: "low", label: "Low" },
+      { value: "medium", label: "Medium" },
+      { value: "high", label: "High" },
+      { value: "urgent", label: "Urgent" },
+    ]},
+    { type: "date-range", keyFrom: "dateFrom", keyTo: "dateTo", labelFrom: "Due From", labelTo: "Due To" },
+  ], [employees, contacts, projects]);
 
   // Client-side filtering
   const filteredTasks = tasks.filter((task) => {
-    // Assignee filter
-    if (assigneeFilter !== "all") {
-      const hasAssignee = task.task_assignees.some(
-        (a) => a.employee_id === assigneeFilter
-      );
-      if (!hasAssignee) return false;
+    // Employee filter (multi-select)
+    const employeeIds = filterValues.employees;
+    if (Array.isArray(employeeIds) && employeeIds.length > 0) {
+      if (!task.task_assignees.some((a) => employeeIds.includes(a.employee_id))) return false;
     }
 
-    // Date from filter
-    if (dateFrom && task.due_date) {
-      if (task.due_date < dateFrom) return false;
+    // Contact filter (multi-select)
+    const contactIds = filterValues.contacts;
+    if (Array.isArray(contactIds) && contactIds.length > 0) {
+      if (!task.contact_id || !contactIds.includes(task.contact_id)) return false;
     }
 
-    // Date to filter
-    if (dateTo && task.due_date) {
-      if (task.due_date > dateTo) return false;
+    // Project filter (multi-select)
+    const projectIds = filterValues.projects;
+    if (Array.isArray(projectIds) && projectIds.length > 0) {
+      const tp = taskProjectMap[task.id];
+      if (!tp || !tp.some((p) => projectIds.includes(p.id))) return false;
     }
+
+    // Priority filter
+    const priority = filterValues.priority;
+    if (typeof priority === "string" && priority !== "all" && task.priority !== priority) return false;
+
+    // Date range filter
+    const dateFrom = filterValues.dateFrom;
+    const dateTo = filterValues.dateTo;
+    if (typeof dateFrom === "string" && dateFrom && task.due_date && task.due_date < dateFrom) return false;
+    if (typeof dateTo === "string" && dateTo && task.due_date && task.due_date > dateTo) return false;
 
     return true;
   });
@@ -572,66 +614,29 @@ export default function UpcomingTasksPage() {
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="grid gap-2">
-              <Label>Employee</Label>
-              <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {employees.map((emp) => (
-                    <SelectItem key={emp.id} value={emp.id}>
-                      {employeeName(emp)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Date From</Label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-              {dateFrom && (
-                <span className="text-xs text-muted-foreground">{formatDate(dateFrom)}</span>
-              )}
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Date To</Label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-              {dateTo && (
-                <span className="text-xs text-muted-foreground">{formatDate(dateTo)}</span>
-              )}
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Group By</Label>
-              <Select value={groupBy} onValueChange={setGroupBy}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  <SelectItem value="contact">Contact</SelectItem>
-                  <SelectItem value="employee">Employee</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-start gap-4">
+        <div className="flex-1">
+          <FilterPanel
+            filters={filterDefs}
+            values={filterValues}
+            onChange={(key, value) => setFilterValues(prev => ({ ...prev, [key]: value }))}
+            onClear={() => setFilterValues(defaultFilterValues(filterDefs))}
+          />
+        </div>
+        <div className="grid gap-1 min-w-[140px]">
+          <Label className="text-xs text-muted-foreground">Group By</Label>
+          <Select value={groupBy} onValueChange={setGroupBy}>
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="contact">Contact</SelectItem>
+              <SelectItem value="employee">Employee</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
       {/* Results */}
       {groupBy === "contact" ? (

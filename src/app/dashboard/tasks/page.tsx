@@ -67,10 +67,14 @@ interface ContactOption {
   id: string;
   first_name: string;
   last_name: string | null;
+  company: string | null;
 }
 
 const contactName = (c: { first_name: string; last_name: string | null }) =>
   `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
+
+const contactDisplay = (c: { first_name: string; last_name: string | null; company?: string | null }) =>
+  `${contactName(c)}${c.company ? ` (${c.company})` : ""}`;
 
 interface Task {
   id: string;
@@ -135,7 +139,7 @@ export default function TasksPage() {
   const fetchTasks = async () => {
     const { data, error } = await supabase
       .from("tasks")
-      .select("*, contacts:contact_id(id, first_name, last_name)")
+      .select("*, contacts:contact_id(id, first_name, last_name, company)")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -190,7 +194,7 @@ export default function TasksPage() {
   const fetchContacts = async () => {
     const { data } = await supabase
       .from("contacts")
-      .select("id, first_name, last_name")
+      .select("id, first_name, last_name, company")
       .order("first_name");
     setContacts(data || []);
   };
@@ -628,7 +632,7 @@ export default function TasksPage() {
                         <SelectItem value="none">No contact</SelectItem>
                         {contacts.map((c) => (
                           <SelectItem key={c.id} value={c.id}>
-                            {contactName(c)}
+                            {contactDisplay(c)}
                           </SelectItem>
                         ))}
                       </SelectContent>

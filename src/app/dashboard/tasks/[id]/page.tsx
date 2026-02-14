@@ -76,10 +76,14 @@ interface ContactOption {
   id: string;
   first_name: string;
   last_name: string | null;
+  company: string | null;
 }
 
 const contactName = (c: { first_name: string; last_name: string | null }) =>
   `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
+
+const contactDisplay = (c: { first_name: string; last_name: string | null; company?: string | null }) =>
+  `${contactName(c)}${c.company ? ` (${c.company})` : ""}`;
 
 interface Task {
   id: string;
@@ -171,7 +175,7 @@ export default function TaskDetailPage() {
   const fetchTask = async () => {
     const { data, error } = await supabase
       .from("tasks")
-      .select("*, contacts:contact_id(id, first_name, last_name)")
+      .select("*, contacts:contact_id(id, first_name, last_name, company)")
       .eq("id", taskId)
       .single();
 
@@ -259,7 +263,7 @@ export default function TaskDetailPage() {
   const fetchAllContacts = async () => {
     const { data } = await supabase
       .from("contacts")
-      .select("id, first_name, last_name")
+      .select("id, first_name, last_name, company")
       .order("first_name");
     setAllContacts(data || []);
   };
@@ -529,6 +533,11 @@ export default function TaskDetailPage() {
     fetchTask();
   };
 
+  const handleInlineChangeContact = async (contactId: string | null) => {
+    await supabase.from("tasks").update({ contact_id: contactId }).eq("id", taskId);
+    fetchTask();
+  };
+
   const handleInlineRemoveProject = async (projectId: string) => {
     await supabase.from("project_tasks").delete().eq("task_id", taskId).eq("project_id", projectId);
     fetchLinkedProjects();
@@ -771,7 +780,7 @@ export default function TaskDetailPage() {
                       <SelectItem value="none">No contact</SelectItem>
                       {allContacts.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
-                          {contactName(c)}
+                          {contactDisplay(c)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -984,7 +993,7 @@ export default function TaskDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Details</CardTitle>
@@ -997,22 +1006,6 @@ export default function TaskDetailPage() {
                 </p>
                 <p className="mt-1">{task.description}</p>
               </div>
-            )}
-            {task.contacts && (
-              <>
-                <Separator />
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Contact
-                  </p>
-                  <p
-                    className="mt-1 cursor-pointer text-primary hover:underline"
-                    onClick={() => router.push(`/dashboard/contacts/${task.contact_id}`)}
-                  >
-                    {contactName(task.contacts)}
-                  </p>
-                </div>
-              </>
             )}
             <Separator />
             <div className="grid grid-cols-2 gap-4">
@@ -1133,6 +1126,82 @@ export default function TaskDetailPage() {
               <p className="text-sm text-muted-foreground">
                 No employees assigned.
               </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Contact</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {task.contacts ? (
+              <div className="space-y-3">
+                <div>
+                  <p
+                    className="font-medium cursor-pointer text-primary hover:underline"
+                    onClick={() => router.push(`/dashboard/contacts/${task.contact_id}`)}
+                  >
+                    {contactDisplay(task.contacts)}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button size="sm" variant="outline" className="h-7 text-xs">
+                        Change Contact
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2" align="start">
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {allContacts.filter((c) => c.id !== task.contact_id).map((c) => (
+                          <button
+                            key={c.id}
+                            className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
+                            onClick={() => handleInlineChangeContact(c.id)}
+                          >
+                            {contactDisplay(c)}
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs text-destructive hover:text-destructive"
+                    onClick={() => handleInlineChangeContact(null)}
+                  >
+                    <X className="mr-1 h-3 w-3" />
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">No contact linked</p>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Link Contact
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" align="start">
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {allContacts.map((c) => (
+                        <button
+                          key={c.id}
+                          className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
+                          onClick={() => handleInlineChangeContact(c.id)}
+                        >
+                          {contactDisplay(c)}
+                        </button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             )}
           </CardContent>
         </Card>

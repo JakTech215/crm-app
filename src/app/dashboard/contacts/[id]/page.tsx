@@ -718,7 +718,6 @@ export default function ContactDetailPage() {
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="notes">Notes ({notes.length})</TabsTrigger>
-          <TabsTrigger value="tasks">Tasks ({contactTasks.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="details">
@@ -903,248 +902,248 @@ export default function ContactDetailPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="tasks">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Tasks</CardTitle>
-                <CardDescription>
-                  Tasks linked to {contactName(contact)}.
-                </CardDescription>
-              </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button size="sm">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Link Task
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 p-2" align="end">
-                  {availableTasks.length === 0 ? (
-                    <p className="text-sm text-muted-foreground p-2">No tasks available to link.</p>
-                  ) : (
-                    <div className="space-y-1 max-h-64 overflow-y-auto">
-                      {availableTasks.map((t) => (
-                        <button
-                          key={t.id}
-                          className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
-                          onClick={() => handleLinkTask(t.id)}
-                        >
-                          <Plus className="h-3 w-3 text-muted-foreground shrink-0" />
-                          <span className="truncate">{t.title}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Stats */}
-              {contactTasks.length > 0 && (
-                <div className="grid grid-cols-5 gap-3">
-                  <div className="rounded-lg border p-3 text-center">
-                    <p className="text-2xl font-bold">{taskStats.total}</p>
-                    <p className="text-xs text-muted-foreground">Total</p>
-                  </div>
-                  <div className="rounded-lg border p-3 text-center">
-                    <p className="text-2xl font-bold text-yellow-600">{taskStats.pending}</p>
-                    <p className="text-xs text-muted-foreground">Pending</p>
-                  </div>
-                  <div className="rounded-lg border p-3 text-center">
-                    <p className="text-2xl font-bold text-blue-600">{taskStats.in_progress}</p>
-                    <p className="text-xs text-muted-foreground">In Progress</p>
-                  </div>
-                  <div className="rounded-lg border p-3 text-center">
-                    <p className="text-2xl font-bold text-green-600">{taskStats.completed}</p>
-                    <p className="text-xs text-muted-foreground">Completed</p>
-                  </div>
-                  <div className="rounded-lg border p-3 text-center">
-                    <p className="text-2xl font-bold text-red-600">{taskStats.overdue}</p>
-                    <p className="text-xs text-muted-foreground">Overdue</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Filters */}
-              {contactTasks.length > 0 && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search tasks..."
-                      value={taskSearch}
-                      onChange={(e) => setTaskSearch(e.target.value)}
-                      className="pl-8"
-                    />
-                  </div>
-                  <Select value={taskStatusFilter} onValueChange={setTaskStatusFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="in_progress">In Progress</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={taskPriorityFilter} onValueChange={setTaskPriorityFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Priority" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Priorities</SelectItem>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="urgent">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={taskSortBy} onValueChange={setTaskSortBy}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sort by" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="due_date">Sort by Due Date</SelectItem>
-                      <SelectItem value="priority">Sort by Priority</SelectItem>
-                      <SelectItem value="status">Sort by Status</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {/* Tasks Table */}
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Task</TableHead>
-                    <TableHead>Project</TableHead>
-                    <TableHead>Assignees</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Start Date</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead className="w-16"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tasksLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8">
-                        Loading...
-                      </TableCell>
-                    </TableRow>
-                  ) : filteredContactTasks.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                        {contactTasks.length === 0
-                          ? "No tasks linked. Click \"Link Task\" to get started."
-                          : "No tasks match the current filters."}
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredContactTasks.map((task) => {
-                      const isOverdue = task.due_date && task.status !== "completed" && new Date(task.due_date) < new Date();
-                      return (
-                        <TableRow key={task.id}>
-                          <TableCell>
-                            <span
-                              className="font-medium cursor-pointer text-primary hover:underline"
-                              onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
-                            >
-                              {task.title}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            {task.projectName || <span className="text-muted-foreground">&mdash;</span>}
-                          </TableCell>
-                          <TableCell>
-                            {task.task_assignees?.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {task.task_assignees.map((a) => (
-                                  <Badge key={a.employee_id} variant="outline" className="text-xs">
-                                    {a.employees ? employeeName(a.employees) : ""}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground">&mdash;</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="secondary"
-                              className={`capitalize ${taskStatusColors[task.status] || ""}`}
-                            >
-                              {task.status.replace("_", " ")}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="secondary"
-                              className={`capitalize ${priorityColors[task.priority] || ""}`}
-                            >
-                              {task.priority}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {task.start_date
-                              ? new Date(task.start_date).toLocaleDateString()
-                              : <span className="text-muted-foreground">&mdash;</span>}
-                          </TableCell>
-                          <TableCell>
-                            {task.due_date ? (
-                              <div>
-                                <span className={`text-sm ${isOverdue ? "text-red-600 font-medium" : ""}`}>
-                                  {new Date(task.due_date).toLocaleDateString()}
-                                </span>
-                                {isOverdue && (
-                                  <p className="text-xs text-red-600">Overdue</p>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground">&mdash;</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => setUnlinkTaskId(task.id)}
-                            >
-                              <X className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          {/* Unlink task confirmation */}
-          <AlertDialog open={!!unlinkTaskId} onOpenChange={(open) => !open && setUnlinkTaskId(null)}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Unlink Task</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Unlink &quot;{contactTasks.find((t) => t.id === unlinkTaskId)?.title}&quot; from {contactName(contact)}? This will not delete the task.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => unlinkTaskId && handleUnlinkTask(unlinkTaskId)}>
-                  Unlink
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </TabsContent>
       </Tabs>
+
+      {/* Linked Tasks Section — always visible, matching employee page pattern */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Linked Tasks</CardTitle>
+            <CardDescription>
+              Tasks linked to {contactName(contact)}.
+            </CardDescription>
+          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button size="sm">
+                <Plus className="mr-2 h-4 w-4" />
+                Link Task
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-2" align="end">
+              {availableTasks.length === 0 ? (
+                <p className="text-sm text-muted-foreground p-2">No tasks available to link.</p>
+              ) : (
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {availableTasks.map((t) => (
+                    <button
+                      key={t.id}
+                      className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
+                      onClick={() => handleLinkTask(t.id)}
+                    >
+                      <Plus className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="truncate">{t.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Stats */}
+          {contactTasks.length > 0 && (
+            <div className="grid grid-cols-5 gap-3">
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold">{taskStats.total}</p>
+                <p className="text-xs text-muted-foreground">Total</p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold text-yellow-600">{taskStats.pending}</p>
+                <p className="text-xs text-muted-foreground">Pending</p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold text-blue-600">{taskStats.in_progress}</p>
+                <p className="text-xs text-muted-foreground">In Progress</p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold text-green-600">{taskStats.completed}</p>
+                <p className="text-xs text-muted-foreground">Completed</p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold text-red-600">{taskStats.overdue}</p>
+                <p className="text-xs text-muted-foreground">Overdue</p>
+              </div>
+            </div>
+          )}
+
+          {/* Filters */}
+          {contactTasks.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search tasks..."
+                  value={taskSearch}
+                  onChange={(e) => setTaskSearch(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+              <Select value={taskStatusFilter} onValueChange={setTaskStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={taskPriorityFilter} onValueChange={setTaskPriorityFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Priorities</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={taskSortBy} onValueChange={setTaskSortBy}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="due_date">Sort by Due Date</SelectItem>
+                  <SelectItem value="priority">Sort by Priority</SelectItem>
+                  <SelectItem value="status">Sort by Status</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Tasks Table */}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Task</TableHead>
+                <TableHead>Project</TableHead>
+                <TableHead>Assignees</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead>Start Date</TableHead>
+                <TableHead>Due Date</TableHead>
+                <TableHead className="w-16"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tasksLoading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8">
+                    Loading...
+                  </TableCell>
+                </TableRow>
+              ) : filteredContactTasks.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    {contactTasks.length === 0
+                      ? "No tasks linked. Click \"Link Task\" to get started."
+                      : "No tasks match the current filters."}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredContactTasks.map((task) => {
+                  const isOverdue = task.due_date && task.status !== "completed" && new Date(task.due_date) < new Date();
+                  return (
+                    <TableRow key={task.id}>
+                      <TableCell>
+                        <span
+                          className="font-medium cursor-pointer text-primary hover:underline"
+                          onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
+                        >
+                          {task.title}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {task.projectName || <span className="text-muted-foreground">&mdash;</span>}
+                      </TableCell>
+                      <TableCell>
+                        {task.task_assignees?.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {task.task_assignees.map((a) => (
+                              <Badge key={a.employee_id} variant="outline" className="text-xs">
+                                {a.employees ? employeeName(a.employees) : ""}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">&mdash;</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className={`capitalize ${taskStatusColors[task.status] || ""}`}
+                        >
+                          {task.status.replace("_", " ")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="secondary"
+                          className={`capitalize ${priorityColors[task.priority] || ""}`}
+                        >
+                          {task.priority}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {task.start_date
+                          ? new Date(task.start_date).toLocaleDateString()
+                          : <span className="text-muted-foreground">&mdash;</span>}
+                      </TableCell>
+                      <TableCell>
+                        {task.due_date ? (
+                          <div>
+                            <span className={`text-sm ${isOverdue ? "text-red-600 font-medium" : ""}`}>
+                              {new Date(task.due_date).toLocaleDateString()}
+                            </span>
+                            {isOverdue && (
+                              <p className="text-xs text-red-600">Overdue</p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">&mdash;</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setUnlinkTaskId(task.id)}
+                        >
+                          <X className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Unlink task confirmation */}
+      <AlertDialog open={!!unlinkTaskId} onOpenChange={(open) => !open && setUnlinkTaskId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unlink Task</AlertDialogTitle>
+            <AlertDialogDescription>
+              Unlink &quot;{contactTasks.find((t) => t.id === unlinkTaskId)?.title}&quot; from {contactName(contact)}? This will not delete the task.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => unlinkTaskId && handleUnlinkTask(unlinkTaskId)}>
+              Unlink
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

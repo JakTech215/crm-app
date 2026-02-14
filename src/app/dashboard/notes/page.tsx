@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -160,6 +160,10 @@ export default function NotesPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [convertingNoteId, setConvertingNoteId] = useState<string | null>(null);
 
+  // Rapid entry
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+
   // -------------------------------------------------------------------------
   // Data fetching
   // -------------------------------------------------------------------------
@@ -292,13 +296,31 @@ export default function NotesPage() {
     fetchDropdowns();
   }, []);
 
+  // Auto-focus textarea on page load
+  useEffect(() => {
+    setTimeout(() => textareaRef.current?.focus(), 100);
+  }, []);
+
+  // Ctrl+N / Cmd+N global shortcut to focus note entry
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "n") {
+        e.preventDefault();
+        textareaRef.current?.focus();
+        textareaRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
   // -------------------------------------------------------------------------
   // Success toast helper
   // -------------------------------------------------------------------------
 
   const showSuccess = (msg: string) => {
     setSuccessMessage(msg);
-    setTimeout(() => setSuccessMessage((prev) => (prev === msg ? null : prev)), 2500);
+    setTimeout(() => setSuccessMessage((prev) => (prev === msg ? null : prev)), 2000);
   };
 
   // -------------------------------------------------------------------------
@@ -341,7 +363,9 @@ export default function NotesPage() {
     resetForm();
     await fetchNotes();
     setSaving(false);
-    showSuccess("Note added");
+    showSuccess("Note saved \u2713");
+    // Auto-focus back to textarea for rapid entry
+    setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
   // -------------------------------------------------------------------------
@@ -489,12 +513,27 @@ export default function NotesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Textarea
-            placeholder="What's on your mind?"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="min-h-[100px] text-base resize-y"
-          />
+          <div>
+            <Textarea
+              ref={textareaRef}
+              placeholder="What's on your mind?"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (content.trim() && !saving) {
+                    handleAddNote();
+                  }
+                }
+              }}
+              tabIndex={1}
+              className="min-h-[100px] text-base resize-y"
+            />
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Press <kbd className="px-1 py-0.5 rounded border bg-muted text-[10px] font-mono">Enter</kbd> to save, <kbd className="px-1 py-0.5 rounded border bg-muted text-[10px] font-mono">Shift+Enter</kbd> for new line, <kbd className="px-1 py-0.5 rounded border bg-muted text-[10px] font-mono">Ctrl+N</kbd> to focus from anywhere
+            </p>
+          </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {/* Project */}
@@ -506,7 +545,7 @@ export default function NotesPage() {
                   setFormProjectId(v === "none" ? "" : v)
                 }
               >
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger className="h-8 text-xs" tabIndex={3}>
                   <SelectValue placeholder="None" />
                 </SelectTrigger>
                 <SelectContent>
@@ -529,7 +568,7 @@ export default function NotesPage() {
                   setFormContactId(v === "none" ? "" : v)
                 }
               >
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger className="h-8 text-xs" tabIndex={4}>
                   <SelectValue placeholder="None" />
                 </SelectTrigger>
                 <SelectContent>
@@ -552,7 +591,7 @@ export default function NotesPage() {
                   setFormEmployeeId(v === "none" ? "" : v)
                 }
               >
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger className="h-8 text-xs" tabIndex={5}>
                   <SelectValue placeholder="None" />
                 </SelectTrigger>
                 <SelectContent>
@@ -575,7 +614,7 @@ export default function NotesPage() {
                   setFormTaskId(v === "none" ? "" : v)
                 }
               >
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger className="h-8 text-xs" tabIndex={6}>
                   <SelectValue placeholder="None" />
                 </SelectTrigger>
                 <SelectContent>
@@ -598,7 +637,7 @@ export default function NotesPage() {
                   setFormEventId(v === "none" ? "" : v)
                 }
               >
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger className="h-8 text-xs" tabIndex={7}>
                   <SelectValue placeholder="None" />
                 </SelectTrigger>
                 <SelectContent>
@@ -615,13 +654,16 @@ export default function NotesPage() {
 
           <div className="flex justify-end">
             <Button
+              ref={addButtonRef}
+              tabIndex={2}
               onClick={handleAddNote}
               disabled={!content.trim() || saving}
+              className={content.trim() ? "ring-2 ring-primary ring-offset-2 transition-all" : "transition-all"}
             >
               {saving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Adding...
+                  Saving...
                 </>
               ) : (
                 <>

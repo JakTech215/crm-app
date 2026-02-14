@@ -54,6 +54,12 @@ interface Employee {
 const employeeName = (e: { first_name: string; last_name: string }) =>
   `${e.first_name} ${e.last_name}`;
 
+interface UpcomingTask {
+  id: string;
+  title: string;
+  due_date: string | null;
+}
+
 export default function EmployeesPage() {
   const supabase = createClient();
   const router = useRouter();
@@ -63,6 +69,7 @@ export default function EmployeesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [employeeTasksMap, setEmployeeTasksMap] = useState<Record<string, UpcomingTask[]>>({});
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -81,8 +88,48 @@ export default function EmployeesPage() {
     setLoading(false);
   };
 
+  const fetchEmployeeTasks = async () => {
+    const today = new Date().toISOString().split("T")[0];
+    const { data: assignments } = await supabase
+      .from("task_assignees")
+      .select("task_id, employee_id");
+
+    if (!assignments || assignments.length === 0) return;
+
+    const taskIds = [...new Set(assignments.map((a: { task_id: string }) => a.task_id))];
+
+    const { data: tasks } = await supabase
+      .from("tasks")
+      .select("id, title, due_date")
+      .in("id", taskIds)
+      .neq("status", "completed")
+      .neq("status", "cancelled")
+      .gte("due_date", today)
+      .order("due_date", { ascending: true });
+
+    const taskById: Record<string, UpcomingTask> = {};
+    for (const t of (tasks || []) as UpcomingTask[]) taskById[t.id] = t;
+
+    const raw: Record<string, UpcomingTask[]> = {};
+    for (const a of assignments as { task_id: string; employee_id: string }[]) {
+      const task = taskById[a.task_id];
+      if (!task) continue;
+      if (!raw[a.employee_id]) raw[a.employee_id] = [];
+      raw[a.employee_id].push(task);
+    }
+
+    const map: Record<string, UpcomingTask[]> = {};
+    for (const [empId, empTasks] of Object.entries(raw)) {
+      map[empId] = empTasks
+        .sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""))
+        .slice(0, 3);
+    }
+    setEmployeeTasksMap(map);
+  };
+
   useEffect(() => {
     fetchEmployees();
+    fetchEmployeeTasks();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -268,13 +315,14 @@ export default function EmployeesPage() {
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Department</TableHead>
+                <TableHead>Upcoming Tasks</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
+                  <TableCell colSpan={6} className="text-center py-8">
                     Loading...
                   </TableCell>
                 </TableRow>
@@ -287,7 +335,7 @@ export default function EmployeesPage() {
               }).length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="text-center text-muted-foreground py-8"
                   >
                     No employees yet. Click &quot;Add Employee&quot; to add
@@ -313,6 +361,28 @@ export default function EmployeesPage() {
                     <TableCell>{employee.email}</TableCell>
                     <TableCell>{employee.role || "—"}</TableCell>
                     <TableCell>{employee.department || "—"}</TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      {(employeeTasksMap[employee.id] || []).length > 0 ? (
+                        <div className="space-y-1">
+                          {employeeTasksMap[employee.id].map((t) => (
+                            <div
+                              key={t.id}
+                              className="text-xs cursor-pointer hover:underline text-primary truncate max-w-[200px]"
+                              onClick={() => router.push(`/dashboard/tasks/${t.id}`)}
+                            >
+                              {t.title}
+                              {t.due_date && (
+                                <span className="text-muted-foreground ml-1">
+                                  ({new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge
                         variant="secondary"

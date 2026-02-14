@@ -86,6 +86,12 @@ const COLOR_MAP: Record<string, string> = {
   pink: "bg-pink-100 text-pink-800",
 };
 
+interface UpcomingTask {
+  id: string;
+  title: string;
+  due_date: string | null;
+}
+
 export default function ProjectsPage() {
   const supabase = createClient();
   const router = useRouter();
@@ -99,6 +105,7 @@ export default function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
+  const [projectTasksMap, setProjectTasksMap] = useState<Record<string, UpcomingTask[]>>({});
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -135,10 +142,50 @@ export default function ProjectsPage() {
     }
   };
 
+  const fetchProjectTasks = async () => {
+    const today = new Date().toISOString().split("T")[0];
+    const { data: links } = await supabase
+      .from("project_tasks")
+      .select("task_id, project_id");
+
+    if (!links || links.length === 0) return;
+
+    const taskIds = [...new Set(links.map((l: { task_id: string }) => l.task_id))];
+
+    const { data: tasks } = await supabase
+      .from("tasks")
+      .select("id, title, due_date")
+      .in("id", taskIds)
+      .neq("status", "completed")
+      .neq("status", "cancelled")
+      .gte("due_date", today)
+      .order("due_date", { ascending: true });
+
+    const taskById: Record<string, UpcomingTask> = {};
+    for (const t of (tasks || []) as UpcomingTask[]) taskById[t.id] = t;
+
+    const raw: Record<string, UpcomingTask[]> = {};
+    for (const l of links as { task_id: string; project_id: string }[]) {
+      const task = taskById[l.task_id];
+      if (!task) continue;
+      if (!raw[l.project_id]) raw[l.project_id] = [];
+      raw[l.project_id].push(task);
+    }
+
+    const map: Record<string, UpcomingTask[]> = {};
+    for (const [projId, projTasks] of Object.entries(raw)) {
+      map[projId] = projTasks
+        .sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""))
+        .slice(0, 3);
+    }
+    setProjectTasksMap(map);
+  };
+
   useEffect(() => {
     fetchProjects();
     fetchContacts();
     fetchStatuses();
+    fetchProjectTasks();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -361,6 +408,7 @@ export default function ProjectsPage() {
                 <TableHead>Project Name</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Upcoming Tasks</TableHead>
                 <TableHead>Start Date</TableHead>
                 <TableHead>Due Date</TableHead>
               </TableRow>
@@ -368,7 +416,7 @@ export default function ProjectsPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
+                  <TableCell colSpan={6} className="text-center py-8">
                     Loading...
                   </TableCell>
                 </TableRow>
@@ -380,7 +428,7 @@ export default function ProjectsPage() {
               }).length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="text-center text-muted-foreground py-8"
                   >
                     No projects yet. Click &quot;New Project&quot; to create
@@ -412,6 +460,28 @@ export default function ProjectsPage() {
                       >
                         {project.status.replace("_", " ")}
                       </Badge>
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      {(projectTasksMap[project.id] || []).length > 0 ? (
+                        <div className="space-y-1">
+                          {projectTasksMap[project.id].map((t) => (
+                            <div
+                              key={t.id}
+                              className="text-xs cursor-pointer hover:underline text-primary truncate max-w-[200px]"
+                              onClick={() => router.push(`/dashboard/tasks/${t.id}`)}
+                            >
+                              {t.title}
+                              {t.due_date && (
+                                <span className="text-muted-foreground ml-1">
+                                  ({new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
                     </TableCell>
                     <TableCell>{project.start_date || "—"}</TableCell>
                     <TableCell>{project.due_date || "—"}</TableCell>

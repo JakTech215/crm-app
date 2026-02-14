@@ -111,10 +111,9 @@ const NOTE_TYPES = [
 ];
 
 const FALLBACK_STATUSES: StatusOption[] = [
-  { id: "lead", name: "Lead", color: "blue" },
-  { id: "prospect", name: "Prospect", color: "yellow" },
-  { id: "customer", name: "Customer", color: "green" },
-  { id: "inactive", name: "Inactive", color: "gray" },
+  { id: "active", name: "active", color: "green" },
+  { id: "inactive", name: "inactive", color: "gray" },
+  { id: "archived", name: "archived", color: "red" },
 ];
 
 export default function ContactDetailPage() {
@@ -146,7 +145,7 @@ export default function ContactDetailPage() {
     email: "",
     phone: "",
     company: "",
-    status: "lead",
+    status: "active",
     email_notifications_enabled: true,
     sms_notifications_enabled: false,
   });
@@ -285,7 +284,7 @@ export default function ContactDetailPage() {
         email: editForm.email || null,
         phone: editForm.phone || null,
         company: editForm.company || null,
-        status: editForm.status,
+        status: editForm.status || "active",
         email_notifications_enabled: editForm.email_notifications_enabled,
         sms_notifications_enabled: editForm.sms_notifications_enabled,
       })

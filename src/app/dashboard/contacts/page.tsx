@@ -69,10 +69,9 @@ interface StatusOption {
 }
 
 const FALLBACK_STATUSES: StatusOption[] = [
-  { id: "lead", name: "Lead", color: "blue" },
-  { id: "prospect", name: "Prospect", color: "yellow" },
-  { id: "customer", name: "Customer", color: "green" },
-  { id: "inactive", name: "Inactive", color: "gray" },
+  { id: "active", name: "active", color: "green" },
+  { id: "inactive", name: "inactive", color: "gray" },
+  { id: "archived", name: "archived", color: "red" },
 ];
 
 const COLOR_MAP: Record<string, string> = {
@@ -105,7 +104,7 @@ export default function ContactsPage() {
     email: "",
     phone: "",
     company: "",
-    status: "lead",
+    status: "active",
   });
 
   const fetchContacts = async () => {
@@ -145,7 +144,8 @@ export default function ContactsPage() {
       .order("name");
     if (data && data.length > 0) {
       setStatuses(data);
-      setForm((f) => ({ ...f, status: data[0].name }));
+      const active = data.find((s) => s.name === "active");
+      setForm((f) => ({ ...f, status: active ? active.name : data[0].name }));
     }
   };
 
@@ -170,7 +170,7 @@ export default function ContactsPage() {
       email: form.email || null,
       phone: form.phone || null,
       company: form.company || null,
-      status: form.status,
+      status: form.status || "active",
       created_by: user?.id,
     });
 
@@ -180,7 +180,7 @@ export default function ContactsPage() {
       return;
     }
 
-    setForm({ first_name: "", last_name: "", email: "", phone: "", company: "", status: "lead" });
+    setForm({ first_name: "", last_name: "", email: "", phone: "", company: "", status: "active" });
     setOpen(false);
     fetchContacts();
     setSaving(false);

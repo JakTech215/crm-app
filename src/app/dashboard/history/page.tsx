@@ -29,6 +29,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { RefreshCw } from "lucide-react";
 
 interface Employee {
@@ -52,6 +57,11 @@ interface ContactOption {
 }
 
 interface ProjectOption {
+  id: string;
+  name: string;
+}
+
+interface TaskProject {
   id: string;
   name: string;
 }
@@ -114,7 +124,7 @@ export default function TaskHistoryPage() {
   const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [projectMap, setProjectMap] = useState<Record<string, string>>({});
+  const [projectMap, setProjectMap] = useState<Record<string, TaskProject[]>>({});
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -186,11 +196,12 @@ export default function TaskHistoryPage() {
           }
         }
 
-        const taskProjectMap: Record<string, string> = {};
+        const taskProjectMap: Record<string, TaskProject[]> = {};
         for (const pt of projectTasks as { task_id: string; project_id: string }[]) {
           const name = projectNameMap[pt.project_id];
           if (name) {
-            taskProjectMap[pt.task_id] = name;
+            if (!taskProjectMap[pt.task_id]) taskProjectMap[pt.task_id] = [];
+            taskProjectMap[pt.task_id].push({ id: pt.project_id, name });
           }
         }
 
@@ -258,11 +269,8 @@ export default function TaskHistoryPage() {
 
     // Project filter
     if (filterProject !== "all") {
-      if (projectMap[task.id] === undefined) return false;
-      // Find the project id from the project name mapped to task
-      const linkedProjectName = projectMap[task.id];
-      const proj = projects.find((p) => p.id === filterProject);
-      if (!proj || linkedProjectName !== proj.name) return false;
+      const taskProjects = projectMap[task.id];
+      if (!taskProjects || !taskProjects.some((p) => p.id === filterProject)) return false;
     }
 
     // Status filter
@@ -420,7 +428,7 @@ export default function TaskHistoryPage() {
                 <TableHead>Task</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Contact</TableHead>
-                <TableHead>Project</TableHead>
+                <TableHead>Projects</TableHead>
                 <TableHead>Assignees</TableHead>
                 <TableHead>Priority</TableHead>
                 <TableHead>Status</TableHead>
@@ -463,10 +471,73 @@ export default function TaskHistoryPage() {
                       })()}
                     </TableCell>
                     <TableCell>
-                      {task.contacts ? contactName(task.contacts) : "\u2014"}
+                      {task.contacts ? (
+                        <span
+                          className="text-blue-600 hover:underline cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/dashboard/contacts/${task.contacts!.id}`);
+                          }}
+                        >
+                          {contactName(task.contacts)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">{"\u2014"}</span>
+                      )}
                     </TableCell>
                     <TableCell>
-                      {projectMap[task.id] || "\u2014"}
+                      {(() => {
+                        const taskProjects = projectMap[task.id];
+                        if (!taskProjects || taskProjects.length === 0) {
+                          return <span className="text-muted-foreground">{"\u2014"}</span>;
+                        }
+                        if (taskProjects.length <= 2) {
+                          return (
+                            <div className="flex flex-wrap gap-1">
+                              {taskProjects.map((p) => (
+                                <span
+                                  key={p.id}
+                                  className="text-blue-600 hover:underline cursor-pointer text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push(`/dashboard/projects/${p.id}`);
+                                  }}
+                                >
+                                  {p.name}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        }
+                        return (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <span
+                                className="text-blue-600 hover:underline cursor-pointer text-sm"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {taskProjects.length} Projects
+                              </span>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-48 p-2" align="start" onClick={(e) => e.stopPropagation()}>
+                              <div className="space-y-1">
+                                {taskProjects.map((p) => (
+                                  <div
+                                    key={p.id}
+                                    className="text-sm text-blue-600 hover:underline cursor-pointer px-2 py-1 rounded hover:bg-muted"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      router.push(`/dashboard/projects/${p.id}`);
+                                    }}
+                                  >
+                                    {p.name}
+                                  </div>
+                                ))}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       {task.task_assignees?.length > 0 ? (

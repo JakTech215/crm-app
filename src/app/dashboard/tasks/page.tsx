@@ -116,7 +116,6 @@ interface TaskTemplate {
   default_due_days: number | null;
   due_amount: number | null;
   due_unit: string | null;
-  category: string | null;
   task_type_id: string | null;
   is_recurring: boolean;
   recurrence_frequency: number | null;
@@ -227,7 +226,7 @@ export default function TasksPage() {
   const fetchTemplates = async () => {
     const { data } = await supabase
       .from("task_templates")
-      .select("*")
+      .select("id, name, description, default_priority, default_due_days, due_amount, due_unit, task_type_id, is_recurring, recurrence_frequency, recurrence_unit")
       .order("name");
     setTemplates(data || []);
   };
@@ -275,6 +274,13 @@ export default function TasksPage() {
   }, []);
 
   const applyTemplate = (templateId: string) => {
+    if (templateId === "none") {
+      setSelectedTemplateId("");
+      setSelectedTaskTypeId("");
+      setTemplateChain([]);
+      return;
+    }
+
     const tmpl = templates.find((t) => t.id === templateId);
     if (!tmpl) return;
 
@@ -292,8 +298,8 @@ export default function TasksPage() {
 
     setForm({
       ...form,
-      title: form.title || tmpl.name,
-      description: form.description || tmpl.description || "",
+      title: tmpl.name,
+      description: tmpl.description || "",
       priority: tmpl.default_priority,
       due_date: dueDate || form.due_date,
     });
@@ -626,62 +632,66 @@ export default function TasksPage() {
                   </div>
                 )}
 
-                {templates.length > 0 && (
-                  <div className="grid gap-2">
-                    <Label>Use Template</Label>
-                    <Select
-                      onValueChange={(value) => applyTemplate(value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose a template..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {templates.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            <span className="flex items-center gap-2">
-                              {t.name}
-                              {(() => {
-                                const tt = taskTypes.find((x) => x.id === t.task_type_id);
-                                return tt ? <Badge variant="secondary" className={`text-xs ${COLOR_MAP[tt.color] || ""}`}>{tt.name}</Badge> : null;
-                              })()}
-                              {t.is_recurring && <RefreshCw className="h-3 w-3 text-muted-foreground" />}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                <div className="grid gap-2">
+                  <Label>Start from Template <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Select
+                    value={selectedTemplateId || "none"}
+                    onValueChange={(value) => applyTemplate(value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="None - Create blank task" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None - Create blank task</SelectItem>
+                      {templates.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          <span className="flex items-center gap-2">
+                            {t.name}
+                            {(() => {
+                              const tt = taskTypes.find((x) => x.id === t.task_type_id);
+                              return tt ? <Badge variant="secondary" className={`text-xs ${COLOR_MAP[tt.color] || ""}`}>{tt.name}</Badge> : null;
+                            })()}
+                            {t.is_recurring && <RefreshCw className="h-3 w-3 text-muted-foreground" />}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                {selectedTemplateId && (templateChain.length > 0 || templates.find((t) => t.id === selectedTemplateId)?.is_recurring) && (
+                {selectedTemplateId && (
                   <Card className="border-dashed bg-muted/30">
                     <CardContent className="p-3 space-y-2">
-                      {templateChain.length > 0 && (
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <span className="text-xs font-medium text-muted-foreground">Workflow:</span>
-                          <Badge variant="default" className="text-xs">{templates.find((t) => t.id === selectedTemplateId)?.name}</Badge>
-                          {templateChain.map((step, i) => (
-                            <span key={i} className="flex items-center gap-1">
-                              <span className="text-xs text-muted-foreground">—{step.delayDays}d→</span>
-                              <Badge variant="outline" className="text-xs">{step.name}</Badge>
-                            </span>
-                          ))}
-                        </div>
-                      )}
                       {(() => {
                         const tmpl = templates.find((t) => t.id === selectedTemplateId);
                         return tmpl?.is_recurring ? (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <RefreshCw className="h-3 w-3" />
-                            Recurring: every {tmpl.recurrence_frequency} {tmpl.recurrence_unit}
+                            This template will create recurring tasks (every {tmpl.recurrence_frequency} {tmpl.recurrence_unit})
                           </div>
                         ) : null;
                       })()}
+                      {templateChain.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            This template will create follow-up tasks:
+                          </div>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <Badge variant="default" className="text-xs">{templates.find((t) => t.id === selectedTemplateId)?.name}</Badge>
+                            {templateChain.map((step, i) => (
+                              <span key={i} className="flex items-center gap-1">
+                                <span className="text-xs text-muted-foreground">—{step.delayDays}d→</span>
+                                <Badge variant="outline" className="text-xs">{step.name}</Badge>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )}
 
-                {templates.length > 0 && <Separator />}
+                <Separator />
 
                 <div className="grid gap-2">
                   <Label htmlFor="title">Title *</Label>

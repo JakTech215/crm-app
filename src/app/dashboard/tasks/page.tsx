@@ -111,6 +111,11 @@ interface ProjectOption {
   name: string;
 }
 
+interface TaskProject {
+  id: string;
+  name: string;
+}
+
 interface TaskTemplate {
   id: string;
   name: string;
@@ -156,6 +161,7 @@ export default function TasksPage() {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  const [taskProjectMap, setTaskProjectMap] = useState<Record<string, TaskProject[]>>({});
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -216,6 +222,44 @@ export default function TasksPage() {
     }));
 
     setTasks(tasksWithAssignees as Task[]);
+
+    // Fetch project links from project_tasks junction table
+    if (taskIds.length > 0) {
+      const { data: projectTasks } = await supabase
+        .from("project_tasks")
+        .select("task_id, project_id")
+        .in("task_id", taskIds);
+
+      if (projectTasks && projectTasks.length > 0) {
+        const projectIds = [
+          ...new Set(projectTasks.map((pt: { project_id: string }) => pt.project_id)),
+        ];
+
+        const { data: projectData } = await supabase
+          .from("projects")
+          .select("id, name")
+          .in("id", projectIds);
+
+        const projectNameMap: Record<string, string> = {};
+        if (projectData) {
+          for (const p of projectData) {
+            projectNameMap[p.id] = p.name;
+          }
+        }
+
+        const tpMap: Record<string, TaskProject[]> = {};
+        for (const pt of projectTasks as { task_id: string; project_id: string }[]) {
+          const name = projectNameMap[pt.project_id];
+          if (name) {
+            if (!tpMap[pt.task_id]) tpMap[pt.task_id] = [];
+            tpMap[pt.task_id].push({ id: pt.project_id, name });
+          }
+        }
+
+        setTaskProjectMap(tpMap);
+      }
+    }
+
     setLoading(false);
   };
 
@@ -583,6 +627,7 @@ export default function TasksPage() {
           <TableHead>Task</TableHead>
           <TableHead>Type</TableHead>
           <TableHead>Contact</TableHead>
+          <TableHead>Projects</TableHead>
           <TableHead>Assigned To</TableHead>
           <TableHead>Priority</TableHead>
           <TableHead>Status</TableHead>
@@ -648,7 +693,73 @@ export default function TasksPage() {
                 })()}
               </TableCell>
               <TableCell>
-                {task.contacts ? contactName(task.contacts) : "—"}
+                {task.contacts ? (
+                  <span
+                    className="text-blue-600 hover:underline cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/dashboard/contacts/${task.contacts!.id}`);
+                    }}
+                  >
+                    {contactName(task.contacts)}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </TableCell>
+              <TableCell>
+                {(() => {
+                  const taskProjects = taskProjectMap[task.id];
+                  if (!taskProjects || taskProjects.length === 0) {
+                    return <span className="text-muted-foreground">—</span>;
+                  }
+                  if (taskProjects.length <= 2) {
+                    return (
+                      <div className="flex flex-wrap gap-1">
+                        {taskProjects.map((p) => (
+                          <span
+                            key={p.id}
+                            className="text-blue-600 hover:underline cursor-pointer text-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/dashboard/projects/${p.id}`);
+                            }}
+                          >
+                            {p.name}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  }
+                  return (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <span
+                          className="text-blue-600 hover:underline cursor-pointer text-sm"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {taskProjects.length} Projects
+                        </span>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-48 p-2" align="start" onClick={(e) => e.stopPropagation()}>
+                        <div className="space-y-1">
+                          {taskProjects.map((p) => (
+                            <div
+                              key={p.id}
+                              className="text-sm text-blue-600 hover:underline cursor-pointer px-2 py-1 rounded hover:bg-muted"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/dashboard/projects/${p.id}`);
+                              }}
+                            >
+                              {p.name}
+                            </div>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  );
+                })()}
               </TableCell>
               <TableCell>
                 {task.task_assignees?.length > 0 ? (

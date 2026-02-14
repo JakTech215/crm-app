@@ -32,11 +32,29 @@ interface RecentItem {
   href: string;
 }
 
+interface TaskContact {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+}
+
+interface TaskProject {
+  id: string;
+  name: string;
+}
+
+interface TaskAssignee {
+  name: string;
+}
+
 interface UpcomingTask {
   id: string;
   title: string;
   due_date: string;
   priority: string;
+  contact: TaskContact | null;
+  projects: TaskProject[];
+  assignees: TaskAssignee[];
 }
 
 const priorityColors: Record<string, string> = {
@@ -145,14 +163,73 @@ export default function DashboardPage() {
 
         const { data: upcomingTasks } = await supabase
           .from("tasks")
-          .select("id, title, due_date, priority")
+          .select("id, title, due_date, priority, contact_id, contacts:contact_id(id, first_name, last_name)")
           .neq("status", "completed")
           .gte("due_date", startDate)
           .lte("due_date", endDate)
           .order("due_date", { ascending: true })
           .limit(5);
 
-        setUpcoming(upcomingTasks || []);
+        const taskIds = (upcomingTasks || []).map((t: { id: string }) => t.id);
+
+        // Fetch project links
+        const taskProjectMap: Record<string, TaskProject[]> = {};
+        if (taskIds.length > 0) {
+          const { data: ptLinks } = await supabase
+            .from("project_tasks")
+            .select("task_id, project_id")
+            .in("task_id", taskIds);
+
+          if (ptLinks && ptLinks.length > 0) {
+            const projectIds = [...new Set(ptLinks.map((pt: { project_id: string }) => pt.project_id))];
+            const { data: projData } = await supabase
+              .from("projects")
+              .select("id, name")
+              .in("id", projectIds);
+
+            const projNameMap: Record<string, string> = {};
+            if (projData) for (const p of projData) projNameMap[p.id] = p.name;
+
+            for (const pt of ptLinks as { task_id: string; project_id: string }[]) {
+              const name = projNameMap[pt.project_id];
+              if (name) {
+                if (!taskProjectMap[pt.task_id]) taskProjectMap[pt.task_id] = [];
+                taskProjectMap[pt.task_id].push({ id: pt.project_id, name });
+              }
+            }
+          }
+        }
+
+        // Fetch assignees
+        const taskAssigneeMap: Record<string, TaskAssignee[]> = {};
+        if (taskIds.length > 0) {
+          const { data: assignees } = await supabase
+            .from("task_assignees")
+            .select("task_id, employee_id, employees(id, first_name, last_name)")
+            .in("task_id", taskIds);
+
+          if (assignees) {
+            for (const a of assignees as unknown as { task_id: string; employees: { first_name: string; last_name: string } }[]) {
+              if (!taskAssigneeMap[a.task_id]) taskAssigneeMap[a.task_id] = [];
+              taskAssigneeMap[a.task_id].push({ name: `${a.employees.first_name} ${a.employees.last_name}` });
+            }
+          }
+        }
+
+        const enriched: UpcomingTask[] = (upcomingTasks || []).map((t: Record<string, unknown>) => {
+          const contactObj = Array.isArray(t.contacts) ? t.contacts[0] : t.contacts;
+          return {
+            id: t.id as string,
+            title: t.title as string,
+            due_date: t.due_date as string,
+            priority: t.priority as string,
+            contact: contactObj ? { id: (contactObj as TaskContact).id, first_name: (contactObj as TaskContact).first_name, last_name: (contactObj as TaskContact).last_name } : null,
+            projects: taskProjectMap[t.id as string] || [],
+            assignees: taskAssigneeMap[t.id as string] || [],
+          };
+        });
+
+        setUpcoming(enriched);
       } catch (e) {
         console.error("Failed to fetch upcoming tasks:", e);
       }
@@ -277,21 +354,59 @@ export default function DashboardPage() {
                 {upcoming.map((task) => (
                   <div
                     key={task.id}
-                    className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                    className="rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
                     onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
                   >
-                    <div className="flex items-center gap-3">
-                      <Badge
-                        variant="secondary"
-                        className={`capitalize ${priorityColors[task.priority] || ""}`}
-                      >
-                        {task.priority}
-                      </Badge>
-                      <span className="text-sm font-medium">{task.title}</span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Badge
+                          variant="secondary"
+                          className={`capitalize ${priorityColors[task.priority] || ""}`}
+                        >
+                          {task.priority}
+                        </Badge>
+                        <span className="text-sm font-medium">{task.title}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDate(task.due_date)}
+                      </span>
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(task.due_date)}
-                    </span>
+                    <div className="flex items-center gap-3 mt-1.5 ml-1 text-xs text-muted-foreground">
+                      {task.contact && (
+                        <span>
+                          <span
+                            className="text-blue-600 hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/dashboard/contacts/${task.contact!.id}`);
+                            }}
+                          >
+                            {task.contact.first_name}{task.contact.last_name ? ` ${task.contact.last_name}` : ""}
+                          </span>
+                        </span>
+                      )}
+                      {task.projects.length > 0 && (
+                        <span>
+                          {task.projects.map((p, i) => (
+                            <span key={p.id}>
+                              {i > 0 && ", "}
+                              <span
+                                className="text-blue-600 hover:underline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(`/dashboard/projects/${p.id}`);
+                                }}
+                              >
+                                {p.name}
+                              </span>
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                      {task.assignees.length > 0 && (
+                        <span>{task.assignees.map((a) => a.name).join(", ")}</span>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

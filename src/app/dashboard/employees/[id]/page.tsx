@@ -53,7 +53,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Pencil, Trash2, Plus, X, Search, Loader2, Check } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, Plus, X, Search, Loader2, Check, ChevronDown, ChevronUp, CalendarClock } from "lucide-react";
 
 interface Employee {
   id: string;
@@ -104,6 +104,24 @@ const taskStatusColors: Record<string, string> = {
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
 
+const getDueInfo = (dueDate: string) => {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate);
+  due.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    const abs = Math.abs(diffDays);
+    return { label: `Overdue by ${abs} day${abs !== 1 ? "s" : ""}`, color: "text-red-600 font-medium", border: "border-l-red-500" };
+  }
+  if (diffDays === 0) return { label: "Due today", color: "text-red-600 font-medium", border: "border-l-red-500" };
+  if (diffDays === 1) return { label: "Due tomorrow", color: "text-red-600 font-medium", border: "border-l-red-500" };
+  if (diffDays <= 3) return { label: `Due in ${diffDays} days`, color: "text-red-600", border: "border-l-red-500" };
+  if (diffDays <= 7) return { label: `Due in ${diffDays} days`, color: "text-orange-600", border: "border-l-orange-400" };
+  return { label: `Due in ${diffDays} days`, color: "text-muted-foreground", border: "border-l-border" };
+};
+
 export default function EmployeeDetailPage() {
   const supabase = createClient();
   const router = useRouter();
@@ -143,6 +161,7 @@ export default function EmployeeDetailPage() {
   const [savingField, setSavingField] = useState<Record<string, boolean>>({});
   const [savedField, setSavedField] = useState<Record<string, boolean>>({});
   const [inlineError, setInlineError] = useState<string | null>(null);
+  const [upcomingExpanded, setUpcomingExpanded] = useState(true);
 
   const fetchEmployee = async () => {
     const { data } = await supabase
@@ -408,6 +427,19 @@ export default function EmployeeDetailPage() {
   const assignedTaskIds = new Set(empTasks.map((t) => t.id));
   const availableTasks = allTasks.filter((t) => !assignedTaskIds.has(t.id));
 
+  // Upcoming tasks (next 30 days, not completed/cancelled)
+  const now = new Date();
+  const thirtyDaysOut = new Date(now);
+  thirtyDaysOut.setDate(thirtyDaysOut.getDate() + 30);
+  const upcomingTasks = empTasks
+    .filter((t) => {
+      if (!t.due_date) return false;
+      if (t.status === "completed" || t.status === "cancelled") return false;
+      const due = new Date(t.due_date);
+      return due <= thirtyDaysOut;
+    })
+    .sort((a, b) => a.due_date!.localeCompare(b.due_date!));
+
   if (loading) {
     return <div className="p-6">Loading...</div>;
   }
@@ -620,8 +652,96 @@ export default function EmployeeDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Assigned Tasks Section */}
-      <Card>
+      {/* Upcoming Tasks Section */}
+      {!tasksLoading && upcomingTasks.length > 0 && (
+        <Card>
+          <CardHeader
+            className="flex flex-row items-center justify-between cursor-pointer"
+            onClick={() => setUpcomingExpanded(!upcomingExpanded)}
+          >
+            <div className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-orange-500" />
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  Upcoming Tasks
+                  <Badge variant="secondary" className="text-xs">{upcomingTasks.length}</Badge>
+                </CardTitle>
+                <CardDescription>Due within the next 30 days</CardDescription>
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              {upcomingExpanded ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </Button>
+          </CardHeader>
+          {upcomingExpanded && (
+            <CardContent className="pt-0">
+              <div className="space-y-2">
+                {upcomingTasks.slice(0, 5).map((task) => {
+                  const info = getDueInfo(task.due_date!);
+                  return (
+                    <div
+                      key={task.id}
+                      className={`flex items-center justify-between rounded-lg border border-l-4 p-3 ${info.border}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="font-medium text-sm cursor-pointer text-primary hover:underline truncate"
+                            onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
+                          >
+                            {task.title}
+                          </span>
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs shrink-0 capitalize ${taskStatusColors[task.status] || ""}`}
+                          >
+                            {task.status.replace(/_/g, " ")}
+                          </Badge>
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs shrink-0 capitalize ${priorityColors[task.priority] || ""}`}
+                          >
+                            {task.priority}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className={`text-xs ${info.color}`}>{info.label}</span>
+                          {task.projectName && (
+                            <span className="text-xs text-muted-foreground truncate">
+                              {task.projectName}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-xs text-muted-foreground shrink-0 ml-3">
+                        {new Date(task.due_date!).toLocaleDateString()}
+                      </span>
+                    </div>
+                  );
+                })}
+                {upcomingTasks.length > 5 && (
+                  <button
+                    className="w-full text-center text-sm text-primary hover:underline py-2"
+                    onClick={() => {
+                      setUpcomingExpanded(false);
+                      document.getElementById("linked-tasks-section")?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                  >
+                    View all {upcomingTasks.length} upcoming tasks
+                  </button>
+                )}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
+
+      {/* Linked Tasks Section */}
+      <Card id="linked-tasks-section">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Linked Tasks</CardTitle>

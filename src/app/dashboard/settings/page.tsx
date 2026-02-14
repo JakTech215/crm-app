@@ -1105,93 +1105,6 @@ function TaskTemplatesSection() {
 }
 
 // ================================================================
-// Notifications Section (Klaviyo Integration)
-// ================================================================
-
-function NotificationsSection() {
-  const [apiKey, setApiKey] = useState("");
-  const [saved, setSaved] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
-
-  useEffect(() => {
-    const stored = typeof window !== "undefined" ? localStorage.getItem("klaviyo_api_key") || "" : "";
-    setApiKey(stored);
-  }, []);
-
-  const templates = [
-    { id: "task-assigned", name: "Task Assigned", description: "Sent when a task is assigned to an employee" },
-    { id: "task-due-reminder", name: "Task Due Reminder", description: "Sent before a task is due" },
-    { id: "task-completed", name: "Task Completed", description: "Sent when a task is marked complete" },
-  ];
-
-  const handleSave = () => {
-    localStorage.setItem("klaviyo_api_key", apiKey);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const handleTestSend = (templateId: string) => {
-    setTestResult(`Test notification for "${templateId}" queued. Configure Klaviyo API key to enable real sending.`);
-    setTimeout(() => setTestResult(null), 5000);
-  };
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Klaviyo Integration</CardTitle>
-          <CardDescription>Connect your Klaviyo account to send task notifications.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-2">
-            <Label htmlFor="klaviyo-api-key">API Key</Label>
-            <div className="flex gap-2">
-              <Input
-                id="klaviyo-api-key"
-                type="password"
-                placeholder="pk_..."
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
-              <Button onClick={handleSave}>Save</Button>
-            </div>
-            {saved && <p className="text-sm text-green-600">Saved!</p>}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Enter your Klaviyo private API key to enable email and SMS notifications for task events.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Notification Templates</CardTitle>
-          <CardDescription>Preview and test notification templates powered by Klaviyo.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {templates.map((tmpl) => (
-            <div key={tmpl.id} className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <p className="font-medium">{tmpl.name}</p>
-                <p className="text-sm text-muted-foreground">{tmpl.description}</p>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => handleTestSend(tmpl.id)}>
-                Test Send
-              </Button>
-            </div>
-          ))}
-          {testResult && (
-            <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-800">
-              {testResult}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ================================================================
 // User Management Section (Admin Only)
 // ================================================================
 
@@ -1920,7 +1833,7 @@ export default function SettingsPage() {
           <TabsTrigger value="project-statuses">Project Statuses</TabsTrigger>
           <TabsTrigger value="task-templates">Task Templates</TabsTrigger>
           <TabsTrigger value="task-types">Task Types</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
+
           <TabsTrigger value="users">User Management</TabsTrigger>
           <TabsTrigger value="holidays">Holidays</TabsTrigger>
         </TabsList>
@@ -1936,9 +1849,7 @@ export default function SettingsPage() {
         <TabsContent value="task-types">
           <TaskTypesSection />
         </TabsContent>
-        <TabsContent value="notifications">
-          <NotificationsSection />
-        </TabsContent>
+
         <TabsContent value="users">
           <UserManagementSection />
         </TabsContent>

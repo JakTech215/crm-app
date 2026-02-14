@@ -147,6 +147,7 @@ export default function TasksPage() {
   const [selectedTaskTypeId, setSelectedTaskTypeId] = useState<string>("");
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [templateChain, setTemplateChain] = useState<{ name: string; delayDays: number }[]>([]);
+  const [creationResult, setCreationResult] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -312,6 +313,7 @@ export default function TasksPage() {
     e.preventDefault();
     setSaving(true);
     setError(null);
+    setCreationResult(null);
 
     const {
       data: { user },
@@ -324,6 +326,7 @@ export default function TasksPage() {
       return;
     }
 
+    // Create the first/primary task
     const { data: task, error: insertError } = await supabase
       .from("tasks")
       .insert({
@@ -346,6 +349,8 @@ export default function TasksPage() {
       setSaving(false);
       return;
     }
+
+    let totalCreated = 1;
 
     if (task && selectedEmployees.length > 0) {
       const { error: assignError } = await supabase
@@ -381,22 +386,80 @@ export default function TasksPage() {
 
     // Save template_id on the task if a template was used
     if (task && selectedTemplateId) {
-      const { error: templateError } = await supabase.from("tasks").update({ template_id: selectedTemplateId }).eq("id", task.id);
-      if (templateError) {
-        setError("Task created but failed to save template link: " + templateError.message);
-      }
-    }
-
-    // Save recurring fields from template
-    if (task && selectedTemplateId) {
       const tmpl = templates.find((t) => t.id === selectedTemplateId);
-      if (tmpl?.is_recurring) {
+      await supabase.from("tasks").update({ template_id: selectedTemplateId }).eq("id", task.id);
+
+      // If template is recurring, create 4 additional recurring instances
+      if (tmpl?.is_recurring && tmpl.recurrence_frequency && tmpl.recurrence_unit) {
         await supabase.from("tasks").update({
           is_recurring: true,
           recurrence_frequency: tmpl.recurrence_frequency,
           recurrence_unit: tmpl.recurrence_unit,
           recurrence_source_task_id: task.id,
         }).eq("id", task.id);
+
+        let prevTaskId = task.id;
+        const baseDueDate = form.due_date ? new Date(form.due_date + "T00:00:00") : new Date();
+
+        for (let i = 1; i <= 4; i++) {
+          const d = new Date(baseDueDate);
+          const offset = tmpl.recurrence_frequency * i;
+          if (tmpl.recurrence_unit === "days") d.setDate(d.getDate() + offset);
+          else if (tmpl.recurrence_unit === "weeks") d.setDate(d.getDate() + offset * 7);
+          else if (tmpl.recurrence_unit === "months") d.setMonth(d.getMonth() + offset);
+          const nextDueDate = d.toISOString().split("T")[0];
+
+          const { data: recurTask } = await supabase.from("tasks").insert({
+            title: form.title,
+            description: form.description || null,
+            contact_id: form.contact_id || null,
+            priority: form.priority,
+            status: "pending",
+            due_date: nextDueDate,
+            is_milestone: form.is_milestone,
+            task_type_id: selectedTaskTypeId || null,
+            template_id: selectedTemplateId,
+            is_recurring: true,
+            recurrence_frequency: tmpl.recurrence_frequency,
+            recurrence_unit: tmpl.recurrence_unit,
+            recurrence_source_task_id: task.id,
+            parent_task_id: prevTaskId,
+            created_by: user.id,
+          }).select().single();
+
+          if (recurTask) {
+            totalCreated++;
+            prevTaskId = recurTask.id;
+
+            // Copy assignees to recurring instance
+            if (selectedEmployees.length > 0) {
+              await supabase.from("task_assignees").insert(
+                selectedEmployees.map((empId) => ({
+                  task_id: recurTask.id,
+                  employee_id: empId,
+                }))
+              );
+            }
+
+            // Link to same project
+            if (form.project_id) {
+              await supabase.from("project_tasks").insert({
+                task_id: recurTask.id,
+                project_id: form.project_id,
+              });
+            }
+          }
+        }
+      }
+
+      // If template has a workflow chain, note it in result
+      if (templateChain.length > 0) {
+        setCreationResult(
+          `Created ${totalCreated} task${totalCreated > 1 ? "s" : ""} from template` +
+          (templateChain.length > 0 ? `. ${templateChain.length} follow-up task${templateChain.length > 1 ? "s" : ""} will be created on completion.` : "")
+        );
+      } else {
+        setCreationResult(`Created ${totalCreated} task${totalCreated > 1 ? "s" : ""} from template`);
       }
     }
 
@@ -687,6 +750,18 @@ export default function TasksPage() {
                           </div>
                         </div>
                       )}
+                      {(() => {
+                        const tmpl = templates.find((t) => t.id === selectedTemplateId);
+                        const isRecurring = tmpl?.is_recurring && tmpl.recurrence_frequency;
+                        const hasChain = templateChain.length > 0;
+                        if (!isRecurring && !hasChain) return null;
+                        return (
+                          <div className="text-xs text-muted-foreground border-t pt-2 mt-1 space-y-0.5">
+                            {isRecurring && <p>Will create 5 tasks with calculated due dates</p>}
+                            {hasChain && <p>Will create {templateChain.length} follow-up task{templateChain.length > 1 ? "s" : ""} on completion</p>}
+                          </div>
+                        );
+                      })()}
                     </CardContent>
                   </Card>
                 )}
@@ -941,6 +1016,13 @@ export default function TasksPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {creationResult && (
+        <div className="rounded-md bg-green-50 border border-green-200 p-3 text-sm text-green-800 flex items-center justify-between">
+          <span>{creationResult}</span>
+          <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setCreationResult(null)}>Dismiss</Button>
+        </div>
+      )}
 
       <div className="relative w-64">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

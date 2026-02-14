@@ -748,23 +748,58 @@ function TaskTemplatesSection() {
                     <span className="text-sm font-medium">Recurring task</span>
                   </label>
                   {form.is_recurring && (
-                    <div className="grid grid-cols-2 gap-4 pl-6">
-                      <div className="grid gap-2">
-                        <Label htmlFor="tt-rec-freq">Every</Label>
-                        <Input id="tt-rec-freq" type="number" min="1" placeholder="e.g. 2" value={form.recurrence_frequency} onChange={(e) => setForm({ ...form, recurrence_frequency: e.target.value })} />
+                    <>
+                      <div className="grid grid-cols-2 gap-4 pl-6">
+                        <div className="grid gap-2">
+                          <Label htmlFor="tt-rec-freq">Every</Label>
+                          <Input id="tt-rec-freq" type="number" min="1" placeholder="e.g. 2" value={form.recurrence_frequency} onChange={(e) => setForm({ ...form, recurrence_frequency: e.target.value })} />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Unit</Label>
+                          <Select value={form.recurrence_unit} onValueChange={(v) => setForm({ ...form, recurrence_unit: v })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="days">Days</SelectItem>
+                              <SelectItem value="weeks">Weeks</SelectItem>
+                              <SelectItem value="months">Months</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                      <div className="grid gap-2">
-                        <Label>Unit</Label>
-                        <Select value={form.recurrence_unit} onValueChange={(v) => setForm({ ...form, recurrence_unit: v })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="days">Days</SelectItem>
-                            <SelectItem value="weeks">Weeks</SelectItem>
-                            <SelectItem value="months">Months</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
+                      {form.recurrence_frequency && parseInt(form.recurrence_frequency) > 0 && (
+                        <div className="pl-6 space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">Next 5 occurrences:</p>
+                          {(() => {
+                            const freq = parseInt(form.recurrence_frequency);
+                            const unit = form.recurrence_unit;
+                            const dueAmount = form.due_amount ? parseInt(form.due_amount) : 0;
+                            const dueUnit = form.due_unit;
+                            const dates: string[] = [];
+                            for (let i = 0; i < 5; i++) {
+                              const d = new Date();
+                              // Add initial due offset for first occurrence
+                              if (dueAmount) {
+                                if (dueUnit === "hours") d.setHours(d.getHours() + dueAmount);
+                                else if (dueUnit === "days") d.setDate(d.getDate() + dueAmount);
+                                else if (dueUnit === "weeks") d.setDate(d.getDate() + dueAmount * 7);
+                                else if (dueUnit === "months") d.setMonth(d.getMonth() + dueAmount);
+                              }
+                              // Add recurrence offset for subsequent occurrences
+                              if (i > 0) {
+                                const offset = freq * i;
+                                if (unit === "days") d.setDate(d.getDate() + offset);
+                                else if (unit === "weeks") d.setDate(d.getDate() + offset * 7);
+                                else if (unit === "months") d.setMonth(d.getMonth() + offset);
+                              }
+                              dates.push(d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }));
+                            }
+                            return dates.map((date, i) => (
+                              <p key={i} className="text-xs text-muted-foreground pl-2">{i + 1}. {date}</p>
+                            ));
+                          })()}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -870,6 +905,9 @@ function TaskTemplatesSection() {
                     }}
                   />
                   <span className="text-muted-foreground">days</span>
+                  {workflowSteps[t.id]?.next_template_id && workflowSteps[t.id]?.next_template_id !== "none" && (
+                    <span className="text-muted-foreground italic">triggers on completion</span>
+                  )}
                 </div>
                 {(() => {
                   const chain = buildChain(t.id);

@@ -546,7 +546,7 @@ export default function EventDetailPage() {
                 </Badge>
               )}
             </div>
-            <p className="text-muted-foreground">Event details and attendees</p>
+            <p className="text-muted-foreground">Event details and employees</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -587,7 +587,7 @@ export default function EventDetailPage() {
                 </p>
                 {attendees.length > 0 && (
                   <p className="text-xs">
-                    {attendees.length} attendee(s) will also be removed.
+                    {attendees.length} employee(s) will also be removed.
                   </p>
                 )}
                 {notes.length > 0 && (
@@ -763,14 +763,14 @@ export default function EventDetailPage() {
                 </div>
               )}
               <div className="grid gap-2">
-                <Label>Attendees</Label>
+                <Label>Employees</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button variant="outline" type="button" className="justify-start">
                       <Users className="mr-2 h-4 w-4" />
                       {editSelectedEmployees.length > 0
                         ? `${editSelectedEmployees.length} selected`
-                        : "Select attendees..."}
+                        : "Select employees..."}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-64 p-2" align="start">
@@ -901,11 +901,11 @@ export default function EventDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Attendees Card */}
+      {/* Employees Card */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>
-            Attendees{" "}
+            Employees{" "}
             <span className="text-muted-foreground font-normal text-sm">
               ({attendees.length})
             </span>
@@ -914,7 +914,7 @@ export default function EventDetailPage() {
             <PopoverTrigger asChild>
               <Button size="sm" variant="outline">
                 <Plus className="mr-2 h-4 w-4" />
-                Add Attendee
+                Add Employee
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-64 p-2" align="end">
@@ -969,7 +969,7 @@ export default function EventDetailPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No attendees.</p>
+            <p className="text-sm text-muted-foreground">No employees.</p>
           )}
         </CardContent>
       </Card>

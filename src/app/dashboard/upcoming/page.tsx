@@ -576,7 +576,7 @@ export default function UpcomingTasksPage() {
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="grid gap-2">
-              <Label>Assignee</Label>
+              <Label>Employee</Label>
               <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
                 <SelectTrigger>
                   <SelectValue placeholder="All" />

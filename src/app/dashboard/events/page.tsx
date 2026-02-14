@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate as fmtDate, formatTime, nowUTC, isBeforeToday } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,7 @@ import {
   Check,
   Calendar,
 } from "lucide-react";
+import { FilterPanel, FilterDef, FilterValues, parseFilterParams, defaultFilterValues } from "@/components/filter-panel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -195,12 +196,28 @@ export default function EventsPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Search & filters
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [projectFilter, setProjectFilter] = useState("all");
-  const [contactFilter, setContactFilter] = useState("all");
-  const [employeeFilter, setEmployeeFilter] = useState("all");
+  const [filterValues, setFilterValues] = useState<FilterValues>({});
+
+  const filterDefs: FilterDef[] = useMemo(() => [
+    { type: "single-select", key: "status", label: "Status", allLabel: "All Statuses", options: [
+      { value: "scheduled", label: "Scheduled" },
+      { value: "completed", label: "Completed" },
+      { value: "cancelled", label: "Cancelled" },
+    ]},
+    { type: "single-select", key: "type", label: "Type", allLabel: "All Types", options: [
+      { value: "meeting", label: "Meeting" },
+      { value: "deadline", label: "Deadline" },
+      { value: "milestone", label: "Milestone" },
+      { value: "appointment", label: "Appointment" },
+      { value: "other", label: "Other" },
+    ]},
+    { type: "multi-select", key: "projects", label: "Project", options: projects.map(p => ({ value: p.id, label: p.name })) },
+    { type: "multi-select", key: "contacts", label: "Contact", options: contacts.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` })) },
+    { type: "multi-select", key: "employees", label: "Employee", options: employees.map(e => ({ value: e.id, label: `${e.first_name} ${e.last_name}` })) },
+    { type: "date-range", keyFrom: "dateFrom", keyTo: "dateTo", labelFrom: "Date From", labelTo: "Date To" },
+  ], [projects, contacts, employees]);
 
   // -----------------------------------------------------------------------
   // Data fetching
@@ -277,6 +294,13 @@ export default function EventsPage() {
     fetchProjects();
     fetchContacts();
   }, []);
+
+  // Initialize filter values from URL params once data is loaded
+  useEffect(() => {
+    if (!loading && filterDefs.length > 0) {
+      setFilterValues(parseFilterParams(filterDefs, searchParams));
+    }
+  }, [loading]);
 
   // -----------------------------------------------------------------------
   // Inline status update
@@ -463,15 +487,33 @@ export default function EventsPage() {
   // -----------------------------------------------------------------------
 
   const filteredEvents = events.filter((ev) => {
-    if (statusFilter !== "all" && ev.status !== statusFilter) return false;
-    if (typeFilter !== "all" && ev.event_type !== typeFilter) return false;
-    if (projectFilter !== "all" && ev.project_id !== projectFilter) return false;
-    if (contactFilter !== "all" && ev.contact_id !== contactFilter) return false;
-    if (
-      employeeFilter !== "all" &&
-      !ev.attendees.some((a) => a.employee_id === employeeFilter)
-    )
-      return false;
+    // Status filter
+    const status = filterValues.status;
+    if (typeof status === "string" && status !== "all" && ev.status !== status) return false;
+
+    // Type filter
+    const type = filterValues.type;
+    if (typeof type === "string" && type !== "all" && ev.event_type !== type) return false;
+
+    // Project filter (multi-select)
+    const projectIds = filterValues.projects;
+    if (Array.isArray(projectIds) && projectIds.length > 0 && (!ev.project_id || !projectIds.includes(ev.project_id))) return false;
+
+    // Contact filter (multi-select)
+    const contactIds = filterValues.contacts;
+    if (Array.isArray(contactIds) && contactIds.length > 0 && (!ev.contact_id || !contactIds.includes(ev.contact_id))) return false;
+
+    // Employee filter (multi-select)
+    const employeeIds = filterValues.employees;
+    if (Array.isArray(employeeIds) && employeeIds.length > 0 && !ev.attendees.some((a) => employeeIds.includes(a.employee_id))) return false;
+
+    // Date range filter
+    const dateFrom = filterValues.dateFrom;
+    const dateTo = filterValues.dateTo;
+    if (typeof dateFrom === "string" && dateFrom && ev.event_date < dateFrom) return false;
+    if (typeof dateTo === "string" && dateTo && ev.event_date > dateTo) return false;
+
+    // Search
     if (search) {
       const q = search.toLowerCase();
       if (!ev.title.toLowerCase().includes(q)) return false;
@@ -705,9 +747,9 @@ export default function EventsPage() {
                   </div>
                 )}
 
-                {/* Attendees */}
+                {/* Employees */}
                 <div className="grid gap-2">
-                  <Label>Attendees</Label>
+                  <Label>Employees</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -718,7 +760,7 @@ export default function EventsPage() {
                         <Users className="mr-2 h-4 w-4" />
                         {selectedEmployees.length > 0
                           ? `${selectedEmployees.length} selected`
-                          : "Select attendees..."}
+                          : "Select employees..."}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-64 p-2" align="start">
@@ -774,82 +816,13 @@ export default function EventsPage() {
         />
       </div>
 
-      {/* Filters row */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="All Statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="scheduled">Scheduled</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-            <SelectItem value="cancelled">Cancelled</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="All Types" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="meeting">Meeting</SelectItem>
-            <SelectItem value="deadline">Deadline</SelectItem>
-            <SelectItem value="milestone">Milestone</SelectItem>
-            <SelectItem value="appointment">Appointment</SelectItem>
-            <SelectItem value="other">Other</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {projects.length > 0 && (
-          <Select value={projectFilter} onValueChange={setProjectFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder="All Projects" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Projects</SelectItem>
-              {projects.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        {contacts.length > 0 && (
-          <Select value={contactFilter} onValueChange={setContactFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder="All Contacts" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Contacts</SelectItem>
-              {contacts.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {contactName(c)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        {employees.length > 0 && (
-          <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder="All Employees" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Employees</SelectItem>
-              {employees.map((emp) => (
-                <SelectItem key={emp.id} value={emp.id}>
-                  {employeeName(emp)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </div>
+      {/* Filters */}
+      <FilterPanel
+        filters={filterDefs}
+        values={filterValues}
+        onChange={(key, value) => setFilterValues(prev => ({ ...prev, [key]: value }))}
+        onClear={() => setFilterValues(defaultFilterValues(filterDefs))}
+      />
 
       {/* Delete confirmation */}
       <AlertDialog

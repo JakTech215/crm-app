@@ -1099,7 +1099,7 @@ export default function TaskDetailPage() {
                 </div>
               </div>
               <div className="grid gap-2">
-                <Label>Assign Employees</Label>
+                <Label>Employees</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -1345,7 +1345,7 @@ export default function TaskDetailPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Assigned Employees</CardTitle>
+            <CardTitle>Employees</CardTitle>
             <Popover>
               <PopoverTrigger asChild>
                 <Button size="sm" variant="outline">

@@ -1427,7 +1427,7 @@ export default function ContactDetailPage() {
                 <TableHead>Type</TableHead>
                 <TableHead>Project</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Attendees</TableHead>
+                <TableHead>Employees</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

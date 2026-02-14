@@ -580,7 +580,7 @@ export default function GanttPage() {
   if (filterEmployee !== "all") {
     const emp = employees.find((e) => e.id === filterEmployee);
     filterBadges.push({
-      label: `Assignee: ${emp ? employeeName(emp) : filterEmployee}`,
+      label: `Employee: ${emp ? employeeName(emp) : filterEmployee}`,
       onRemove: () => setFilterEmployee("all"),
     });
   }
@@ -937,7 +937,7 @@ export default function GanttPage() {
                                   )}
                                   {row.task!.assignee_names.length > 0 && (
                                     <div>
-                                      <span className="text-muted-foreground">Attendees: </span>
+                                      <span className="text-muted-foreground">Employees: </span>
                                       <span>{row.task!.assignee_names.join(", ")}</span>
                                     </div>
                                   )}
@@ -1169,7 +1169,7 @@ export default function GanttPage() {
                             STATUS_COLORS[task.status] || "bg-gray-400"
                           } ${PRIORITY_BORDER[task.priority] || "border-slate-300"}`}
                           style={{ left: barX, width: barW, top: barY, height: barH }}
-                          title={`${task.title} (${task.status})${task.contact_name ? `\nContact: ${task.contact_name}` : ""}${task.assignee_names.length > 0 ? `\nAssigned: ${task.assignee_names.join(", ")}` : ""}${task.project_names.length > 0 ? `\nProjects: ${task.project_names.join(", ")}` : ""}`}
+                          title={`${task.title} (${task.status})${task.contact_name ? `\nContact: ${task.contact_name}` : ""}${task.assignee_names.length > 0 ? `\nEmployees: ${task.assignee_names.join(", ")}` : ""}${task.project_names.length > 0 ? `\nProjects: ${task.project_names.join(", ")}` : ""}`}
                           onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
                         />
                       );

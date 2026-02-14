@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Plus, Users, Diamond, Search, RefreshCw, Loader2, Check, Trash2 } from "lucide-react";
 import { todayCST, formatDate, formatDateLong, formatRelativeTime as formatRelativeTimeUtil, nowUTC, isBeforeToday, addDaysToDate } from "@/lib/dates";
+import { FilterPanel, FilterDef, FilterValues, defaultFilterValues } from "@/components/filter-panel";
 
 const COLOR_MAP: Record<string, string> = {
   gray: "bg-gray-100 text-gray-800",
@@ -203,6 +204,56 @@ export default function TasksPage() {
     due_date: "",
     is_milestone: false,
   });
+
+  const [filterValues, setFilterValues] = useState<FilterValues>({});
+
+  const filterDefs: FilterDef[] = useMemo(
+    () => [
+      {
+        type: "multi-select" as const,
+        key: "projects",
+        label: "Project",
+        options: projects.map((p) => ({ value: p.id, label: p.name })),
+      },
+      {
+        type: "multi-select" as const,
+        key: "contacts",
+        label: "Contact",
+        options: contacts.map((c) => ({ value: c.id, label: `${c.first_name} ${c.last_name}` })),
+      },
+      {
+        type: "multi-select" as const,
+        key: "employees",
+        label: "Employee",
+        options: employees.map((e) => ({ value: e.id, label: `${e.first_name} ${e.last_name}` })),
+      },
+      {
+        type: "single-select" as const,
+        key: "priority",
+        label: "Priority",
+        options: [
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" },
+          { value: "high", label: "High" },
+          { value: "urgent", label: "Urgent" },
+        ],
+      },
+      {
+        type: "single-select" as const,
+        key: "taskType",
+        label: "Task Type",
+        options: taskTypes.map((t) => ({ value: t.id, label: t.name })),
+      },
+      {
+        type: "date-range" as const,
+        keyFrom: "dateFrom",
+        keyTo: "dateTo",
+        labelFrom: "Due From",
+        labelTo: "Due To",
+      },
+    ],
+    [projects, contacts, employees, taskTypes]
+  );
 
   const fetchTasks = async () => {
     const { data, error } = await supabase
@@ -670,6 +721,52 @@ export default function TasksPage() {
         t.description?.toLowerCase().includes(q)
       );
     }
+
+    // Project filter
+    const projectIds = filterValues.projects;
+    if (Array.isArray(projectIds) && projectIds.length > 0) {
+      filtered = filtered.filter((t) => {
+        const taskProjects = taskProjectMap[t.id] || [];
+        return taskProjects.some((p) => projectIds.includes(p.id));
+      });
+    }
+
+    // Contact filter
+    const contactIds = filterValues.contacts;
+    if (Array.isArray(contactIds) && contactIds.length > 0) {
+      filtered = filtered.filter((t) => t.contact_id && contactIds.includes(t.contact_id));
+    }
+
+    // Employee filter
+    const employeeIds = filterValues.employees;
+    if (Array.isArray(employeeIds) && employeeIds.length > 0) {
+      filtered = filtered.filter((t) =>
+        t.task_assignees?.some((a: TaskAssignee) => employeeIds.includes(a.employee_id))
+      );
+    }
+
+    // Priority filter
+    const priority = filterValues.priority;
+    if (typeof priority === "string" && priority !== "all") {
+      filtered = filtered.filter((t) => t.priority === priority);
+    }
+
+    // Task Type filter
+    const taskType = filterValues.taskType;
+    if (typeof taskType === "string" && taskType !== "all") {
+      filtered = filtered.filter((t) => t.task_type_id === taskType);
+    }
+
+    // Date range filter
+    const dateFrom = filterValues.dateFrom;
+    const dateTo = filterValues.dateTo;
+    if (typeof dateFrom === "string" && dateFrom) {
+      filtered = filtered.filter((t) => t.due_date && t.due_date >= dateFrom);
+    }
+    if (typeof dateTo === "string" && dateTo) {
+      filtered = filtered.filter((t) => t.due_date && t.due_date <= dateTo);
+    }
+
     return filtered;
   };
 
@@ -1234,7 +1331,7 @@ export default function TasksPage() {
                   </div>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Assign Employees</Label>
+                  <Label>Employees</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -1345,6 +1442,13 @@ export default function TasksPage() {
           className="pl-8"
         />
       </div>
+
+      <FilterPanel
+        filters={filterDefs}
+        values={filterValues}
+        onChange={(key, value) => setFilterValues(prev => ({ ...prev, [key]: value }))}
+        onClear={() => setFilterValues(defaultFilterValues(filterDefs))}
+      />
 
       <Tabs defaultValue={searchParams.get("status") || "all"}>
         <TabsList>

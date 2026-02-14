@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -19,15 +18,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   Popover,
@@ -36,6 +26,7 @@ import {
 } from "@/components/ui/popover";
 import { RefreshCw } from "lucide-react";
 import { formatDate } from "@/lib/dates";
+import { FilterPanel, FilterDef, FilterValues, defaultFilterValues } from "@/components/filter-panel";
 
 interface Employee {
   id: string;
@@ -130,12 +121,19 @@ export default function TaskHistoryPage() {
   const [loading, setLoading] = useState(true);
 
   // Filters
-  const [filterContact, setFilterContact] = useState("all");
-  const [filterEmployee, setFilterEmployee] = useState("all");
-  const [filterProject, setFilterProject] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [filterValues, setFilterValues] = useState<FilterValues>({});
+
+  const filterDefs: FilterDef[] = useMemo(() => [
+    { type: "multi-select", key: "contacts", label: "Contact", options: contacts.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` })) },
+    { type: "multi-select", key: "employees", label: "Employee", options: employees.map(e => ({ value: e.id, label: `${e.first_name} ${e.last_name}` })) },
+    { type: "multi-select", key: "projects", label: "Project", options: projects.map(p => ({ value: p.id, label: p.name })) },
+    { type: "single-select", key: "status", label: "Status", allLabel: "All Statuses", options: [
+      { value: "pending", label: "Pending" },
+      { value: "in_progress", label: "In Progress" },
+      { value: "completed", label: "Completed" },
+    ]},
+    { type: "date-range", keyFrom: "dateFrom", keyTo: "dateTo", labelFrom: "Date From", labelTo: "Date To" },
+  ], [contacts, employees, projects]);
 
   const fetchTasks = async () => {
     const { data, error } = await supabase
@@ -256,38 +254,37 @@ export default function TaskHistoryPage() {
   }, []);
 
   const filteredTasks = tasks.filter((task) => {
-    // Contact filter
-    if (filterContact !== "all" && task.contact_id !== filterContact) {
-      return false;
-    }
+    // Contact filter (multi-select)
+    const contactIds = filterValues.contacts;
+    if (Array.isArray(contactIds) && contactIds.length > 0 && (!task.contact_id || !contactIds.includes(task.contact_id))) return false;
 
-    // Employee filter — match if any assignee matches
-    if (filterEmployee !== "all") {
+    // Employee filter (multi-select)
+    const employeeIds = filterValues.employees;
+    if (Array.isArray(employeeIds) && employeeIds.length > 0) {
       const assignees = task.task_assignees || [];
-      const match = assignees.some((a) => a.employee_id === filterEmployee);
-      if (!match) return false;
+      if (!assignees.some((a: TaskAssignee) => employeeIds.includes(a.employee_id))) return false;
     }
 
-    // Project filter
-    if (filterProject !== "all") {
+    // Project filter (multi-select)
+    const projectIds = filterValues.projects;
+    if (Array.isArray(projectIds) && projectIds.length > 0) {
       const taskProjects = projectMap[task.id];
-      if (!taskProjects || !taskProjects.some((p) => p.id === filterProject)) return false;
+      if (!taskProjects || !taskProjects.some((p: TaskProject) => projectIds.includes(p.id))) return false;
     }
 
     // Status filter
-    if (filterStatus !== "all" && task.status !== filterStatus) {
-      return false;
-    }
+    const status = filterValues.status;
+    if (typeof status === "string" && status !== "all" && task.status !== status) return false;
 
-    // Date From filter
-    if (dateFrom) {
+    // Date range filter
+    const dateFrom = filterValues.dateFrom;
+    const dateTo = filterValues.dateTo;
+    if (typeof dateFrom === "string" && dateFrom) {
       const taskDate = new Date(task.created_at);
       const from = new Date(dateFrom);
       if (taskDate < from) return false;
     }
-
-    // Date To filter
-    if (dateTo) {
+    if (typeof dateTo === "string" && dateTo) {
       const taskDate = new Date(task.created_at);
       const to = new Date(dateTo);
       to.setHours(23, 59, 59, 999);
@@ -296,15 +293,6 @@ export default function TaskHistoryPage() {
 
     return true;
   });
-
-  const clearFilters = () => {
-    setFilterContact("all");
-    setFilterEmployee("all");
-    setFilterProject("all");
-    setFilterStatus("all");
-    setDateFrom("");
-    setDateTo("");
-  };
 
   return (
     <div className="space-y-6">
@@ -315,111 +303,12 @@ export default function TaskHistoryPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-          <CardDescription>Narrow down the task history.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="grid gap-2">
-              <Label>Contact</Label>
-              <Select value={filterContact} onValueChange={setFilterContact}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {contacts.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {contactName(c)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Employee</Label>
-              <Select value={filterEmployee} onValueChange={setFilterEmployee}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {employees.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {employeeName(e)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Project</Label>
-              <Select value={filterProject} onValueChange={setFilterProject}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  {projects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Status</Label>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Date From</Label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-              {dateFrom && (
-                <span className="text-xs text-muted-foreground">{formatDate(dateFrom)}</span>
-              )}
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Date To</Label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-              {dateTo && (
-                <span className="text-xs text-muted-foreground">{formatDate(dateTo)}</span>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <Button variant="outline" size="sm" onClick={clearFilters}>
-              Clear Filters
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <FilterPanel
+        filters={filterDefs}
+        values={filterValues}
+        onChange={(key, value) => setFilterValues(prev => ({ ...prev, [key]: value }))}
+        onClear={() => setFilterValues(defaultFilterValues(filterDefs))}
+      />
 
       <Card>
         <CardHeader>

@@ -34,6 +34,7 @@ import {
   ChevronUp,
   Filter,
   X,
+  RefreshCw,
 } from "lucide-react";
 
 interface GanttTask {
@@ -50,6 +51,11 @@ interface GanttTask {
   assignee_names: string[];
   contact_id: string | null;
   contact_name: string | null;
+  is_recurring: boolean;
+  recurrence_source_task_id: string | null;
+  recurrence_frequency: number | null;
+  recurrence_unit: string | null;
+  occurrences: { id: string; date: string; status: string }[];
 }
 
 interface Dependency {
@@ -160,7 +166,7 @@ export default function GanttPage() {
       await Promise.all([
         supabase
           .from("tasks")
-          .select("id, title, status, priority, start_date, due_date, is_milestone, contact_id, contacts:contact_id(id, first_name, last_name)")
+          .select("id, title, status, priority, start_date, due_date, is_milestone, is_recurring, recurrence_source_task_id, recurrence_frequency, recurrence_unit, contact_id, contacts:contact_id(id, first_name, last_name)")
           .order("start_date"),
         supabase.from("task_dependencies").select("task_id, depends_on_task_id, dependency_type, lag_days"),
         supabase.from("projects").select("id, name").order("name"),
@@ -207,6 +213,11 @@ export default function GanttPage() {
           start_date: t.start_date as string | null,
           due_date: t.due_date as string | null,
           is_milestone: t.is_milestone as boolean,
+          is_recurring: (t.is_recurring as boolean) || false,
+          recurrence_source_task_id: t.recurrence_source_task_id as string | null,
+          recurrence_frequency: t.recurrence_frequency as number | null,
+          recurrence_unit: t.recurrence_unit as string | null,
+          occurrences: [] as { id: string; date: string; status: string }[],
           project_ids: projectIds,
           project_names: projectIds.map((pid) => projMap[pid]).filter(Boolean),
           assignee_ids: aIds,
@@ -217,7 +228,37 @@ export default function GanttPage() {
       }
     );
 
-    setTasks(enriched);
+    // Collapse recurring series into single rows with occurrence markers
+    const seriesGroups: Record<string, number[]> = {};
+    enriched.forEach((t, idx) => {
+      if (t.recurrence_source_task_id) {
+        if (!seriesGroups[t.recurrence_source_task_id]) seriesGroups[t.recurrence_source_task_id] = [];
+        seriesGroups[t.recurrence_source_task_id].push(idx);
+      }
+    });
+
+    const collapsedIds = new Set<string>();
+    for (const [sourceId, indices] of Object.entries(seriesGroups)) {
+      if (indices.length <= 1) continue;
+      const seriesTasks = indices.map((idx) => enriched[idx]);
+      seriesTasks.sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""));
+      const occurrences = seriesTasks
+        .filter((t) => t.due_date)
+        .map((t) => ({ id: t.id, date: t.due_date!, status: t.status }));
+
+      const sourceIdx = enriched.findIndex((t) => t.id === sourceId);
+      if (sourceIdx >= 0) {
+        enriched[sourceIdx].occurrences = occurrences;
+        if (seriesTasks[0].due_date) enriched[sourceIdx].start_date = seriesTasks[0].due_date;
+        const lastDate = seriesTasks[seriesTasks.length - 1].due_date;
+        if (lastDate) enriched[sourceIdx].due_date = lastDate;
+        for (const t of seriesTasks) {
+          if (t.id !== sourceId) collapsedIds.add(t.id);
+        }
+      }
+    }
+
+    setTasks(enriched.filter((t) => !collapsedIds.has(t.id)) as GanttTask[]);
     setDependencies((depData || []) as Dependency[]);
     setProjects(projData || []);
     setEmployees(empData || []);
@@ -741,6 +782,9 @@ export default function GanttPage() {
                                 }`}
                               />
                               <span className="truncate">{row.label}</span>
+                              {row.task?.occurrences && row.task.occurrences.length > 1 && (
+                                <RefreshCw className="h-3 w-3 shrink-0 text-blue-500" />
+                              )}
                             </div>
                           </PopoverTrigger>
                           <PopoverContent className="w-56 p-3" align="start" side="right">
@@ -793,6 +837,17 @@ export default function GanttPage() {
                                     <span className="text-muted-foreground">—</span>
                                   )}
                                 </div>
+                                {row.task!.occurrences.length > 1 && (
+                                  <div className="flex items-center gap-1 text-blue-600">
+                                    <RefreshCw className="h-3 w-3 shrink-0" />
+                                    <span>
+                                      {row.task!.occurrences.length} occurrences
+                                      {row.task!.recurrence_frequency && row.task!.recurrence_unit && (
+                                        <> (every {row.task!.recurrence_frequency} {row.task!.recurrence_unit})</>
+                                      )}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </PopoverContent>
@@ -854,25 +909,62 @@ export default function GanttPage() {
                     {/* Task bars */}
                     {allRows.map((row, i) => {
                       if (row.type !== "task" || !row.task || !row.task.start_date || !row.task.due_date) return null;
-                      const x1 = dateToX(row.task.start_date);
-                      const x2 = dateToX(row.task.due_date);
+                      const task = row.task;
+                      const x1 = dateToX(task.start_date!);
+                      const x2 = dateToX(task.due_date!);
                       const barX = Math.max(x1, 0);
                       const barW = Math.max(x2 - x1, 8);
+                      const barY = i * ROW_HEIGHT + 10;
+                      const barH = ROW_HEIGHT - 20;
 
+                      // Recurring task with occurrence markers (Option B)
+                      if (task.occurrences.length > 1) {
+                        return (
+                          <div key={`bar-${row.rowKey}`}>
+                            {/* Faded range bar */}
+                            <div
+                              className="absolute rounded bg-blue-50 border border-blue-300 border-dashed"
+                              style={{ left: barX, width: barW, top: barY, height: barH }}
+                              title={`${task.title} — Recurring series (${task.occurrences.length} occurrences)${task.recurrence_frequency && task.recurrence_unit ? `\nEvery ${task.recurrence_frequency} ${task.recurrence_unit}` : ""}`}
+                            />
+                            {/* Connecting line through markers */}
+                            <div
+                              className="absolute bg-blue-200"
+                              style={{ left: barX, width: barW, top: barY + barH / 2 - 1, height: 2 }}
+                            />
+                            {/* Occurrence markers */}
+                            {task.occurrences.map((occ, j) => {
+                              const occX = dateToX(occ.date);
+                              const markerSize = 12;
+                              return (
+                                <div
+                                  key={`occ-${occ.id}`}
+                                  className={`absolute rounded-full cursor-pointer transition-transform hover:scale-150 z-10 border-2 border-white shadow-sm ${STATUS_COLORS[occ.status] || "bg-gray-400"}`}
+                                  style={{
+                                    left: occX - markerSize / 2,
+                                    top: barY + (barH - markerSize) / 2,
+                                    width: markerSize,
+                                    height: markerSize,
+                                  }}
+                                  title={`Occurrence ${j + 1} of ${task.occurrences.length}\n${new Date(occ.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}\nStatus: ${occ.status.replace("_", " ")}`}
+                                  onClick={() => router.push(`/dashboard/tasks/${occ.id}`)}
+                                />
+                              );
+                            })}
+                          </div>
+                        );
+                      }
+
+                      // Regular task bar
                       return (
                         <div
                           key={`bar-${row.rowKey}`}
                           className={`absolute rounded cursor-pointer transition-opacity hover:opacity-80 border-l-4 ${
-                            STATUS_COLORS[row.task.status] || "bg-gray-400"
-                          } ${PRIORITY_BORDER[row.task.priority] || "border-slate-300"}`}
-                          style={{
-                            left: barX,
-                            width: barW,
-                            top: i * ROW_HEIGHT + 10,
-                            height: ROW_HEIGHT - 20,
-                          }}
-                          title={`${row.task.title} (${row.task.status})${row.task.contact_name ? `\nContact: ${row.task.contact_name}` : ""}${row.task.assignee_names.length > 0 ? `\nAssigned: ${row.task.assignee_names.join(", ")}` : ""}${row.task.project_names.length > 0 ? `\nProjects: ${row.task.project_names.join(", ")}` : ""}`}
-                          onClick={() => router.push(`/dashboard/tasks/${row.task!.id}`)}
+                            STATUS_COLORS[task.status] || "bg-gray-400"
+                          } ${PRIORITY_BORDER[task.priority] || "border-slate-300"}`}
+                          style={{ left: barX, width: barW, top: barY, height: barH }}
+                          title={`${task.title} (${task.status})${task.contact_name ? `\nContact: ${task.contact_name}` : ""}${task.assignee_names.length > 0 ? `\nAssigned: ${task.assignee_names.join(", ")}` : ""}${task.project_names.length > 0 ? `\nProjects: ${task.project_names.join(", ")}` : ""}`}
+                          onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
                         />
                       );
                     })}
@@ -931,7 +1023,7 @@ export default function GanttPage() {
               </div>
 
               {/* Legend */}
-              <div className="flex items-center gap-4 px-4 py-3 border-t bg-muted/20">
+              <div className="flex flex-wrap items-center gap-4 px-4 py-3 border-t bg-muted/20">
                 <span className="text-xs text-muted-foreground">Status:</span>
                 <div className="flex items-center gap-1">
                   <div className="h-3 w-3 rounded-full bg-yellow-400" />
@@ -944,6 +1036,19 @@ export default function GanttPage() {
                 <div className="flex items-center gap-1">
                   <div className="h-3 w-3 rounded-full bg-green-500" />
                   <span className="text-xs">Completed</span>
+                </div>
+                <span className="text-xs text-muted-foreground ml-4">Bar types:</span>
+                <div className="flex items-center gap-1">
+                  <div className="h-3 w-8 rounded bg-blue-500 border-l-4 border-blue-700" />
+                  <span className="text-xs">Regular</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center">
+                    <div className="h-2.5 w-2.5 rounded-full bg-blue-500 border-2 border-white shadow-sm z-10" />
+                    <div className="h-0.5 w-2 bg-blue-200" />
+                    <div className="h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-white shadow-sm z-10" />
+                  </div>
+                  <span className="text-xs">Recurring</span>
                 </div>
                 <span className="text-xs text-muted-foreground ml-4">Priority (left border):</span>
                 <div className="flex items-center gap-1">

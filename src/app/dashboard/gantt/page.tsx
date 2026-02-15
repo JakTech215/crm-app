@@ -337,11 +337,11 @@ export default function GanttPage() {
     try {
       const [fedHolidays, customResult] = await Promise.all([
         getFederalHolidays(),
-        supabase.from("holidays").select("date, name"),
+        supabase.from("holidays").select("holiday_date, name"),
       ]);
       const allHolidays = [
         ...fedHolidays,
-        ...((customResult.data || []) as { date: string; name: string }[]),
+        ...((customResult.data || []) as { holiday_date: string; name: string }[]).map(h => ({ date: h.holiday_date, name: h.name })),
       ];
       setHolidayMap(buildHolidayMap(allHolidays));
     } catch {

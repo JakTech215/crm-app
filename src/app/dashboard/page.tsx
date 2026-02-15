@@ -407,10 +407,10 @@ export default function DashboardPage() {
         // Also fetch custom holidays from DB
         const { data: dbHolidays } = await supabase
           .from("holidays")
-          .select("date, name");
+          .select("holiday_date, name");
         const allHolidays = [
           ...federalHolidays.map((h) => ({ date: h.date, name: h.name })),
-          ...(dbHolidays || []).map((h: { date: string; name: string }) => ({ date: h.date, name: h.name })),
+          ...(dbHolidays || []).map((h: { holiday_date: string; name: string }) => ({ date: h.holiday_date, name: h.name })),
         ];
         setHolidayMap(buildHolidayMap(allHolidays));
       } catch (e) {

@@ -1377,7 +1377,7 @@ function UserManagementSection() {
 interface Holiday {
   id: string;
   name: string;
-  date: string;
+  holiday_date: string;
   holiday_type: string;
   description: string | null;
   recurring: boolean;
@@ -1407,7 +1407,7 @@ function HolidaysSection() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
-    date: "",
+    holiday_date: "",
     holiday_type: "company",
     recurring: false,
     description: "",
@@ -1417,7 +1417,7 @@ function HolidaysSection() {
     const { data } = await supabase
       .from("holidays")
       .select("*")
-      .order("date", { ascending: true });
+      .order("holiday_date", { ascending: true });
     setHolidays((data as Holiday[]) || []);
     setLoading(false);
   };
@@ -1450,12 +1450,12 @@ function HolidaysSection() {
         const { error } = await supabase.from("holidays").upsert(
           {
             name: h.localName || h.name,
-            date: h.date,
+            holiday_date: h.date,
             holiday_type: "federal",
             recurring: true,
             created_by: user?.id,
           },
-          { onConflict: "date,name" }
+          { onConflict: "holiday_date,name" }
         );
         if (!error) count++;
       }
@@ -1472,7 +1472,7 @@ function HolidaysSection() {
   };
 
   const resetForm = () => {
-    setForm({ name: "", date: "", holiday_type: "company", recurring: false, description: "" });
+    setForm({ name: "", holiday_date: "", holiday_type: "company", recurring: false, description: "" });
     setEditing(null);
     setSaveError(null);
     setOpen(false);
@@ -1492,7 +1492,7 @@ function HolidaysSection() {
         .from("holidays")
         .update({
           name: form.name,
-          date: form.date,
+          holiday_date: form.holiday_date,
           holiday_type: form.holiday_type,
           recurring: form.recurring,
           description: form.description || null,
@@ -1507,7 +1507,7 @@ function HolidaysSection() {
     } else {
       const { error } = await supabase.from("holidays").insert({
         name: form.name,
-        date: form.date,
+        holiday_date: form.holiday_date,
         holiday_type: form.holiday_type,
         recurring: form.recurring,
         description: form.description || null,
@@ -1529,7 +1529,7 @@ function HolidaysSection() {
     setEditing(h);
     setForm({
       name: h.name,
-      date: h.date,
+      holiday_date: h.holiday_date,
       holiday_type: h.holiday_type,
       recurring: h.recurring,
       description: h.description || "",
@@ -1651,12 +1651,12 @@ function HolidaysSection() {
                       <Input
                         id="h-date"
                         type="date"
-                        value={form.date}
-                        onChange={(e) => setForm({ ...form, date: e.target.value })}
+                        value={form.holiday_date}
+                        onChange={(e) => setForm({ ...form, holiday_date: e.target.value })}
                         required
                       />
-                      {form.date && (
-                        <span className="text-xs text-muted-foreground">{formatDate(form.date)}</span>
+                      {form.holiday_date && (
+                        <span className="text-xs text-muted-foreground">{formatDate(form.holiday_date)}</span>
                       )}
                     </div>
                     <div className="grid gap-2">
@@ -1734,7 +1734,7 @@ function HolidaysSection() {
                 {filtered.map((h) => (
                   <TableRow key={h.id}>
                     <TableCell className="font-medium">{h.name}</TableCell>
-                    <TableCell>{formatDate(h.date)}</TableCell>
+                    <TableCell>{formatDate(h.holiday_date)}</TableCell>
                     <TableCell>
                       <Badge
                         variant="secondary"

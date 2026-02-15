@@ -1380,7 +1380,7 @@ interface Holiday {
   holiday_date: string;
   holiday_type: string;
   description: string | null;
-  recurring: boolean;
+  is_recurring: boolean;
   created_at: string;
 }
 
@@ -1409,7 +1409,7 @@ function HolidaysSection() {
     name: "",
     holiday_date: "",
     holiday_type: "company",
-    recurring: false,
+    is_recurring: false,
     description: "",
   });
 
@@ -1452,7 +1452,7 @@ function HolidaysSection() {
             name: h.localName || h.name,
             holiday_date: h.date,
             holiday_type: "federal",
-            recurring: true,
+            is_recurring: true,
             created_by: user?.id,
           },
           { onConflict: "holiday_date,name" }
@@ -1472,7 +1472,7 @@ function HolidaysSection() {
   };
 
   const resetForm = () => {
-    setForm({ name: "", holiday_date: "", holiday_type: "company", recurring: false, description: "" });
+    setForm({ name: "", holiday_date: "", holiday_type: "company", is_recurring: false, description: "" });
     setEditing(null);
     setSaveError(null);
     setOpen(false);
@@ -1494,7 +1494,7 @@ function HolidaysSection() {
           name: form.name,
           holiday_date: form.holiday_date,
           holiday_type: form.holiday_type,
-          recurring: form.recurring,
+          is_recurring: form.is_recurring,
           description: form.description || null,
           updated_at: new Date().toISOString(),
         })
@@ -1509,7 +1509,7 @@ function HolidaysSection() {
         name: form.name,
         holiday_date: form.holiday_date,
         holiday_type: form.holiday_type,
-        recurring: form.recurring,
+        is_recurring: form.is_recurring,
         description: form.description || null,
         created_by: user?.id,
       });
@@ -1531,7 +1531,7 @@ function HolidaysSection() {
       name: h.name,
       holiday_date: h.holiday_date,
       holiday_type: h.holiday_type,
-      recurring: h.recurring,
+      is_recurring: h.is_recurring,
       description: h.description || "",
     });
     setSaveError(null);
@@ -1689,9 +1689,9 @@ function HolidaysSection() {
                     <div className="flex items-center gap-2">
                       <Checkbox
                         id="h-recurring"
-                        checked={form.recurring}
+                        checked={form.is_recurring}
                         onCheckedChange={(checked) =>
-                          setForm({ ...form, recurring: !!checked })
+                          setForm({ ...form, is_recurring: !!checked })
                         }
                       />
                       <Label htmlFor="h-recurring" className="font-normal">
@@ -1744,7 +1744,7 @@ function HolidaysSection() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {h.recurring ? (
+                      {h.is_recurring ? (
                         <Badge variant="outline" className="text-xs">
                           <RefreshCw className="h-3 w-3 mr-1" />
                           Yearly

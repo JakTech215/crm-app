@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS holidays (
   holiday_date DATE NOT NULL,
   holiday_type TEXT NOT NULL DEFAULT 'custom',  -- 'federal' or 'custom'
   description TEXT,
-  recurring BOOLEAN DEFAULT false,
+  is_recurring BOOLEAN DEFAULT false,
   created_by UUID REFERENCES auth.users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),

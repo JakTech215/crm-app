@@ -168,12 +168,9 @@ export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<StatCard[]>([
     { title: "Total Contacts", value: 0, description: "All contacts", icon: Users, href: "/dashboard/contacts" },
-    { title: "Active Contacts", value: 0, description: "Status: active", icon: Users, href: "/dashboard/contacts?status=active" },
-    { title: "Projects", value: 0, description: "All projects", icon: FolderKanban, href: "/dashboard/projects" },
-    { title: "Active Projects", value: 0, description: "Status: active", icon: FolderKanban, href: "/dashboard/projects?status=active" },
-    { title: "Tasks", value: 0, description: "All open tasks", icon: CheckSquare, href: "/dashboard/tasks" },
-    { title: "Pending Tasks", value: 0, description: "Status: pending", icon: CheckSquare, href: "/dashboard/tasks?status=pending" },
-    { title: "Employees", value: 0, description: "Active team members", icon: UserCog, href: "/dashboard/employees" },
+    { title: "Total Projects", value: 0, description: "All projects", icon: FolderKanban, href: "/dashboard/projects" },
+    { title: "Total Tasks", value: 0, description: "All open tasks", icon: CheckSquare, href: "/dashboard/tasks" },
+    { title: "Total Employees", value: 0, description: "Active team members", icon: UserCog, href: "/dashboard/employees" },
   ]);
   const [overdue, setOverdue] = useState<OverdueTask[]>([]);
   const [upcoming, setUpcoming] = useState<UpcomingTask[]>([]);
@@ -211,13 +208,10 @@ export default function DashboardPage() {
       const today = todayCST();
 
       // Stats
-      const [contactsRes, activeContactsRes, projectsRes, activeProjectsRes, tasksRes, pendingTasksRes, employeesRes] = await Promise.all([
+      const [contactsRes, projectsRes, tasksRes, employeesRes] = await Promise.all([
         supabase.from("contacts").select("id", { count: "exact", head: true }),
-        supabase.from("contacts").select("id", { count: "exact", head: true }).eq("status", "active"),
         supabase.from("projects").select("id", { count: "exact", head: true }),
-        supabase.from("projects").select("id", { count: "exact", head: true }).eq("status", "active"),
         supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"),
-        supabase.from("tasks").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("employees").select("id", { count: "exact", head: true }).eq("status", "active"),
       ]);
 
@@ -225,12 +219,9 @@ export default function DashboardPage() {
 
       setStats([
         { title: "Total Contacts", value: c(contactsRes), description: "All contacts", icon: Users, href: "/dashboard/contacts" },
-        { title: "Active Contacts", value: c(activeContactsRes), description: "Status: active", icon: Users, href: "/dashboard/contacts?status=active" },
-        { title: "Projects", value: c(projectsRes), description: "All projects", icon: FolderKanban, href: "/dashboard/projects" },
-        { title: "Active Projects", value: c(activeProjectsRes), description: "Status: active", icon: FolderKanban, href: "/dashboard/projects?status=active" },
-        { title: "Tasks", value: c(tasksRes), description: "All open tasks", icon: CheckSquare, href: "/dashboard/tasks" },
-        { title: "Pending Tasks", value: c(pendingTasksRes), description: "Status: pending", icon: CheckSquare, href: "/dashboard/tasks?status=pending" },
-        { title: "Employees", value: c(employeesRes), description: "Active team members", icon: UserCog, href: "/dashboard/employees" },
+        { title: "Total Projects", value: c(projectsRes), description: "All projects", icon: FolderKanban, href: "/dashboard/projects" },
+        { title: "Total Tasks", value: c(tasksRes), description: "All open tasks", icon: CheckSquare, href: "/dashboard/tasks" },
+        { title: "Total Employees", value: c(employeesRes), description: "Active team members", icon: UserCog, href: "/dashboard/employees" },
       ]);
 
       // Helper: enrich tasks with contacts, projects, assignees

@@ -105,7 +105,7 @@ export default function ProjectsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "active");
   const [projectTasksMap, setProjectTasksMap] = useState<Record<string, UpcomingTask[]>>({});
   const [form, setForm] = useState({
     name: "",
@@ -236,7 +236,9 @@ export default function ProjectsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {statusFilter === "all" ? "All Projects" : `${statusFilter.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} Projects`}
+          </h1>
           <p className="text-muted-foreground">
             Track and manage your projects.
           </p>

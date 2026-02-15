@@ -10,9 +10,6 @@ import {
   UserCog,
   Settings,
   LogOut,
-  GanttChart,
-  CalendarDays,
-  History,
   Calendar,
   StickyNote,
 } from "lucide-react";
@@ -39,9 +36,6 @@ const navItems = [
   { title: "Tasks", href: "/dashboard/tasks", icon: CheckSquare },
   { title: "Events", href: "/dashboard/events", icon: Calendar },
   { title: "Notes", href: "/dashboard/notes", icon: StickyNote },
-  { title: "Upcoming", href: "/dashboard/upcoming", icon: CalendarDays },
-  { title: "History", href: "/dashboard/history", icon: History },
-  { title: "Gantt Chart", href: "/dashboard/gantt", icon: GanttChart },
   { title: "Employees", href: "/dashboard/employees", icon: UserCog },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
 ];

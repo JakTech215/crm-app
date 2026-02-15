@@ -38,7 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Mail, MessageSquare } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { todayCST, formatDate } from "@/lib/dates";
 
 interface Contact {
@@ -49,8 +49,6 @@ interface Contact {
   phone: string | null;
   company: string | null;
   status: string;
-  email_notifications_enabled: boolean;
-  sms_notifications_enabled: boolean;
   created_at: string;
 }
 
@@ -97,7 +95,7 @@ export default function ContactsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "active");
   const [contactTasksMap, setContactTasksMap] = useState<Record<string, ContactUpcomingTask[]>>({});
   const [form, setForm] = useState({
     first_name: "",
@@ -191,7 +189,9 @@ export default function ContactsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Contacts</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {statusFilter === "all" ? "All Contacts" : statusFilter === "active" ? "Active Contacts" : `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Contacts`}
+          </h1>
           <p className="text-muted-foreground">
             Manage your contacts and leads.
           </p>
@@ -345,7 +345,6 @@ export default function ContactsPage() {
                 <TableHead>Email</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Company</TableHead>
-                <TableHead>Notifications</TableHead>
                 <TableHead>Upcoming Tasks</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -391,12 +390,6 @@ export default function ContactsPage() {
                     <TableCell>{contact.email || "—"}</TableCell>
                     <TableCell>{contact.phone || "—"}</TableCell>
                     <TableCell>{contact.company || "—"}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Mail className={`h-4 w-4 ${contact.email_notifications_enabled ? "text-primary" : "text-muted-foreground/30"}`} />
-                        <MessageSquare className={`h-4 w-4 ${contact.sms_notifications_enabled ? "text-primary" : "text-muted-foreground/30"}`} />
-                      </div>
-                    </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       {(contactTasksMap[contact.id] || []).length > 0 ? (
                         <div className="space-y-1">

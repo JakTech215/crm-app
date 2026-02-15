@@ -70,6 +70,7 @@ export default function EmployeesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [employeeTasksMap, setEmployeeTasksMap] = useState<Record<string, UpcomingTask[]>>({});
   const [form, setForm] = useState({
     first_name: "",
@@ -175,7 +176,9 @@ export default function EmployeesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Employees</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {statusFilter === "all" ? "All Employees" : `${statusFilter.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} Employees`}
+          </h1>
           <p className="text-muted-foreground">
             Manage your team members.
           </p>
@@ -292,19 +295,34 @@ export default function EmployeesPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>All Employees</CardTitle>
+              <CardTitle>
+                {statusFilter === "all" ? "All Employees" : `${statusFilter.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} Employees`}
+              </CardTitle>
               <CardDescription>
                 Your organization&apos;s team members.
               </CardDescription>
             </div>
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search employees..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8"
-              />
+            <div className="flex items-center gap-2">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="on_leave">On Leave</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="relative w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search employees..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -328,6 +346,7 @@ export default function EmployeesPage() {
                   </TableCell>
                 </TableRow>
               ) : employees.filter((emp) => {
+                if (statusFilter !== "all" && emp.status !== statusFilter) return false;
                 const q = search.toLowerCase();
                 return !q || employeeName(emp).toLowerCase().includes(q) ||
                   emp.email.toLowerCase().includes(q) ||
@@ -345,6 +364,7 @@ export default function EmployeesPage() {
                 </TableRow>
               ) : (
                 employees.filter((emp) => {
+                  if (statusFilter !== "all" && emp.status !== statusFilter) return false;
                   const q = search.toLowerCase();
                   return !q || employeeName(emp).toLowerCase().includes(q) ||
                     emp.email.toLowerCase().includes(q) ||

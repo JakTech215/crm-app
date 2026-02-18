@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import QuickCapture from '@/components/QuickCapture';
 import MeetingNotesView from '@/components/MeetingNotesView';
 
 export default function NotesPage() {

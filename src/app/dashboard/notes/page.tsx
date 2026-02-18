@@ -9,6 +9,7 @@ export default function NotesPage() {
   return (
     <div className="container mx-auto py-6">
       <h2 className="text-2xl font-bold mb-4">Notes</h2>
+
       {/* Radio Toggle */}
       <div className="mb-6 flex gap-6 border-b pb-4">
         <label className="flex items-center gap-2 cursor-pointer">
@@ -38,8 +39,8 @@ export default function NotesPage() {
       {/* Show content based on mode */}
       {mode === 'quick' ? (
         <div className="bg-gray-50 p-6 rounded-lg border">
-          <p className="text-gray-600">Quick Capture mode - Original functionality preserved here</p>
-          <p className="text-sm text-gray-500 mt-2">(We'll integrate the existing quick capture code here)</p>
+          <p className="text-gray-600">Quick Capture functionality will be integrated here</p>
+          <p className="text-sm text-gray-500 mt-2">This preserves the original quick note entry for future integration</p>
         </div>
       ) : (
         <MeetingNotesView />

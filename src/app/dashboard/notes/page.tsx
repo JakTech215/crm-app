@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import QuickCaptureView from '@/components/QuickCaptureView';
 import MeetingNotesView from '@/components/MeetingNotesView';
 
 export default function NotesPage() {
@@ -36,14 +37,7 @@ export default function NotesPage() {
         </label>
       </div>
 
-      {mode === 'quick' ? (
-        <div className="bg-gray-50 p-6 rounded-lg border">
-          <p className="text-gray-600">Quick Capture functionality will be integrated here</p>
-          <p className="text-sm text-gray-500 mt-2">This preserves the original quick note entry for future integration</p>
-        </div>
-      ) : (
-        <MeetingNotesView />
-      )}
+      {mode === 'quick' ? <QuickCaptureView /> : <MeetingNotesView />}
     </div>
   );
 }

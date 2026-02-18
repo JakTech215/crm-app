@@ -8,9 +8,11 @@ export default function QuickCaptureView() {
   const [content, setContent] = useState('');
   const [projectId, setProjectId] = useState('');
   const [contactId, setContactId] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [notes, setNotes] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<any>(null);
@@ -31,7 +33,8 @@ export default function QuickCaptureView() {
       .select(`
         *,
         projects(name),
-        contacts(first_name, last_name)
+        contacts(first_name, last_name),
+        employees(first_name, last_name)
       `)
       .order('created_at', { ascending: false });
     
@@ -39,13 +42,15 @@ export default function QuickCaptureView() {
   };
 
   const fetchOptions = async () => {
-    const [projectsRes, contactsRes] = await Promise.all([
+    const [projectsRes, contactsRes, employeesRes] = await Promise.all([
       supabase.from('projects').select('id, name').eq('status', 'active').order('name'),
-      supabase.from('contacts').select('id, first_name, last_name').eq('status', 'active').order('first_name')
+      supabase.from('contacts').select('id, first_name, last_name').eq('status', 'active').order('first_name'),
+      supabase.from('employees').select('id, first_name, last_name').order('first_name')
     ]);
     
     if (projectsRes.data) setProjects(projectsRes.data);
     if (contactsRes.data) setContacts(contactsRes.data);
+    if (employeesRes.data) setEmployees(employeesRes.data);
   };
 
   const handleSave = async () => {
@@ -58,12 +63,14 @@ export default function QuickCaptureView() {
       content,
       project_id: projectId || null,
       contact_id: contactId || null,
+      employee_id: employeeId || null,
       created_by: user?.id
     });
     
     setContent('');
     setProjectId('');
     setContactId('');
+    setEmployeeId('');
     setSaving(false);
     fetchNotes();
   };
@@ -99,7 +106,7 @@ export default function QuickCaptureView() {
           placeholder="Type your note here..."
         />
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
           <select
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
@@ -120,6 +127,19 @@ export default function QuickCaptureView() {
             {contacts.map(c => (
               <option key={c.id} value={c.id}>
                 {c.first_name} {c.last_name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={employeeId}
+            onChange={(e) => setEmployeeId(e.target.value)}
+            className="border rounded px-3 py-2"
+          >
+            <option value="">Link to Employee (optional)</option>
+            {employees.map(e => (
+              <option key={e.id} value={e.id}>
+                {e.first_name} {e.last_name}
               </option>
             ))}
           </select>
@@ -154,6 +174,11 @@ export default function QuickCaptureView() {
                   {note.contacts && (
                     <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
                       👤 {note.contacts.first_name} {note.contacts.last_name}
+                    </span>
+                  )}
+                  {note.employees && (
+                    <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                      👔 {note.employees.first_name} {note.employees.last_name}
                     </span>
                   )}
                   <span className="text-xs text-gray-500">

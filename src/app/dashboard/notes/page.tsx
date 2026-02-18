@@ -36,7 +36,6 @@ export default function NotesPage() {
         </label>
       </div>
 
-      {/* Show content based on mode */}
       {mode === 'quick' ? (
         <div className="bg-gray-50 p-6 rounded-lg border">
           <p className="text-gray-600">Quick Capture functionality will be integrated here</p>

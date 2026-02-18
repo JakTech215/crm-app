@@ -8,8 +8,8 @@ export default function NotesPage() {
   const [mode, setMode] = useState<'quick' | 'meeting'>('quick');
 
   return (
-    <div className="container mx-auto py-6">
-      <h2 className="text-2xl font-bold mb-4">Notes</h2>
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Notes</h2>
 
       {/* Radio Toggle */}
       <div className="mb-6 flex gap-6 border-b pb-4">

@@ -75,6 +75,15 @@ export default function QuickCaptureView() {
     fetchNotes();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Save on Enter (without Shift)
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSave();
+    }
+    // Allow Shift+Enter for new lines
+  };
+
   const openTaskModal = (note: any) => {
     setSelectedNote(note);
     setModalOpen(true);
@@ -102,8 +111,9 @@ export default function QuickCaptureView() {
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
+          onKeyDown={handleKeyDown}
           className="w-full border rounded px-3 py-2 min-h-[120px] mb-4"
-          placeholder="Type your note here..."
+          placeholder="Type your note here... (Press Enter to save, Shift+Enter for new line)"
         />
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">

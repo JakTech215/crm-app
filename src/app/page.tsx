@@ -39,7 +39,13 @@ export default function NotesPage() {
       </div>
 
       {/* Show appropriate component based on mode */}
-      {mode === 'quick' ? <QuickCapture /> : <MeetingNotesView />}
+      {mode === 'quick' ? (
+        <div className="bg-gray-50 p-6 rounded-lg border">
+          <p className="text-gray-600">Quick Capture functionality</p>
+        </div>
+      ) : (
+        <MeetingNotesView />
+      )}
     </div>
   );
 }

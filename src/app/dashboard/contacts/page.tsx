@@ -187,22 +187,17 @@ export default function ContactsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            {statusFilter === "all" ? "All Contacts" : statusFilter === "active" ? "Active Contacts" : `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Contacts`}
-          </h1>
-          <p className="text-muted-foreground">
-            Manage your contacts and leads.
-          </p>
-        </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Contact
-            </Button>
-          </DialogTrigger>
+      <div className="flex items-center justify-between mb-4">
+  <h2 className="text-2xl font-bold">
+    {statusFilter === "all" ? "All Contacts" : statusFilter === "active" ? "Active Contacts" : "Inactive Contacts"}
+  </h2>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Contact
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <form onSubmit={handleSubmit}>
               <DialogHeader>

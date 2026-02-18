@@ -1,27 +1,46 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { FolderKanban } from "lucide-react";
+'use client';
 
-export default function Home() {
+import { useState } from 'react';
+import QuickCapture from '@/components/QuickCapture';
+import MeetingNotesView from '@/components/MeetingNotesView';
+
+export default function NotesPage() {
+  const [mode, setMode] = useState<'quick' | 'meeting'>('quick');
+
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-muted/40 px-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <FolderKanban className="h-6 w-6" />
-        </div>
-        <h1 className="text-4xl font-bold">CRM</h1>
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Notes</h1>
       </div>
-      <p className="max-w-md text-center text-muted-foreground">
-        Manage your contacts, projects, tasks, and team — all in one place. Powered by Next.js and Supabase.
-      </p>
-      <div className="flex gap-4">
-        <Button asChild size="lg">
-          <Link href="/auth/login">Sign in</Link>
-        </Button>
-        <Button asChild variant="outline" size="lg">
-          <Link href="/auth/register">Sign up</Link>
-        </Button>
+
+      {/* Radio Toggle */}
+      <div className="mb-6 flex gap-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="noteMode"
+            value="quick"
+            checked={mode === 'quick'}
+            onChange={() => setMode('quick')}
+            className="w-4 h-4"
+          />
+          <span className="font-medium">Quick Capture</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="noteMode"
+            value="meeting"
+            checked={mode === 'meeting'}
+            onChange={() => setMode('meeting')}
+            className="w-4 h-4"
+          />
+          <span className="font-medium">Meeting Notes</span>
+        </label>
       </div>
+
+      {/* Show appropriate component based on mode */}
+      {mode === 'quick' ? <QuickCapture /> : <MeetingNotesView />}
     </div>
   );
 }

@@ -174,15 +174,10 @@ export default function EmployeesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            {statusFilter === "all" ? "All Employees" : `${statusFilter.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} Employees`}
-          </h1>
-          <p className="text-muted-foreground">
-            Manage your team members.
-          </p>
-        </div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold">
+          {statusFilter === "all" ? "All Employees" : "Active Employees"}
+        </h2>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>

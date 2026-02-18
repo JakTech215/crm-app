@@ -528,13 +528,8 @@ export default function EventsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Events</h1>
-          <p className="text-muted-foreground">
-            Schedule and manage events, meetings, and milestones.
-          </p>
-        </div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold">Events</h2>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button onClick={openCreateDialog}>
@@ -588,7 +583,7 @@ export default function EventsPage() {
                 </div>
 
                 {/* Date & Time */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="event_date">Event Date *</Label>
                     <Input

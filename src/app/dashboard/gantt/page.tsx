@@ -98,7 +98,7 @@ const PRIORITY_BORDER: Record<string, string> = {
   low: "border-slate-300",
 };
 
-type ZoomLevel = "day" | "week" | "month" | "quarter";  // ADDED "quarter"
+type ZoomLevel = "day" | "week" | "month" | "quarter";
 
 export default function GanttPage() {
   const supabase = createClient();
@@ -118,7 +118,6 @@ export default function GanttPage() {
     return d;
   });
 
-  // Filter state — initialized from URL params
   const [filtersOpen, setFiltersOpen] = useState(
     searchParams.get("filters") === "open"
   );
@@ -148,7 +147,6 @@ export default function GanttPage() {
   const [showHolidays, setShowHolidays] = useState(true);
   const [holidayMap, setHolidayMap] = useState<Record<string, string[]>>({});
 
-  // Sync filters to URL
   const syncFiltersToUrl = useCallback(() => {
     const params = new URLSearchParams();
     if (filtersOpen) params.set("filters", "open");
@@ -195,14 +193,12 @@ export default function GanttPage() {
     const assigneeData = assigneeResult.data;
     const empData = empResult.data;
 
-    // Build task→projects mapping (many-to-many)
     const taskProjectsMap: Record<string, string[]> = {};
     (ptLinks || []).forEach((link: { task_id: string; project_id: string }) => {
       if (!taskProjectsMap[link.task_id]) taskProjectsMap[link.task_id] = [];
       taskProjectsMap[link.task_id].push(link.project_id);
     });
 
-    // Build task→assignees mapping
     const taskAssigneesMap: Record<string, string[]> = {};
     (assigneeData || []).forEach((a: { task_id: string; employee_id: string }) => {
       if (!taskAssigneesMap[a.task_id]) taskAssigneesMap[a.task_id] = [];
@@ -248,7 +244,6 @@ export default function GanttPage() {
       }
     );
 
-    // Collapse recurring series into single rows with occurrence markers
     const seriesGroups: Record<string, number[]> = {};
     enriched.forEach((t, idx) => {
       if (t.recurrence_source_task_id) {
@@ -280,7 +275,6 @@ export default function GanttPage() {
 
     const finalTasks = enriched.filter((t) => !collapsedIds.has(t.id)) as GanttTask[];
 
-    // Fetch events and add as Gantt rows
     const { data: eventData } = await supabase
       .from("events")
       .select("id, title, event_date, event_type, status, project_id, contact_id, contacts:contact_id(id, first_name, last_name)")
@@ -333,7 +327,6 @@ export default function GanttPage() {
       finalTasks.push(...eventRows);
     }
 
-    // Fetch holidays (federal + custom)
     try {
       const [fedHolidays, customResult] = await Promise.all([
         getFederalHolidays(),
@@ -345,7 +338,7 @@ export default function GanttPage() {
       ];
       setHolidayMap(buildHolidayMap(allHolidays));
     } catch {
-      // Holidays are non-critical, continue without them
+      // Holidays are non-critical
     }
 
     setTasks(finalTasks);
@@ -359,7 +352,6 @@ export default function GanttPage() {
     fetchData();
   }, []);
 
-  // Count active filters
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filterProjects.length > 0) count++;
@@ -381,13 +373,10 @@ export default function GanttPage() {
     setFilterEmployee("all");
   };
 
-  // Apply filters
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
-      // Project filter
       if (filterProjects.length > 0) {
         if (filterProjects.includes("__unassigned__")) {
-          // "Unassigned" selected — include unassigned tasks + any selected real projects
           const realProjects = filterProjects.filter((p) => p !== "__unassigned__");
           const matchesUnassigned = t.project_ids.length === 0;
           const matchesProject = realProjects.length > 0 && t.project_ids.some((pid) => realProjects.includes(pid));
@@ -397,23 +386,12 @@ export default function GanttPage() {
         }
       }
 
-      // Status filter
       if (filterStatus !== "all" && t.status !== filterStatus) return false;
-
-      // Priority filter
       if (filterPriority !== "all" && t.priority !== filterPriority) return false;
-
-      // Milestone filter
       if (filterMilestoneOnly && !t.is_milestone) return false;
-
-      // Date range filter
       if (filterDateFrom && t.due_date && t.due_date < filterDateFrom) return false;
       if (filterDateTo && t.start_date && t.start_date > filterDateTo) return false;
-
-      // Employee filter
       if (filterEmployee !== "all" && !t.assignee_ids.includes(filterEmployee)) return false;
-
-      // Events toggle
       if (!showEvents && t.is_event) return false;
 
       return true;
@@ -428,37 +406,25 @@ export default function GanttPage() {
     );
   };
 
-  // Calculate date range based on zoom
   const getColumnWidth = () => {
-  if (zoom === "day") return 40;
-  if (zoom === "week") return 120;
-  if (zoom === "month") return 160;
-  return 200;  // ADDED FOR QUARTERLY - return 200 for quarter
-};
+    if (zoom === "day") return 40;
+    if (zoom === "week") return 120;
+    if (zoom === "month") return 160;
+    return 200;
+  };
 
   const getDateRange = () => {
-  const colWidth = getColumnWidth();
-  const numCols = zoom === "day" ? 60 : zoom === "week" ? 16 : zoom === "month" ? 12 : 8;  // ADDED: 8 quarters
-  const dates: Date[] = [];
-  const start = new Date(startDate);
-
-  for (let i = 0; i < numCols; i++) {
-    const d = new Date(start);
-    if (zoom === "day") d.setDate(start.getDate() + i);
-    else if (zoom === "week") d.setDate(start.getDate() + i * 7);
-    else if (zoom === "month") d.setMonth(start.getMonth() + i);
-    else d.setMonth(start.getMonth() + i * 3);  // ADDED FOR QUARTERLY - 3 months per quarter
-    dates.push(d);
-  }
-
-  return { dates, colWidth, totalWidth: numCols * colWidth };
-};
+    const colWidth = getColumnWidth();
+    const numCols = zoom === "day" ? 60 : zoom === "week" ? 16 : zoom === "month" ? 12 : 8;
+    const dates: Date[] = [];
+    const start = new Date(startDate);
 
     for (let i = 0; i < numCols; i++) {
       const d = new Date(start);
       if (zoom === "day") d.setDate(start.getDate() + i);
       else if (zoom === "week") d.setDate(start.getDate() + i * 7);
-      else d.setMonth(start.getMonth() + i);
+      else if (zoom === "month") d.setMonth(start.getMonth() + i);
+      else d.setMonth(start.getMonth() + i * 3);
       dates.push(d);
     }
 
@@ -471,6 +437,7 @@ export default function GanttPage() {
   const rangeEnd = new Date(dates[dates.length - 1]);
   if (zoom === "day") rangeEnd.setDate(rangeEnd.getDate() + 1);
   else if (zoom === "week") rangeEnd.setDate(rangeEnd.getDate() + 7);
+  else if (zoom === "quarter") rangeEnd.setMonth(rangeEnd.getMonth() + 3);
   else rangeEnd.setMonth(rangeEnd.getMonth() + 1);
 
   const dateToX = (dateStr: string) => {
@@ -482,7 +449,6 @@ export default function GanttPage() {
 
   const todayX = dateToX(nowCST().toISOString());
 
-  // Group filtered tasks by project
   const grouped: { project: string | null; projectId: string | null; tasks: GanttTask[] }[] = [];
   const projectGroups = new Map<string, GanttTask[]>();
   const unassigned: GanttTask[] = [];
@@ -516,7 +482,6 @@ export default function GanttPage() {
 
   const ROW_HEIGHT = 40;
 
-  // Build task position map for dependency arrows
   const taskRowMap: Record<string, number> = {};
   const taskXMap: Record<string, { x: number; w: number }> = {};
   let rowIndex = 0;
@@ -536,27 +501,26 @@ export default function GanttPage() {
     const d = new Date(startDate);
     if (zoom === "day") d.setDate(d.getDate() + dir * 14);
     else if (zoom === "week") d.setDate(d.getDate() + dir * 28);
+    else if (zoom === "quarter") d.setMonth(d.getMonth() + dir * 6);
     else d.setMonth(d.getMonth() + dir * 3);
     setStartDate(d);
   };
 
   const formatHeader = (d: Date) => {
-  const toStr = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-  if (zoom === "day") return formatDate(toStr(d));
-  if (zoom === "week") {
-    const end = new Date(d);
-    end.setDate(end.getDate() + 6);
-    return `${formatDate(toStr(d))} - ${formatDate(toStr(end))}`;
-  }
-  // ADDED FOR QUARTERLY
-  if (zoom === "quarter") {
-    const quarter = Math.floor(d.getMonth() / 3) + 1;
-    return `Q${quarter} ${d.getFullYear()}`;
-  }
-  return formatDate(toStr(d));
-};
+    const toStr = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    if (zoom === "day") return formatDate(toStr(d));
+    if (zoom === "week") {
+      const end = new Date(d);
+      end.setDate(end.getDate() + 6);
+      return `${formatDate(toStr(d))} - ${formatDate(toStr(end))}`;
+    }
+    if (zoom === "quarter") {
+      const quarter = Math.floor(d.getMonth() / 3) + 1;
+      return `Q${quarter} ${d.getFullYear()}`;
+    }
+    return formatDate(toStr(d));
+  };
 
-  // Active filter badges
   const filterBadges: { label: string; onRemove: () => void }[] = [];
   if (filterProjects.length > 0) {
     const names = filterProjects.map((pid) => {
@@ -653,21 +617,19 @@ export default function GanttPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-  <SelectItem value="day">Day</SelectItem>
-  <SelectItem value="week">Week</SelectItem>
-  <SelectItem value="month">Month</SelectItem>
-  <SelectItem value="quarter">Quarter</SelectItem>  {/* ADDED THIS LINE */}
-</SelectContent>
+              <SelectItem value="day">Day</SelectItem>
+              <SelectItem value="week">Week</SelectItem>
+              <SelectItem value="month">Month</SelectItem>
+              <SelectItem value="quarter">Quarter</SelectItem>
+            </SelectContent>
           </Select>
         </div>
       </div>
 
-      {/* Filter panel */}
       {filtersOpen && (
         <Card>
           <CardContent className="pt-6 pb-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-              {/* Project filter (multi-select) */}
               <div className="grid gap-1.5">
                 <Label className="text-xs">Projects</Label>
                 <Popover>
@@ -704,7 +666,6 @@ export default function GanttPage() {
                 </Popover>
               </div>
 
-              {/* Status filter */}
               <div className="grid gap-1.5">
                 <Label className="text-xs">Status</Label>
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -722,7 +683,6 @@ export default function GanttPage() {
                 </Select>
               </div>
 
-              {/* Priority filter */}
               <div className="grid gap-1.5">
                 <Label className="text-xs">Priority</Label>
                 <Select value={filterPriority} onValueChange={setFilterPriority}>
@@ -739,7 +699,6 @@ export default function GanttPage() {
                 </Select>
               </div>
 
-              {/* Employee filter */}
               <div className="grid gap-1.5">
                 <Label className="text-xs">Employee</Label>
                 <Select value={filterEmployee} onValueChange={setFilterEmployee}>
@@ -757,7 +716,6 @@ export default function GanttPage() {
                 </Select>
               </div>
 
-              {/* Date range */}
               <div className="grid gap-1.5">
                 <Label className="text-xs">Date From</Label>
                 <Input
@@ -784,7 +742,6 @@ export default function GanttPage() {
               </div>
             </div>
 
-            {/* Toggles + clear */}
             <div className="flex items-center justify-between mt-4">
               <div className="flex items-center gap-6">
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -820,7 +777,6 @@ export default function GanttPage() {
         </Card>
       )}
 
-      {/* Active filter badges */}
       {filterBadges.length > 0 && !filtersOpen && (
         <div className="flex flex-wrap items-center gap-2">
           {filterBadges.map((fb) => (
@@ -871,7 +827,6 @@ export default function GanttPage() {
           ) : (
             <>
               <div className="flex">
-                {/* Left panel: task labels */}
                 <div className="w-56 shrink-0 border-r">
                   <div className="h-10 border-b bg-muted/50 flex items-center px-3">
                     <span className="text-xs font-medium text-muted-foreground">Task</span>
@@ -1033,9 +988,7 @@ export default function GanttPage() {
                   ))}
                 </div>
 
-                {/* Right panel: chart */}
                 <div className="flex-1 overflow-x-auto" ref={scrollRef}>
-                  {/* Date headers */}
                   <div className="flex h-10 border-b bg-muted/50" style={{ width: totalWidth }}>
                     {dates.map((d, i) => (
                       <div
@@ -1048,9 +1001,7 @@ export default function GanttPage() {
                     ))}
                   </div>
 
-                  {/* Chart rows */}
                   <div className="relative" style={{ width: totalWidth, height: allRows.length * ROW_HEIGHT }}>
-                    {/* Grid lines */}
                     {dates.map((_, i) => (
                       <div
                         key={`grid-${i}`}
@@ -1059,7 +1010,6 @@ export default function GanttPage() {
                       />
                     ))}
 
-                    {/* Row backgrounds */}
                     {allRows.map((row, i) => (
                       <div
                         key={`row-${row.rowKey}`}
@@ -1070,7 +1020,6 @@ export default function GanttPage() {
                       />
                     ))}
 
-                    {/* Holiday markers */}
                     {showHolidays && Object.entries(holidayMap).map(([dateStr, names]) => {
                       const hx = dateToX(dateStr);
                       if (hx < -20 || hx > totalWidth + 20) return null;
@@ -1098,7 +1047,6 @@ export default function GanttPage() {
                       );
                     })}
 
-                    {/* Today marker */}
                     {todayX >= 0 && todayX <= totalWidth && (
                       <div
                         className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20"
@@ -1110,7 +1058,6 @@ export default function GanttPage() {
                       </div>
                     )}
 
-                    {/* Task bars */}
                     {allRows.map((row, i) => {
                       if (row.type !== "task" || !row.task || !row.task.start_date || !row.task.due_date) return null;
                       const task = row.task;
@@ -1121,7 +1068,6 @@ export default function GanttPage() {
                       const barY = i * ROW_HEIGHT + 10;
                       const barH = ROW_HEIGHT - 20;
 
-                      // Event diamond marker
                       if (task.is_event) {
                         const diamondSize = 14;
                         const cx = dateToX(task.start_date!);
@@ -1142,22 +1088,18 @@ export default function GanttPage() {
                         );
                       }
 
-                      // Recurring task with occurrence markers (Option B)
                       if ((task.occurrences?.length ?? 0) > 1) {
                         return (
                           <div key={`bar-${row.rowKey}`}>
-                            {/* Faded range bar */}
                             <div
                               className="absolute rounded bg-blue-50 border border-blue-300 border-dashed"
                               style={{ left: barX, width: barW, top: barY, height: barH }}
                               title={`${task.title} — Recurring series (${task.occurrences.length} occurrences)${task.recurrence_frequency && task.recurrence_unit ? `\nEvery ${task.recurrence_frequency} ${task.recurrence_unit}` : ""}`}
                             />
-                            {/* Connecting line through markers */}
                             <div
                               className="absolute bg-blue-200"
                               style={{ left: barX, width: barW, top: barY + barH / 2 - 1, height: 2 }}
                             />
-                            {/* Occurrence markers */}
                             {task.occurrences.map((occ, j) => {
                               const occX = dateToX(occ.date);
                               const markerSize = 12;
@@ -1180,7 +1122,6 @@ export default function GanttPage() {
                         );
                       }
 
-                      // Regular task bar
                       return (
                         <div
                           key={`bar-${row.rowKey}`}
@@ -1194,7 +1135,6 @@ export default function GanttPage() {
                       );
                     })}
 
-                    {/* Dependency arrows (SVG) */}
                     <svg
                       className="absolute top-0 left-0 pointer-events-none z-10"
                       width={totalWidth}
@@ -1247,7 +1187,6 @@ export default function GanttPage() {
                 </div>
               </div>
 
-              {/* Legend */}
               <div className="flex flex-wrap items-center gap-4 px-4 py-3 border-t bg-muted/20">
                 <span className="text-xs text-muted-foreground">Status:</span>
                 <div className="flex items-center gap-1">

@@ -98,7 +98,7 @@ const PRIORITY_BORDER: Record<string, string> = {
   low: "border-slate-300",
 };
 
-type ZoomLevel = "day" | "week" | "month";
+type ZoomLevel = "day" | "week" | "month" | "quarter";  // ADDED "quarter"
 
 export default function GanttPage() {
   const supabase = createClient();
@@ -430,16 +430,29 @@ export default function GanttPage() {
 
   // Calculate date range based on zoom
   const getColumnWidth = () => {
-    if (zoom === "day") return 40;
-    if (zoom === "week") return 120;
-    return 160;
-  };
+  if (zoom === "day") return 40;
+  if (zoom === "week") return 120;
+  if (zoom === "month") return 160;
+  return 200;  // ADDED FOR QUARTERLY - return 200 for quarter
+};
 
   const getDateRange = () => {
-    const colWidth = getColumnWidth();
-    const numCols = zoom === "day" ? 60 : zoom === "week" ? 16 : 12;
-    const dates: Date[] = [];
-    const start = new Date(startDate);
+  const colWidth = getColumnWidth();
+  const numCols = zoom === "day" ? 60 : zoom === "week" ? 16 : zoom === "month" ? 12 : 8;  // ADDED: 8 quarters
+  const dates: Date[] = [];
+  const start = new Date(startDate);
+
+  for (let i = 0; i < numCols; i++) {
+    const d = new Date(start);
+    if (zoom === "day") d.setDate(start.getDate() + i);
+    else if (zoom === "week") d.setDate(start.getDate() + i * 7);
+    else if (zoom === "month") d.setMonth(start.getMonth() + i);
+    else d.setMonth(start.getMonth() + i * 3);  // ADDED FOR QUARTERLY - 3 months per quarter
+    dates.push(d);
+  }
+
+  return { dates, colWidth, totalWidth: numCols * colWidth };
+};
 
     for (let i = 0; i < numCols; i++) {
       const d = new Date(start);
@@ -528,15 +541,20 @@ export default function GanttPage() {
   };
 
   const formatHeader = (d: Date) => {
-    const toStr = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-    if (zoom === "day") return formatDate(toStr(d));
-    if (zoom === "week") {
-      const end = new Date(d);
-      end.setDate(end.getDate() + 6);
-      return `${formatDate(toStr(d))} - ${formatDate(toStr(end))}`;
-    }
-    return formatDate(toStr(d));
-  };
+  const toStr = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  if (zoom === "day") return formatDate(toStr(d));
+  if (zoom === "week") {
+    const end = new Date(d);
+    end.setDate(end.getDate() + 6);
+    return `${formatDate(toStr(d))} - ${formatDate(toStr(end))}`;
+  }
+  // ADDED FOR QUARTERLY
+  if (zoom === "quarter") {
+    const quarter = Math.floor(d.getMonth() / 3) + 1;
+    return `Q${quarter} ${d.getFullYear()}`;
+  }
+  return formatDate(toStr(d));
+};
 
   // Active filter badges
   const filterBadges: { label: string; onRemove: () => void }[] = [];
@@ -635,10 +653,11 @@ export default function GanttPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="day">Day</SelectItem>
-              <SelectItem value="week">Week</SelectItem>
-              <SelectItem value="month">Month</SelectItem>
-            </SelectContent>
+  <SelectItem value="day">Day</SelectItem>
+  <SelectItem value="week">Week</SelectItem>
+  <SelectItem value="month">Month</SelectItem>
+  <SelectItem value="quarter">Quarter</SelectItem>  {/* ADDED THIS LINE */}
+</SelectContent>
           </Select>
         </div>
       </div>

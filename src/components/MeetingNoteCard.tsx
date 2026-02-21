@@ -4,13 +4,15 @@ import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { createBrowserClient } from '@supabase/ssr';
 import TaskCreationModal from './TaskCreationModal';
+import { Edit2 } from 'lucide-react';
 
 interface MeetingNoteCardProps {
   note: any;
   onUpdate: () => void;
+  onEdit: (note: any) => void;
 }
 
-export default function MeetingNoteCard({ note, onUpdate }: MeetingNoteCardProps) {
+export default function MeetingNoteCard({ note, onUpdate, onEdit }: MeetingNoteCardProps) {
   const [attendees, setAttendees] = useState<any[]>([]);
   const [discussionPoints, setDiscussionPoints] = useState<any[]>([]);
   const [actionItems, setActionItems] = useState<any[]>([]);
@@ -30,7 +32,6 @@ export default function MeetingNoteCard({ note, onUpdate }: MeetingNoteCardProps
   }, [expanded]);
 
   const fetchDetails = async () => {
-    // Fetch attendees
     const { data: attendeesData } = await supabase
       .from('meeting_attendees')
       .select(`
@@ -42,7 +43,6 @@ export default function MeetingNoteCard({ note, onUpdate }: MeetingNoteCardProps
     
     if (attendeesData) setAttendees(attendeesData);
 
-    // Fetch discussion points with task info
     const { data: dpData } = await supabase
       .from('discussion_points')
       .select(`
@@ -54,7 +54,6 @@ export default function MeetingNoteCard({ note, onUpdate }: MeetingNoteCardProps
     
     if (dpData) setDiscussionPoints(dpData);
 
-    // Fetch action items with task info
     const { data: aiData } = await supabase
       .from('action_items')
       .select(`
@@ -82,14 +81,12 @@ export default function MeetingNoteCard({ note, onUpdate }: MeetingNoteCardProps
   const handleTaskCreated = async (taskId: string) => {
     if (!modalData) return;
     
-    // Update the source record with the actual task_id
     const table = modalData.type === 'discussion' ? 'discussion_points' : 'action_items';
     await supabase
       .from(table)
       .update({ task_id: taskId })
       .eq('id', modalData.item.id);
     
-    // Refresh
     fetchDetails();
     onUpdate();
     setModalData(null);
@@ -104,7 +101,7 @@ export default function MeetingNoteCard({ note, onUpdate }: MeetingNoteCardProps
   };
 
   return (
-    <div className="bg-white p-4 rounded-lg border">
+    <div className="bg-white p-4 rounded-lg border hover:border-blue-300 transition-colors">
       <div 
         className="flex items-start justify-between cursor-pointer"
         onClick={() => setExpanded(!expanded)}
@@ -115,7 +112,7 @@ export default function MeetingNoteCard({ note, onUpdate }: MeetingNoteCardProps
             {formatDate(note.meeting_date)}
           </p>
           
-          {(note.projects || note.contacts || note.employees) && (
+          {(note.projects || note.contacts || note.employees || note.events) && (
             <div className="mt-2 flex flex-wrap gap-2">
               {note.projects && (
                 <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
@@ -132,12 +129,28 @@ export default function MeetingNoteCard({ note, onUpdate }: MeetingNoteCardProps
                   👔 {note.employees.first_name} {note.employees.last_name}
                 </span>
               )}
+              {note.events && (
+                <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                  📅 {note.events.title}
+                </span>
+              )}
             </div>
           )}
         </div>
-        <button className="text-gray-400 hover:text-gray-600 text-xl font-bold">
-          {expanded ? '−' : '+'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(note);
+            }}
+            className="text-gray-600 hover:text-blue-600 p-1"
+          >
+            <Edit2 className="h-4 w-4" />
+          </button>
+          <button className="text-gray-400 hover:text-gray-600 text-xl font-bold">
+            {expanded ? '−' : '+'}
+          </button>
+        </div>
       </div>
 
       {/* Expanded Details */}

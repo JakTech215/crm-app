@@ -5,32 +5,33 @@ import { createBrowserClient } from '@supabase/ssr';
 
 interface MeetingNoteFormProps {
   onSave: () => void;
+  editingNote?: any;
+  onCancelEdit?: () => void;
 }
 
-export default function MeetingNoteForm({ onSave }: MeetingNoteFormProps) {
+export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: MeetingNoteFormProps) {
   const [title, setTitle] = useState('');
   const [meetingDate, setMeetingDate] = useState('');
   const [projectId, setProjectId] = useState('');
   const [contactId, setContactId] = useState('');
   const [employeeId, setEmployeeId] = useState('');
+  const [eventId, setEventId] = useState('');
   const [saving, setSaving] = useState(false);
   
-  // Attendees
   const [attendees, setAttendees] = useState<Array<{id: string; name: string; type: 'contact' | 'employee'}>>([]);
   const [attendeeType, setAttendeeType] = useState<'contact' | 'employee'>('contact');
   const [selectedAttendee, setSelectedAttendee] = useState('');
   
-  // Discussion Points
   const [discussionPoints, setDiscussionPoints] = useState<Array<{id: string; content: string}>>([]);
   const [discussionInput, setDiscussionInput] = useState('');
   
-  // Action Items
   const [actionItems, setActionItems] = useState<Array<{id: string; content: string}>>([]);
   const [actionInput, setActionInput] = useState('');
   
   const [projects, setProjects] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
   
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,19 +40,35 @@ export default function MeetingNoteForm({ onSave }: MeetingNoteFormProps) {
 
   useEffect(() => {
     const fetchOptions = async () => {
-      const [projectsRes, contactsRes, employeesRes] = await Promise.all([
+      const [projectsRes, contactsRes, employeesRes, eventsRes] = await Promise.all([
         supabase.from('projects').select('id, name').order('name'),
         supabase.from('contacts').select('id, first_name, last_name').order('first_name'),
-        supabase.from('employees').select('id, first_name, last_name').order('first_name')
+        supabase.from('employees').select('id, first_name, last_name').order('first_name'),
+        supabase.from('events').select('id, title').order('event_date', { ascending: false }).limit(50)
       ]);
       
       if (projectsRes.data) setProjects(projectsRes.data);
       if (contactsRes.data) setContacts(contactsRes.data);
       if (employeesRes.data) setEmployees(employeesRes.data);
+      if (eventsRes.data) setEvents(eventsRes.data);
     };
     
     fetchOptions();
   }, []);
+
+  useEffect(() => {
+    if (editingNote) {
+      setTitle(editingNote.title || '');
+      setMeetingDate(editingNote.meeting_date || '');
+      setProjectId(editingNote.project_id || '');
+      setContactId(editingNote.contact_id || '');
+      setEmployeeId(editingNote.employee_id || '');
+      setEventId(editingNote.event_id || '');
+      
+      // Load existing attendees, discussion points, action items would go here
+      // For now, they'll be empty when editing
+    }
+  }, [editingNote]);
 
   const addAttendee = () => {
     if (!selectedAttendee) return;
@@ -70,24 +87,24 @@ export default function MeetingNoteForm({ onSave }: MeetingNoteFormProps) {
   };
 
   const addDiscussionPoint = (e: React.KeyboardEvent<HTMLInputElement>) => {
-  if (e.key === 'Enter' && discussionInput.trim()) {
-    e.preventDefault(); // ADD THIS LINE
-    setDiscussionPoints([...discussionPoints, { id: Date.now().toString(), content: discussionInput }]);
-    setDiscussionInput('');
-  }
-};
+    if (e.key === 'Enter' && discussionInput.trim()) {
+      e.preventDefault();
+      setDiscussionPoints([...discussionPoints, { id: Date.now().toString(), content: discussionInput }]);
+      setDiscussionInput('');
+    }
+  };
 
   const removeDiscussionPoint = (index: number) => {
     setDiscussionPoints(discussionPoints.filter((_, i) => i !== index));
   };
 
   const addActionItem = (e: React.KeyboardEvent<HTMLInputElement>) => {
-  if (e.key === 'Enter' && actionInput.trim()) {
-    e.preventDefault(); // ADD THIS LINE
-    setActionItems([...actionItems, { id: Date.now().toString(), content: actionInput }]);
-    setActionInput('');
-  }
-};
+    if (e.key === 'Enter' && actionInput.trim()) {
+      e.preventDefault();
+      setActionItems([...actionItems, { id: Date.now().toString(), content: actionInput }]);
+      setActionInput('');
+    }
+  };
 
   const removeActionItem = (index: number) => {
     setActionItems(actionItems.filter((_, i) => i !== index));
@@ -98,10 +115,39 @@ export default function MeetingNoteForm({ onSave }: MeetingNoteFormProps) {
     if (!title || !meetingDate) return;
     
     setSaving(true);
-    
     const { data: { user } } = await supabase.auth.getUser();
     
-    // Create meeting note
+    if (editingNote) {
+      // Update existing meeting note
+      await supabase
+        .from('meeting_notes')
+        .update({
+          title,
+          meeting_date: meetingDate,
+          project_id: projectId || null,
+          contact_id: contactId || null,
+          employee_id: employeeId || null,
+          event_id: eventId || null,
+        })
+        .eq('id', editingNote.id);
+      
+      // Reset form
+      setTitle('');
+      setMeetingDate('');
+      setProjectId('');
+      setContactId('');
+      setEmployeeId('');
+      setEventId('');
+      setAttendees([]);
+      setDiscussionPoints([]);
+      setActionItems([]);
+      onSave();
+      if (onCancelEdit) onCancelEdit();
+      setSaving(false);
+      return;
+    }
+    
+    // Create new meeting note
     const { data: meetingNote, error: meetingError } = await supabase
       .from('meeting_notes')
       .insert({
@@ -110,6 +156,7 @@ export default function MeetingNoteForm({ onSave }: MeetingNoteFormProps) {
         project_id: projectId || null,
         contact_id: contactId || null,
         employee_id: employeeId || null,
+        event_id: eventId || null,
         created_by: user?.id
       })
       .select()
@@ -156,6 +203,7 @@ export default function MeetingNoteForm({ onSave }: MeetingNoteFormProps) {
     setProjectId('');
     setContactId('');
     setEmployeeId('');
+    setEventId('');
     setAttendees([]);
     setDiscussionPoints([]);
     setActionItems([]);
@@ -165,7 +213,20 @@ export default function MeetingNoteForm({ onSave }: MeetingNoteFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg border space-y-6">
-      <h3 className="text-lg font-semibold">New Meeting Note</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">
+          {editingNote ? 'Edit Meeting Note' : 'New Meeting Note'}
+        </h3>
+        {editingNote && onCancelEdit && (
+          <button
+            type="button"
+            onClick={onCancelEdit}
+            className="text-gray-500 hover:text-gray-700 text-sm"
+          >
+            Cancel Edit
+          </button>
+        )}
+      </div>
       
       {/* Basic Info */}
       <div className="space-y-4">
@@ -196,7 +257,7 @@ export default function MeetingNoteForm({ onSave }: MeetingNoteFormProps) {
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">Link to Project</label>
             <select
@@ -242,119 +303,139 @@ export default function MeetingNoteForm({ onSave }: MeetingNoteFormProps) {
               ))}
             </select>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Link to Event</label>
+            <select
+              value={eventId}
+              onChange={(e) => setEventId(e.target.value)}
+              className="w-full border rounded px-3 py-2"
+            >
+              <option value="">No event</option>
+              {events.map((evt) => (
+                <option key={evt.id} value={evt.id}>{evt.title}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
       {/* Attendees Section */}
-      <div className="border-t pt-4">
-        <h4 className="font-semibold mb-3">Attendees</h4>
-        <div className="flex gap-2 mb-3">
-          <select
-            value={attendeeType}
-            onChange={(e) => setAttendeeType(e.target.value as 'contact' | 'employee')}
-            className="border rounded px-3 py-2"
-          >
-            <option value="contact">Contact</option>
-            <option value="employee">Employee</option>
-          </select>
-          <select
-            value={selectedAttendee}
-            onChange={(e) => setSelectedAttendee(e.target.value)}
-            className="flex-1 border rounded px-3 py-2"
-          >
-            <option value="">Select {attendeeType}...</option>
-            {(attendeeType === 'contact' ? contacts : employees).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.first_name} {p.last_name}
-              </option>
+      {!editingNote && (
+        <div className="border-t pt-4">
+          <h4 className="font-semibold mb-3">Attendees</h4>
+          <div className="flex gap-2 mb-3">
+            <select
+              value={attendeeType}
+              onChange={(e) => setAttendeeType(e.target.value as 'contact' | 'employee')}
+              className="border rounded px-3 py-2"
+            >
+              <option value="contact">Contact</option>
+              <option value="employee">Employee</option>
+            </select>
+            <select
+              value={selectedAttendee}
+              onChange={(e) => setSelectedAttendee(e.target.value)}
+              className="flex-1 border rounded px-3 py-2"
+            >
+              <option value="">Select {attendeeType}...</option>
+              {(attendeeType === 'contact' ? contacts : employees).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.first_name} {p.last_name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={addAttendee}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              + Add
+            </button>
+          </div>
+          <div className="space-y-2">
+            {attendees.map((a, i) => (
+              <div key={i} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                <span>
+                  {a.name} <span className="text-xs text-gray-500">({a.type})</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeAttendee(i)}
+                  className="text-red-600 hover:text-red-800"
+                >
+                  ✕
+                </button>
+              </div>
             ))}
-          </select>
-          <button
-            type="button"
-            onClick={addAttendee}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          >
-            + Add
-          </button>
+          </div>
         </div>
-        <div className="space-y-2">
-          {attendees.map((a, i) => (
-            <div key={i} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-              <span>
-                {a.name} <span className="text-xs text-gray-500">({a.type})</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => removeAttendee(i)}
-                className="text-red-600 hover:text-red-800"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Discussion Points Section */}
-      <div className="border-t pt-4">
-        <h4 className="font-semibold mb-3">Discussion Points</h4>
-        <input
-          type="text"
-          value={discussionInput}
-          onChange={(e) => setDiscussionInput(e.target.value)}
-          onKeyDown={addDiscussionPoint}
-          className="w-full border rounded px-3 py-2 mb-3"
-          placeholder="Type discussion point and press Enter..."
-        />
-        <div className="space-y-2">
-          {discussionPoints.map((dp, i) => (
-            <div key={dp.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-              <span>• {dp.content}</span>
-              <button
-                type="button"
-                onClick={() => removeDiscussionPoint(i)}
-                className="text-red-600 hover:text-red-800"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+      {!editingNote && (
+        <div className="border-t pt-4">
+          <h4 className="font-semibold mb-3">Discussion Points</h4>
+          <input
+            type="text"
+            value={discussionInput}
+            onChange={(e) => setDiscussionInput(e.target.value)}
+            onKeyDown={addDiscussionPoint}
+            className="w-full border rounded px-3 py-2 mb-3"
+            placeholder="Type discussion point and press Enter..."
+          />
+          <div className="space-y-2">
+            {discussionPoints.map((dp, i) => (
+              <div key={dp.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                <span>• {dp.content}</span>
+                <button
+                  type="button"
+                  onClick={() => removeDiscussionPoint(i)}
+                  className="text-red-600 hover:text-red-800"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Action Items Section */}
-      <div className="border-t pt-4">
-        <h4 className="font-semibold mb-3">Action Items</h4>
-        <input
-          type="text"
-          value={actionInput}
-          onChange={(e) => setActionInput(e.target.value)}
-          onKeyDown={addActionItem}
-          className="w-full border rounded px-3 py-2 mb-3"
-          placeholder="Type action item and press Enter..."
-        />
-        <div className="space-y-2">
-          {actionItems.map((ai, i) => (
-            <div key={ai.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-              <span>• {ai.content}</span>
-              <button
-                type="button"
-                onClick={() => removeActionItem(i)}
-                className="text-red-600 hover:text-red-800"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+      {!editingNote && (
+        <div className="border-t pt-4">
+          <h4 className="font-semibold mb-3">Action Items</h4>
+          <input
+            type="text"
+            value={actionInput}
+            onChange={(e) => setActionInput(e.target.value)}
+            onKeyDown={addActionItem}
+            className="w-full border rounded px-3 py-2 mb-3"
+            placeholder="Type action item and press Enter..."
+          />
+          <div className="space-y-2">
+            {actionItems.map((ai, i) => (
+              <div key={ai.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                <span>• {ai.content}</span>
+                <button
+                  type="button"
+                  onClick={() => removeActionItem(i)}
+                  className="text-red-600 hover:text-red-800"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <button
         type="submit"
         disabled={saving || !title || !meetingDate}
         className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400"
       >
-        {saving ? 'Saving...' : 'Save Meeting Note'}
+        {saving ? 'Saving...' : editingNote ? 'Update Meeting Note' : 'Save Meeting Note'}
       </button>
     </form>
   );

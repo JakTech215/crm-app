@@ -12,11 +12,14 @@ interface MeetingNote {
   project_id: string | null;
   contact_id: string | null;
   employee_id: string | null;
+  event_id: string | null;
   created_at: string;
   projects?: { name: string };
   contacts?: { first_name: string; last_name: string };
   employees?: { first_name: string; last_name: string };
+  events?: { title: string };
 }
+
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -25,6 +28,7 @@ const supabase = createBrowserClient(
 export default function MeetingNotesView() {
   const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingNote, setEditingNote] = useState<MeetingNote | null>(null);
   
   const fetchMeetingNotes = async () => {
     const { data, error } = await supabase
@@ -33,7 +37,8 @@ export default function MeetingNotesView() {
         *,
         projects(name),
         contacts(first_name, last_name),
-        employees(first_name, last_name)
+        employees(first_name, last_name),
+        events(title)
       `)
       .order('meeting_date', { ascending: false });
 
@@ -48,12 +53,27 @@ export default function MeetingNotesView() {
   }, []);
 
   const handleSave = () => {
-    fetchMeetingNotes(); // Refresh list
+    fetchMeetingNotes();
+    setEditingNote(null);
+  };
+
+  const handleEdit = (note: MeetingNote) => {
+    setEditingNote(note);
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingNote(null);
   };
 
   return (
     <div>
-      <MeetingNoteForm onSave={handleSave} />
+      <MeetingNoteForm 
+        onSave={handleSave} 
+        editingNote={editingNote} 
+        onCancelEdit={handleCancelEdit}
+      />
       
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">Meeting Notes</h2>
@@ -64,7 +84,12 @@ export default function MeetingNotesView() {
         ) : (
           <div className="grid gap-4">
             {meetingNotes.map((note) => (
-              <MeetingNoteCard key={note.id} note={note} onUpdate={fetchMeetingNotes} />
+              <MeetingNoteCard 
+                key={note.id} 
+                note={note} 
+                onUpdate={fetchMeetingNotes}
+                onEdit={handleEdit}
+              />
             ))}
           </div>
         )}

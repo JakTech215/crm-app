@@ -54,6 +54,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { nowCST, formatDate } from "@/lib/dates";
+import GoogleCalendarSettings from "@/components/GoogleCalendarSettings";
 
 // ---------- Types ----------
 
@@ -1828,7 +1829,7 @@ export default function SettingsPage() {
           <TabsTrigger value="project-statuses">Project Statuses</TabsTrigger>
           <TabsTrigger value="task-templates">Task Templates</TabsTrigger>
           <TabsTrigger value="task-types">Task Types</TabsTrigger>
-
+          <TabsTrigger value="google-calendar">Google Calendar</TabsTrigger>
           <TabsTrigger value="users">User Management</TabsTrigger>
           <TabsTrigger value="holidays">Holidays</TabsTrigger>
         </TabsList>
@@ -1844,7 +1845,9 @@ export default function SettingsPage() {
         <TabsContent value="task-types">
           <TaskTypesSection />
         </TabsContent>
-
+        <TabsContent value="google-calendar">
+          <GoogleCalendarSettings />
+        </TabsContent>
         <TabsContent value="users">
           <UserManagementSection />
         </TabsContent>

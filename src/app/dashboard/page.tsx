@@ -334,9 +334,37 @@ export default function DashboardPage() {
           }
         }
         setCalendarEventMap(evtMap);
+        // Fetch Google Calendar events and merge in
+        try {
+          const gcalRes = await fetch(
+            `/api/google/events?start=${calendarRange.start}&end=${calendarRange.end}`
+          );
+          if (gcalRes.ok) {
+            const gcalData = await gcalRes.json();
+            if (gcalData.events?.length > 0) {
+              setCalendarEventMap(prev => {
+                const merged = { ...prev };
+                for (const e of gcalData.events) {
+                  const dateKey = e.start.split('T')[0];
+                  if (!merged[dateKey]) merged[dateKey] = [];
+                  merged[dateKey].push({
+                    id: e.id,
+                    title: e.title || '(No title)',
+                    event_type: 'google_calendar',
+                    event_time: e.start.includes('T') ? e.start.split('T')[1].substring(0, 5) : null
+                  });
+                }
+                return merged;
+              });
+            }
+          }
+        } catch (gcalErr) {
+          console.error("Failed to fetch Google Calendar events:", gcalErr);
+        }
       } catch (e) {
         console.error("Failed to fetch calendar events:", e);
       }
+      
 
       // Upcoming tasks (next 14 days)
       try {
@@ -499,6 +527,7 @@ export default function DashboardPage() {
                         {taskCount > (hasMilestone ? 2 : 3) && (
                           <span className="text-[8px] text-muted-foreground">+{taskCount - (hasMilestone ? 2 : 3)}</span>
                         )}
+                        {dayEvents.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
                       </div>
                     )}
                   </div>
@@ -791,6 +820,7 @@ export default function DashboardPage() {
             <span className="flex items-center gap-1"><div className="w-3 h-3 rounded ring-2 ring-blue-500" /> Today</span>
             <span className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-red-50 border" /> Overdue</span>
             <span className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-emerald-50 border border-emerald-200" /> Holiday</span>
+            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-400" /> Google Calendar</span>
           </div>
 
           {/* Selected date task list */}

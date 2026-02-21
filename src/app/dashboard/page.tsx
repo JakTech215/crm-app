@@ -892,10 +892,10 @@ export default function DashboardPage() {
               <div className="space-y-2">
                 {dashNotes.map((note) => (
                   <div
-                    key={note.id}
-                    className="p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => router.push("/dashboard/notes")}
-                  >
+                key={note.id}
+                className="p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => router.push(`/dashboard/notes?editNote=${note.id}`)}
+              >
                     <p className="text-sm line-clamp-2">{note.content}</p>
                     <p className="text-xs text-muted-foreground mt-1">
                       {fmtRelTime(note.created_at)}

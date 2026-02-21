@@ -31,6 +31,21 @@ export default function QuickCaptureView() {
     fetchOptions();
   }, []);
 
+  // Auto-load note for editing from URL param (from dashboard)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const editNoteId = params.get('editNote');
+    
+    if (editNoteId && notes.length > 0) {
+      const noteToEdit = notes.find(n => n.id === editNoteId);
+      if (noteToEdit) {
+        handleEdit(noteToEdit);
+        // Clear the URL param
+        window.history.replaceState({}, '', '/dashboard/notes');
+      }
+    }
+  }, [notes]);
+
   const fetchNotes = async () => {
     const { data } = await supabase
       .from('notes_standalone')
@@ -115,6 +130,8 @@ export default function QuickCaptureView() {
     setContactId(note.contact_id || '');
     setEmployeeId(note.employee_id || '');
     setEventId(note.event_id || '');
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCancelEdit = () => {

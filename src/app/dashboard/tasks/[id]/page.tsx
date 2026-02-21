@@ -145,6 +145,79 @@ const DEPENDENCY_TYPES = [
   { value: "start_to_finish", label: "Start to Finish (SF)" },
 ];
 
+// Helper function for timeframe calculations
+const getTimeframeDate = (code: string): string => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+
+  const formatDate = (d: Date) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const isWeekday = (d: Date) => {
+    const dayOfWeek = d.getDay();
+    return dayOfWeek !== 0 && dayOfWeek !== 6;
+  };
+
+  const addDays = (d: Date, days: number) => {
+    const result = new Date(d);
+    result.setDate(result.getDate() + days);
+    return result;
+  };
+
+  switch (code) {
+    case '1d':
+      return formatDate(addDays(today, 1));
+    case '3d':
+      return formatDate(addDays(today, 3));
+    case '1w':
+      return formatDate(addDays(today, 7));
+    case '1m':
+      return formatDate(addDays(today, 30));
+    case 'eow-w': {
+      const currentDay = today.getDay();
+      let daysUntilFriday = 5 - currentDay;
+      if (daysUntilFriday < 0) daysUntilFriday += 7;
+      return formatDate(addDays(today, daysUntilFriday));
+    }
+    case 'eom-w': {
+      const lastDay = new Date(year, month + 1, 0);
+      let workDay = new Date(lastDay);
+      while (!isWeekday(workDay)) {
+        workDay.setDate(workDay.getDate() - 1);
+      }
+      return formatDate(workDay);
+    }
+    case 'eom-p': {
+      const lastDay = new Date(year, month + 1, 0);
+      return formatDate(lastDay);
+    }
+    case 'bow-w': {
+      const currentDay = today.getDay();
+      let daysUntilMonday = (8 - currentDay) % 7;
+      if (daysUntilMonday === 0) daysUntilMonday = 7;
+      return formatDate(addDays(today, daysUntilMonday));
+    }
+    case 'bom-w': {
+      let firstDay = new Date(year, month + 1, 1);
+      while (!isWeekday(firstDay)) {
+        firstDay.setDate(firstDay.getDate() + 1);
+      }
+      return formatDate(firstDay);
+    }
+    case 'bom-p': {
+      const firstDay = new Date(year, month + 1, 1);
+      return formatDate(firstDay);
+    }
+    default:
+      return formatDate(today);
+  }
+};
+
 export default function TaskDetailPage() {
   const supabase = createClient();
   const router = useRouter();
@@ -1067,34 +1140,63 @@ export default function TaskDetailPage() {
                   {editForm.due_date && (
                     <span className="text-xs text-muted-foreground">{formatDate(editForm.due_date)}</span>
                   )}
-                  <div className="flex flex-wrap gap-1">
-                    {[
-                      { label: "4h", days: 0 },
-                      { label: "1d", days: 1 },
-                      { label: "3d", days: 3 },
-                      { label: "1w", days: 7 },
-                      { label: "2w", days: 14 },
-                      { label: "1m", days: 30 },
-                    ].map((q) => (
-                      <Button
-                        key={q.label}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-6 text-xs px-2"
-                        onClick={() => {
-                          const startStr = editForm.start_date || todayCST();
-                          const due = addDaysToDate(startStr, q.days);
-                          setEditForm((prev) => ({
-                            ...prev,
-                            start_date: prev.start_date || todayCST(),
-                            due_date: due,
-                          }));
-                        }}
-                      >
-                        {q.label}
-                      </Button>
-                    ))}
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { label: "1d", tooltip: "1 day" },
+                        { label: "3d", tooltip: "3 days" },
+                        { label: "1w", tooltip: "1 week" },
+                        { label: "1m", tooltip: "1 month" },
+                        { label: "eow-w", tooltip: "End of week (Fri)" },
+                      ].map((q) => (
+                        <Button
+                          key={q.label}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-xs px-2"
+                          title={q.tooltip}
+                          onClick={() => {
+                            const dueDate = getTimeframeDate(q.label);
+                            setEditForm((prev) => ({
+                              ...prev,
+                              start_date: prev.start_date || todayCST(),
+                              due_date: dueDate,
+                            }));
+                          }}
+                        >
+                          {q.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { label: "eom-w", tooltip: "End of month (work day)" },
+                        { label: "eom-p", tooltip: "End of month (period)" },
+                        { label: "bow-w", tooltip: "Begin next week (Mon)" },
+                        { label: "bom-w", tooltip: "Begin next month (work day)" },
+                        { label: "bom-p", tooltip: "Begin next month (period)" },
+                      ].map((q) => (
+                        <Button
+                          key={q.label}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-xs px-2"
+                          title={q.tooltip}
+                          onClick={() => {
+                            const dueDate = getTimeframeDate(q.label);
+                            setEditForm((prev) => ({
+                              ...prev,
+                              start_date: prev.start_date || todayCST(),
+                              due_date: dueDate,
+                            }));
+                          }}
+                        >
+                          {q.label}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

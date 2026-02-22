@@ -7,8 +7,7 @@ import { cookies } from 'next/headers';
 
 export async function POST() {
   try {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {

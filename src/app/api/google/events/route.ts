@@ -38,7 +38,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Start and end dates required' }, { status: 400 });
     }
 
-    const cookieStore = cookies();
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 

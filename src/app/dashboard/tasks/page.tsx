@@ -1138,10 +1138,10 @@ export default function TasksPage() {
                             const startStr = form.start_date || todayCST();
                             const due = addDaysToDate(startStr, q.days);
                             setForm((prev) => ({
-                              ...prev,
-                              start_date: prev.start_date || todayCST(),
-                              due_date: due,
-                            }));
+  ...prev,
+  start_date: val,
+  due_date: val,  // always sync due_date to start_date
+}));
                           }}
                         >
                           {q.label}

@@ -291,7 +291,6 @@ export default function TasksPage() {
 
     setTasks(tasksWithAssignees as Task[]);
 
-    // Fetch project links from project_tasks junction table
     if (taskIds.length > 0) {
       const { data: projectTasks } = await supabase
         .from("project_tasks")
@@ -431,7 +430,6 @@ export default function TasksPage() {
     fetchChain(templateId);
 
     if (tmpl.is_recurring) {
-      // For recurring templates, set title/description/priority but calculate due_date from count
       const startDate = form.start_date || todayCST();
       let dueDate = "";
       if (tmpl.recurrence_frequency && tmpl.recurrence_unit && tmpl.recurrence_count) {
@@ -451,7 +449,6 @@ export default function TasksPage() {
         due_date: dueDate || form.due_date,
       });
     } else {
-      // For non-recurring: calculate due_date from due_amount/unit
       let dueDate = "";
       const amount = tmpl.due_amount || tmpl.default_due_days;
       const unit = tmpl.due_unit || "days";
@@ -490,7 +487,6 @@ export default function TasksPage() {
       return;
     }
 
-    // Create the first/primary task
     const { data: task, error: insertError } = await supabase
       .from("tasks")
       .insert({
@@ -527,21 +523,14 @@ export default function TasksPage() {
           }))
         );
       if (assignError) {
-        setError(
-          "Task created but failed to assign employees: " +
-            assignError.message
-        );
+        setError("Task created but failed to assign employees: " + assignError.message);
       }
     }
 
-    // Link to project via junction table
     if (task && form.project_id) {
       const { error: projectLinkError } = await supabase
         .from("project_tasks")
-        .insert({
-          task_id: task.id,
-          project_id: form.project_id,
-        });
+        .insert({ task_id: task.id, project_id: form.project_id });
       if (projectLinkError) {
         setError("Task created but failed to link project: " + projectLinkError.message);
         setSaving(false);
@@ -552,9 +541,7 @@ export default function TasksPage() {
     if (task && selectedTemplateId) {
       const tmpl = templates.find((t) => t.id === selectedTemplateId);
 
-      // If template is recurring and we have computed dates, create all instances
       if (tmpl?.is_recurring && tmpl.recurrence_frequency && tmpl.recurrence_unit && recurringDates.length > 0) {
-        // Update first task with recurring metadata
         await supabase.from("tasks").update({
           is_recurring: true,
           recurrence_frequency: tmpl.recurrence_frequency,
@@ -563,7 +550,6 @@ export default function TasksPage() {
           due_date: recurringDates[0],
         }).eq("id", task.id);
 
-        // Create remaining occurrences (index 1 onward)
         for (let i = 1; i < recurringDates.length; i++) {
           const { data: recurTask } = await supabase.from("tasks").insert({
             title: form.title,
@@ -586,13 +572,11 @@ export default function TasksPage() {
 
           if (recurTask) {
             totalCreated++;
-            // Copy assignees
             if (selectedEmployees.length > 0) {
               await supabase.from("task_assignees").insert(
                 selectedEmployees.map((empId) => ({ task_id: recurTask.id, employee_id: empId }))
               );
             }
-            // Link to same project
             if (form.project_id) {
               await supabase.from("project_tasks").insert({ task_id: recurTask.id, project_id: form.project_id });
             }
@@ -600,7 +584,6 @@ export default function TasksPage() {
         }
       }
 
-      // Show creation result
       if (templateChain.length > 0) {
         setCreationResult(
           `Created ${totalCreated} task${totalCreated > 1 ? "s" : ""} from template` +
@@ -634,9 +617,7 @@ export default function TasksPage() {
 
   const toggleEmployee = (empId: string) => {
     setSelectedEmployees((prev) =>
-      prev.includes(empId)
-        ? prev.filter((id) => id !== empId)
-        : [...prev, empId]
+      prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]
     );
   };
 
@@ -655,7 +636,6 @@ export default function TasksPage() {
     blocked: "bg-red-100 text-red-800",
   };
 
-  // Inline edit state
   const [savingCell, setSavingCell] = useState<string | null>(null);
   const [savedCell, setSavedCell] = useState<string | null>(null);
 
@@ -667,14 +647,15 @@ export default function TasksPage() {
     if (field === "status" && value === "completed") {
       updateData.completed_at = nowUTC();
     }
-    await supabase.from("tasks").update(updateData).eq("id", taskId);
-    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } : t));
+    const { error } = await supabase.from("tasks").update(updateData).eq("id", taskId);
+    if (!error) {
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } : t));
+    }
     setSavingCell(null);
     setSavedCell(key);
     setTimeout(() => setSavedCell((prev) => prev === key ? null : prev), 1500);
   };
 
-  // Delete state
   const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteDeps, setDeleteDeps] = useState<number>(0);
@@ -722,7 +703,6 @@ export default function TasksPage() {
       );
     }
 
-    // Project filter
     const projectIds = filterValues.projects;
     if (Array.isArray(projectIds) && projectIds.length > 0) {
       filtered = filtered.filter((t) => {
@@ -731,13 +711,11 @@ export default function TasksPage() {
       });
     }
 
-    // Contact filter
     const contactIds = filterValues.contacts;
     if (Array.isArray(contactIds) && contactIds.length > 0) {
       filtered = filtered.filter((t) => t.contact_id && contactIds.includes(t.contact_id));
     }
 
-    // Employee filter
     const employeeIds = filterValues.employees;
     if (Array.isArray(employeeIds) && employeeIds.length > 0) {
       filtered = filtered.filter((t) =>
@@ -745,19 +723,16 @@ export default function TasksPage() {
       );
     }
 
-    // Priority filter
     const priority = filterValues.priority;
     if (typeof priority === "string" && priority !== "all") {
       filtered = filtered.filter((t) => t.priority === priority);
     }
 
-    // Task Type filter
     const taskType = filterValues.taskType;
     if (typeof taskType === "string" && taskType !== "all") {
       filtered = filtered.filter((t) => t.task_type_id === taskType);
     }
 
-    // Date range filter
     const dateFrom = filterValues.dateFrom;
     const dateTo = filterValues.dateTo;
     if (typeof dateFrom === "string" && dateFrom) {
@@ -788,16 +763,11 @@ export default function TasksPage() {
       <TableBody>
         {loading ? (
           <TableRow>
-            <TableCell colSpan={9} className="text-center py-8">
-              Loading...
-            </TableCell>
+            <TableCell colSpan={9} className="text-center py-8">Loading...</TableCell>
           </TableRow>
         ) : filteredTasks.length === 0 ? (
           <TableRow>
-            <TableCell
-              colSpan={9}
-              className="text-center text-muted-foreground py-8"
-            >
+            <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
               No tasks found.
             </TableCell>
           </TableRow>
@@ -810,9 +780,7 @@ export default function TasksPage() {
             >
               <TableCell>
                 <div className="flex items-center gap-2">
-                  {task.is_milestone && (
-                    <Diamond className="h-4 w-4 text-amber-500 shrink-0" />
-                  )}
+                  {task.is_milestone && <Diamond className="h-4 w-4 text-amber-500 shrink-0" />}
                   {(task.is_recurring || task.recurrence_source_task_id) && (
                     <span title="Part of recurring series">
                       <RefreshCw className="h-3.5 w-3.5 text-blue-500 shrink-0" />
@@ -822,18 +790,11 @@ export default function TasksPage() {
                     <div className="font-medium">
                       {task.title}
                       {task.is_milestone && (
-                        <Badge
-                          variant="secondary"
-                          className="ml-2 bg-amber-100 text-amber-800 text-xs"
-                        >
-                          Milestone
-                        </Badge>
+                        <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 text-xs">Milestone</Badge>
                       )}
                     </div>
                     {task.description && (
-                      <div className="text-sm text-muted-foreground truncate max-w-xs">
-                        {task.description}
-                      </div>
+                      <div className="text-sm text-muted-foreground truncate max-w-xs">{task.description}</div>
                     )}
                   </div>
                 </div>
@@ -852,10 +813,7 @@ export default function TasksPage() {
                 {task.contacts ? (
                   <span
                     className="text-blue-600 hover:underline cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      router.push(`/dashboard/contacts/${task.contacts!.id}`);
-                    }}
+                    onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/contacts/${task.contacts!.id}`); }}
                   >
                     {contactName(task.contacts)}
                   </span>
@@ -866,9 +824,7 @@ export default function TasksPage() {
               <TableCell>
                 {(() => {
                   const taskProjects = taskProjectMap[task.id];
-                  if (!taskProjects || taskProjects.length === 0) {
-                    return <span className="text-muted-foreground">—</span>;
-                  }
+                  if (!taskProjects || taskProjects.length === 0) return <span className="text-muted-foreground">—</span>;
                   if (taskProjects.length <= 2) {
                     return (
                       <div className="flex flex-wrap gap-1">
@@ -876,10 +832,7 @@ export default function TasksPage() {
                           <span
                             key={p.id}
                             className="text-blue-600 hover:underline cursor-pointer text-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(`/dashboard/projects/${p.id}`);
-                            }}
+                            onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/projects/${p.id}`); }}
                           >
                             {p.name}
                           </span>
@@ -890,10 +843,7 @@ export default function TasksPage() {
                   return (
                     <Popover>
                       <PopoverTrigger asChild>
-                        <span
-                          className="text-blue-600 hover:underline cursor-pointer text-sm"
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                        <span className="text-blue-600 hover:underline cursor-pointer text-sm" onClick={(e) => e.stopPropagation()}>
                           {taskProjects.length} Projects
                         </span>
                       </PopoverTrigger>
@@ -903,10 +853,7 @@ export default function TasksPage() {
                             <div
                               key={p.id}
                               className="text-sm text-blue-600 hover:underline cursor-pointer px-2 py-1 rounded hover:bg-muted"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                router.push(`/dashboard/projects/${p.id}`);
-                              }}
+                              onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/projects/${p.id}`); }}
                             >
                               {p.name}
                             </div>
@@ -921,11 +868,7 @@ export default function TasksPage() {
                 {task.task_assignees?.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {task.task_assignees.map((a) => (
-                      <Badge
-                        key={a.employee_id}
-                        variant="outline"
-                        className="text-xs"
-                      >
+                      <Badge key={a.employee_id} variant="outline" className="text-xs">
                         {a.employees ? employeeName(a.employees) : ""}
                       </Badge>
                     ))}
@@ -944,6 +887,7 @@ export default function TasksPage() {
                       <SelectItem value="low">Low</SelectItem>
                       <SelectItem value="medium">Medium</SelectItem>
                       <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
                     </SelectContent>
                   </Select>
                   {savingCell === `${task.id}-priority` && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
@@ -999,28 +943,43 @@ export default function TasksPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-4">
-  <h2 className="text-2xl font-bold">Tasks</h2>
-  <Dialog open={open} onOpenChange={setOpen}>
-    <DialogTrigger asChild>
-      <Button>
-        <Plus className="mr-2 h-4 w-4" />
-        New Task
-      </Button>
-    </DialogTrigger>
+        <h2 className="text-2xl font-bold">Tasks</h2>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              New Task
+            </Button>
+          </DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <form onSubmit={handleSubmit}>
               <DialogHeader>
                 <DialogTitle>New Task</DialogTitle>
-                <DialogDescription>
-                  Create a new task to track.
-                </DialogDescription>
+                <DialogDescription>Create a new task to track.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 {error && (
-                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                    {error}
-                  </div>
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
                 )}
+
+                {/* Title & Description — ABOVE template section */}
+                <div className="grid gap-2">
+                  <Label htmlFor="title">Title *</Label>
+                  <Input
+                    id="title"
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  />
+                </div>
 
                 {/* Template & Schedule Section */}
                 <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
@@ -1078,14 +1037,10 @@ export default function TasksPage() {
                             if (tmpl.recurrence_unit === "days") d.setDate(d.getDate() + totalOffset);
                             else if (tmpl.recurrence_unit === "weeks") d.setDate(d.getDate() + totalOffset * 7);
                             else if (tmpl.recurrence_unit === "months") d.setMonth(d.getMonth() + totalOffset);
-                            const calculatedEnd = toDateStr(d);
-                            setForm((prev) => ({ ...prev, start_date: val, due_date: calculatedEnd }));
+                            setForm((prev) => ({ ...prev, start_date: val, due_date: toDateStr(d) }));
                           } else {
-                            setForm((prev) => ({
-                              ...prev,
-                              start_date: val,
-                              due_date: prev.due_date || val,
-                            }));
+                            // FIX: always sync due_date to start_date when changed
+                            setForm((prev) => ({ ...prev, start_date: val, due_date: val }));
                           }
                         }}
                       />
@@ -1104,9 +1059,7 @@ export default function TasksPage() {
                         id="due_date"
                         type="date"
                         value={form.due_date}
-                        onChange={(e) =>
-                          setForm({ ...form, due_date: e.target.value })
-                        }
+                        onChange={(e) => setForm({ ...form, due_date: e.target.value })}
                       />
                       {form.due_date && (
                         <span className="text-xs text-muted-foreground">{formatDate(form.due_date)}</span>
@@ -1138,10 +1091,10 @@ export default function TasksPage() {
                             const startStr = form.start_date || todayCST();
                             const due = addDaysToDate(startStr, q.days);
                             setForm((prev) => ({
-  ...prev,
-  start_date: val,
-  due_date: val,  // always sync due_date to start_date
-}));
+                              ...prev,
+                              start_date: prev.start_date || todayCST(),
+                              due_date: due,
+                            }));
                           }}
                         >
                           {q.label}
@@ -1184,15 +1137,13 @@ export default function TasksPage() {
                             )}
                           </div>
                         ) : (
-                          <p className="text-xs text-muted-foreground">
-                            Set start date and end date to preview occurrences
-                          </p>
+                          <p className="text-xs text-muted-foreground">Set start date and end date to preview occurrences</p>
                         )}
                       </div>
                     );
                   })()}
 
-                  {/* Workflow chain preview (non-recurring feature) */}
+                  {/* Workflow chain preview */}
                   {templateChain.length > 0 && (
                     <div className="rounded border bg-background p-3 space-y-1">
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -1211,48 +1162,18 @@ export default function TasksPage() {
                   )}
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="title">Title *</Label>
-                  <Input
-                    id="title"
-                    value={form.title}
-                    onChange={(e) =>
-                      setForm({ ...form, title: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={form.description}
-                    onChange={(e) =>
-                      setForm({ ...form, description: e.target.value })
-                    }
-                  />
-                </div>
                 {projects.length > 0 && (
                   <div className="grid gap-2">
-                    <Label>
-                      Project{" "}
-                      <span className="text-muted-foreground font-normal">(optional)</span>
-                    </Label>
+                    <Label>Project <span className="text-muted-foreground font-normal">(optional)</span></Label>
                     <Select
                       value={form.project_id || "none"}
-                      onValueChange={(value) =>
-                        setForm({ ...form, project_id: value === "none" ? "" : value })
-                      }
+                      onValueChange={(value) => setForm({ ...form, project_id: value === "none" ? "" : value })}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="No project" />
-                      </SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">No project</SelectItem>
                         {projects.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
-                          </SelectItem>
+                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1260,25 +1181,16 @@ export default function TasksPage() {
                 )}
                 {contacts.length > 0 && (
                   <div className="grid gap-2">
-                    <Label>
-                      Contact{" "}
-                      <span className="text-muted-foreground font-normal">(optional)</span>
-                    </Label>
+                    <Label>Contact <span className="text-muted-foreground font-normal">(optional)</span></Label>
                     <Select
                       value={form.contact_id || "none"}
-                      onValueChange={(value) =>
-                        setForm({ ...form, contact_id: value === "none" ? "" : value })
-                      }
+                      onValueChange={(value) => setForm({ ...form, contact_id: value === "none" ? "" : value })}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="No contact" />
-                      </SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="No contact" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">No contact</SelectItem>
                         {contacts.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {contactDisplay(c)}
-                          </SelectItem>
+                          <SelectItem key={c.id} value={c.id}>{contactDisplay(c)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1287,15 +1199,8 @@ export default function TasksPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="priority">Priority</Label>
-                    <Select
-                      value={form.priority}
-                      onValueChange={(value) =>
-                        setForm({ ...form, priority: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
+                    <Select value={form.priority} onValueChange={(value) => setForm({ ...form, priority: value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="low">Low</SelectItem>
                         <SelectItem value="medium">Medium</SelectItem>
@@ -1306,20 +1211,11 @@ export default function TasksPage() {
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="status">Status</Label>
-                    <Select
-                      value={form.status}
-                      onValueChange={(value) =>
-                        setForm({ ...form, status: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
+                    <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="in_progress">
-                          In Progress
-                        </SelectItem>
+                        <SelectItem value="in_progress">In Progress</SelectItem>
                         <SelectItem value="completed">Completed</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1329,29 +1225,18 @@ export default function TasksPage() {
                   <Label>Employees</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        type="button"
-                        className="justify-start"
-                      >
+                      <Button variant="outline" type="button" className="justify-start">
                         <Users className="mr-2 h-4 w-4" />
-                        {selectedEmployees.length > 0
-                          ? `${selectedEmployees.length} selected`
-                          : "Select employees..."}
+                        {selectedEmployees.length > 0 ? `${selectedEmployees.length} selected` : "Select employees..."}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-64 p-2" align="start">
                       {employees.length === 0 ? (
-                        <p className="text-sm text-muted-foreground p-2">
-                          No active employees found.
-                        </p>
+                        <p className="text-sm text-muted-foreground p-2">No active employees found.</p>
                       ) : (
                         <div className="space-y-1 max-h-48 overflow-y-auto">
                           {employees.map((emp) => (
-                            <label
-                              key={emp.id}
-                              className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer"
-                            >
+                            <label key={emp.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer">
                               <Checkbox
                                 checked={selectedEmployees.includes(emp.id)}
                                 onCheckedChange={() => toggleEmployee(emp.id)}
@@ -1367,15 +1252,11 @@ export default function TasksPage() {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <Checkbox
                     checked={form.is_milestone}
-                    onCheckedChange={(checked) =>
-                      setForm({ ...form, is_milestone: !!checked })
-                    }
+                    onCheckedChange={(checked) => setForm({ ...form, is_milestone: !!checked })}
                   />
                   <div className="flex items-center gap-1.5">
                     <Diamond className="h-4 w-4 text-amber-500" />
-                    <span className="text-sm font-medium">
-                      Mark as milestone
-                    </span>
+                    <span className="text-sm font-medium">Mark as milestone</span>
                   </div>
                 </label>
               </div>
@@ -1416,11 +1297,7 @@ export default function TasksPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             {deleteDeps === 0 && (
-              <AlertDialogAction
-                onClick={confirmDelete}
-                disabled={deleteLoading}
-                className="bg-red-600 hover:bg-red-700"
-              >
+              <AlertDialogAction onClick={confirmDelete} disabled={deleteLoading} className="bg-red-600 hover:bg-red-700">
                 {deleteLoading ? "Deleting..." : "Delete"}
               </AlertDialogAction>
             )}
@@ -1467,32 +1344,24 @@ export default function TasksPage() {
         </TabsContent>
         <TabsContent value="pending">
           <Card>
-            <CardContent className="pt-6">
-              {renderTable(filterTasks("pending"))}
-            </CardContent>
+            <CardContent className="pt-6">{renderTable(filterTasks("pending"))}</CardContent>
           </Card>
         </TabsContent>
         <TabsContent value="in_progress">
           <Card>
-            <CardContent className="pt-6">
-              {renderTable(filterTasks("in_progress"))}
-            </CardContent>
+            <CardContent className="pt-6">{renderTable(filterTasks("in_progress"))}</CardContent>
           </Card>
         </TabsContent>
         <TabsContent value="completed">
           <Card>
-            <CardContent className="pt-6">
-              {renderTable(filterTasks("completed"))}
-            </CardContent>
+            <CardContent className="pt-6">{renderTable(filterTasks("completed"))}</CardContent>
           </Card>
         </TabsContent>
         <TabsContent value="milestones">
           <Card>
             <CardHeader>
               <CardTitle>Milestones</CardTitle>
-              <CardDescription>
-                Key milestones across all tasks.
-              </CardDescription>
+              <CardDescription>Key milestones across all tasks.</CardDescription>
             </CardHeader>
             <CardContent>{renderTable(filterTasks("milestones"))}</CardContent>
           </Card>

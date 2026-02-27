@@ -191,8 +191,8 @@ export default function DashboardPage() {
   const [savedCell, setSavedCell] = useState<string | null>(null);
 
   // Upcoming tasks date range filter — defaults to today through 14 days out
-  const [upcomingDateFrom, setUpcomingDateFrom] = useState<string>(() => todayCST());
-  const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => futureDateCST(14));
+const [upcomingDateFrom, setUpcomingDateFrom] = useState<string>(() => todayCST());
+const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
   const todayStr = useMemo(() => todayCST(), []);
 
@@ -953,7 +953,7 @@ export default function DashboardPage() {
                 className="h-8 text-xs"
                 onClick={() => {
                   setUpcomingDateFrom(todayCST());
-                  setUpcomingDateTo(futureDateCST(14));
+                  setUpcomingDateTo(todayCST());
                 }}
               >
                 Reset

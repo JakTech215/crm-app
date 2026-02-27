@@ -443,10 +443,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
   }, [calendarRange.start, calendarRange.end, upcomingDateFrom, upcomingDateTo]);
 
   const handleMarkComplete = async (taskId: string) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  console.log("current user:", user?.id);
   const { error } = await supabase.from("tasks").update({ status: "completed", completed_at: nowUTC() }).eq("id", taskId);
-  console.log("markComplete error:", JSON.stringify(error));
   if (!error) {
     setOverdue((prev) => prev.filter((t) => t.id !== taskId));
   }

@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -188,6 +190,10 @@ export default function DashboardPage() {
   const [savingCell, setSavingCell] = useState<string | null>(null);
   const [savedCell, setSavedCell] = useState<string | null>(null);
 
+  // Upcoming tasks date range filter — defaults to today through 14 days out
+  const [upcomingDateFrom, setUpcomingDateFrom] = useState<string>(() => todayCST());
+  const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => futureDateCST(14));
+
   const todayStr = useMemo(() => todayCST(), []);
 
   // Compute the 3-month range for calendar fetch
@@ -195,7 +201,7 @@ export default function DashboardPage() {
     const baseY = calendarBaseDate.getFullYear();
     const baseM = calendarBaseDate.getMonth();
     const prevMonth = new Date(baseY, baseM - 1, 1);
-    const nextMonthEnd = new Date(baseY, baseM + 2, 0); // last day of next month
+    const nextMonthEnd = new Date(baseY, baseM + 2, 0);
     return {
       start: formatDateKey(prevMonth),
       end: formatDateKey(nextMonthEnd),
@@ -229,7 +235,6 @@ export default function DashboardPage() {
         const taskIds = tasks.map((t) => t.id as string);
         if (taskIds.length === 0) return [];
 
-        // Projects
         const taskProjectMap: Record<string, TaskProject[]> = {};
         const { data: ptLinks } = await supabase.from("project_tasks").select("task_id, project_id").in("task_id", taskIds);
         if (ptLinks && ptLinks.length > 0) {
@@ -246,7 +251,6 @@ export default function DashboardPage() {
           }
         }
 
-        // Assignees
         const taskAssigneeMap: Record<string, TaskAssignee[]> = {};
         const { data: assignees } = await supabase.from("task_assignees").select("task_id, employee_id, employees(id, first_name, last_name)").in("task_id", taskIds);
         if (assignees) {
@@ -334,11 +338,10 @@ export default function DashboardPage() {
           }
         }
         setCalendarEventMap(evtMap);
+
         // Fetch Google Calendar events and merge in
         try {
-          const gcalRes = await fetch(
-            `/api/google/events?start=${calendarRange.start}&end=${calendarRange.end}`
-          );
+          const gcalRes = await fetch(`/api/google/events?start=${calendarRange.start}&end=${calendarRange.end}`);
           if (gcalRes.ok) {
             const gcalData = await gcalRes.json();
             if (gcalData.events?.length > 0) {
@@ -364,19 +367,17 @@ export default function DashboardPage() {
       } catch (e) {
         console.error("Failed to fetch calendar events:", e);
       }
-      
 
-      // Upcoming tasks (next 14 days)
+      // Upcoming tasks (filtered by date range)
       try {
-        const endDate = futureDateCST(14);
         const { data: upcomingTasks } = await supabase
           .from("tasks")
           .select("id, title, due_date, priority, status, contact_id, contacts:contact_id(id, first_name, last_name)")
           .neq("status", "completed")
-          .gte("due_date", today)
-          .lte("due_date", endDate)
+          .gte("due_date", upcomingDateFrom)
+          .lte("due_date", upcomingDateTo)
           .order("due_date", { ascending: true })
-          .limit(10);
+          .limit(25);
 
         if (upcomingTasks && upcomingTasks.length > 0) {
           const enriched = await enrichTasks(upcomingTasks as Record<string, unknown>[]);
@@ -423,7 +424,6 @@ export default function DashboardPage() {
       // Fetch holidays
       try {
         const federalHolidays = await getFederalHolidays();
-        // Also fetch custom holidays from DB
         const { data: dbHolidays } = await supabase
           .from("holidays")
           .select("holiday_date, name");
@@ -440,7 +440,7 @@ export default function DashboardPage() {
     };
 
     fetchData();
-  }, [calendarRange.start, calendarRange.end]);
+  }, [calendarRange.start, calendarRange.end, upcomingDateFrom, upcomingDateTo]);
 
   const handleMarkComplete = async (taskId: string) => {
     await supabase.from("tasks").update({ status: "completed", completed_at: nowUTC() }).eq("id", taskId);
@@ -456,7 +456,6 @@ export default function DashboardPage() {
       updateData.completed_at = nowUTC();
     }
     await supabase.from("tasks").update(updateData).eq("id", taskId);
-    // Update both lists
     setOverdue((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } as typeof t : t));
     setUpcoming((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } : t));
     setSavingCell(null);
@@ -660,18 +659,13 @@ export default function DashboardPage() {
               {(task as OverdueTask).days_overdue}d overdue
             </Badge>
           )}
-          <span className="text-xs text-muted-foreground">
-            {formatDate(task.due_date)}
-          </span>
+          <span className="text-xs text-muted-foreground">{formatDate(task.due_date)}</span>
           {showOverdue && (
             <Button
               variant="outline"
               size="sm"
               className="h-7 text-xs"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleMarkComplete(task.id);
-              }}
+              onClick={(e) => { e.stopPropagation(); handleMarkComplete(task.id); }}
             >
               Mark Complete
             </Button>
@@ -683,10 +677,7 @@ export default function DashboardPage() {
           <span>
             <span
               className="text-blue-600 hover:underline"
-              onClick={(e) => {
-                e.stopPropagation();
-                router.push(`/dashboard/contacts/${task.contact!.id}`);
-              }}
+              onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/contacts/${task.contact!.id}`); }}
             >
               {task.contact.first_name}{task.contact.last_name ? ` ${task.contact.last_name}` : ""}
             </span>
@@ -699,10 +690,7 @@ export default function DashboardPage() {
                 {i > 0 && ", "}
                 <span
                   className="text-blue-600 hover:underline"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    router.push(`/dashboard/projects/${p.id}`);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/projects/${p.id}`); }}
                 >
                   {p.name}
                 </span>
@@ -730,15 +718,11 @@ export default function DashboardPage() {
             onClick={() => router.push(stat.href)}
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">
-                {stat.title}
-              </CardTitle>
+              <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
               <stat.icon className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {loading ? "..." : stat.value}
-              </div>
+              <div className="text-2xl font-bold">{loading ? "..." : stat.value}</div>
               <CardDescription>{stat.description}</CardDescription>
             </CardContent>
           </Card>
@@ -922,14 +906,12 @@ export default function DashboardPage() {
               <div className="space-y-2">
                 {dashNotes.map((note) => (
                   <div
-                key={note.id}
-                className="p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
-                onClick={() => router.push(`/dashboard/notes?editNote=${note.id}`)}
-              >
+                    key={note.id}
+                    className="p-2 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => router.push(`/dashboard/notes?editNote=${note.id}`)}
+                  >
                     <p className="text-sm line-clamp-2">{note.content}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {fmtRelTime(note.created_at)}
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">{fmtRelTime(note.created_at)}</p>
                   </div>
                 ))}
               </div>
@@ -941,15 +923,50 @@ export default function DashboardPage() {
       {/* Upcoming Tasks */}
       <Card>
         <CardHeader>
-          <CardTitle>Upcoming Tasks</CardTitle>
-          <CardDescription>Tasks due in the next 2 weeks</CardDescription>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Upcoming Tasks</CardTitle>
+              <CardDescription>Tasks due in selected date range</CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">From</Label>
+                <Input
+                  type="date"
+                  value={upcomingDateFrom}
+                  onChange={(e) => setUpcomingDateFrom(e.target.value)}
+                  className="h-8 w-36 text-xs"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">To</Label>
+                <Input
+                  type="date"
+                  value={upcomingDateTo}
+                  onChange={(e) => setUpcomingDateTo(e.target.value)}
+                  className="h-8 w-36 text-xs"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  setUpcomingDateFrom(todayCST());
+                  setUpcomingDateTo(futureDateCST(14));
+                }}
+              >
+                Reset
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading...</p>
           ) : upcoming.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No upcoming tasks. Create a task with a due date to see it here.
+              No tasks found in this date range.
             </p>
           ) : (
             <div className="space-y-3">

@@ -673,10 +673,33 @@ export default function TasksPage() {
   const confirmDelete = async () => {
     if (!deleteTaskId) return;
     setDeleteLoading(true);
-    await supabase.from("task_assignees").delete().eq("task_id", deleteTaskId);
-    await supabase.from("project_tasks").delete().eq("task_id", deleteTaskId);
-    await supabase.from("tasks").delete().eq("id", deleteTaskId);
-    setTasks((prev) => prev.filter((t) => t.id !== deleteTaskId));
+    setDeleteMessage(null);
+
+    // ensure user is authenticated
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setDeleteMessage('You must be signed in to delete tasks');
+      setDeleteLoading(false);
+      return;
+    }
+
+    const results = await Promise.all([
+      supabase.from("task_assignees").delete().eq("task_id", deleteTaskId),
+      supabase.from("project_tasks").delete().eq("task_id", deleteTaskId),
+      supabase.from("tasks").delete().eq("id", deleteTaskId),
+    ]);
+
+    const err = results.find((r) => (r as any).error);
+    if (err && (err as any).error) {
+      console.error('Delete error:', (err as any).error);
+      setDeleteMessage('Failed to delete task: ' + (err as any).error.message);
+      setDeleteLoading(false);
+      return;
+    }
+
+    // Refresh tasks from server to ensure UI matches DB
+    await fetchTasks();
+
     setDeleteLoading(false);
     setDeleteTaskId(null);
     setDeleteMessage("Task deleted");

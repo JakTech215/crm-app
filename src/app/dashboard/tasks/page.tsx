@@ -683,16 +683,29 @@ export default function TasksPage() {
       return;
     }
 
+    // Request deleted rows back from the server so we can detect no-op deletes
+    // (e.g. when RLS/policies prevent deletion but no error is returned).
     const results = await Promise.all([
-      supabase.from("task_assignees").delete().eq("task_id", deleteTaskId),
-      supabase.from("project_tasks").delete().eq("task_id", deleteTaskId),
-      supabase.from("tasks").delete().eq("id", deleteTaskId),
+      supabase.from("task_assignees").delete().select().eq("task_id", deleteTaskId),
+      supabase.from("project_tasks").delete().select().eq("task_id", deleteTaskId),
+      supabase.from("tasks").delete().select().eq("id", deleteTaskId),
     ]);
 
     const err = results.find((r) => (r as any).error);
     if (err && (err as any).error) {
-      console.error('Delete error:', (err as any).error);
+      console.error('Delete error:', (err as any).error, results);
       setDeleteMessage('Failed to delete task: ' + (err as any).error.message);
+      setDeleteLoading(false);
+      return;
+    }
+
+    // results[2] is the task deletion result. If no rows were returned
+    // that means zero rows were deleted — often due to RLS preventing the
+    // operation even though the client call didn't return a hard error.
+    const taskDeleteResult = results[2] as any;
+    if (!taskDeleteResult || !taskDeleteResult.data || (Array.isArray(taskDeleteResult.data) && taskDeleteResult.data.length === 0)) {
+      console.warn('Delete reported success but removed 0 rows:', { results });
+      setDeleteMessage('Failed to delete task.');
       setDeleteLoading(false);
       return;
     }
@@ -716,9 +729,7 @@ export default function TasksPage() {
     if (checkData) {
       // Row still exists
       console.warn('Task still present after delete attempts:', deleteTaskId);
-      setDeleteMessage(
-        'Delete reported success, but the task still exists in the database. This is likely an RLS/permission issue on the production DB.'
-      );
+      setDeleteMessage('Failed to delete task.');
       setDeleteLoading(false);
       return;
     }
@@ -991,13 +1002,6 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-6">
-      {deleteMessage && (
-        <div className="px-2">
-          <div className={deleteMessage.startsWith('Failed') ? 'rounded-md bg-red-50 p-3 text-sm text-red-700' : 'rounded-md bg-green-50 p-3 text-sm text-green-700'}>
-            {deleteMessage}
-          </div>
-        </div>
-      )}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Tasks</h2>
         <Dialog open={open} onOpenChange={setOpen}>

@@ -697,6 +697,32 @@ export default function TasksPage() {
       return;
     }
 
+    // Verify the task was actually removed from the DB. Some RLS/policy
+    // configurations can cause deletes to appear successful client-side
+    // but still leave the row intact.
+    const { data: checkData, error: checkError } = await supabase
+      .from('tasks')
+      .select('id')
+      .eq('id', deleteTaskId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Post-delete check error:', checkError);
+      setDeleteMessage('Deleted but verification failed: ' + checkError.message);
+      setDeleteLoading(false);
+      return;
+    }
+
+    if (checkData) {
+      // Row still exists
+      console.warn('Task still present after delete attempts:', deleteTaskId);
+      setDeleteMessage(
+        'Delete reported success, but the task still exists in the database. This is likely an RLS/permission issue on the production DB.'
+      );
+      setDeleteLoading(false);
+      return;
+    }
+
     // Refresh tasks from server to ensure UI matches DB
     await fetchTasks();
 
@@ -965,6 +991,13 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-6">
+      {deleteMessage && (
+        <div className="px-2">
+          <div className={deleteMessage.startsWith('Failed') ? 'rounded-md bg-red-50 p-3 text-sm text-red-700' : 'rounded-md bg-green-50 p-3 text-sm text-green-700'}>
+            {deleteMessage}
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Tasks</h2>
         <Dialog open={open} onOpenChange={setOpen}>

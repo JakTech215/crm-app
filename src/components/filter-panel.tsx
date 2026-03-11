@@ -63,6 +63,7 @@ export interface FilterPanelProps {
   values: FilterValues;
   onChange: (key: string, value: string | string[]) => void;
   onClear: () => void;
+  defaultOpen?: boolean;
 }
 
 // --- Helper: parse URL params into initial FilterValues ---
@@ -105,9 +106,9 @@ export function defaultFilterValues(filters: FilterDef[]): FilterValues {
 
 // --- Main component ---
 
-export function FilterPanel({ filters, values, onChange, onClear }: FilterPanelProps) {
+export function FilterPanel({ filters, values, onChange, onClear, defaultOpen }: FilterPanelProps) {
   const searchParams = useSearchParams();
-  const [open, setOpen] = useState(() => searchParams.get("filters") === "open");
+  const [open, setOpen] = useState(() => searchParams.get("filters") === "open" || defaultOpen === true);
 
   // Count active filters
   const activeCount = useMemo(() => {

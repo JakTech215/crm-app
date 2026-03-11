@@ -39,7 +39,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Popover,
   PopoverContent,
@@ -57,7 +56,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Users, Diamond, Search, RefreshCw, Loader2, Check, Trash2 } from "lucide-react";
+import { Plus, Users, Diamond, Search, RefreshCw, Loader2, Check, Trash2, Upload, Download } from "lucide-react";
+import Papa from "papaparse";
 import { todayCST, formatDate, formatDateLong, formatRelativeTime as formatRelativeTimeUtil, nowUTC, isBeforeToday, addDaysToDate } from "@/lib/dates";
 import { FilterPanel, FilterDef, FilterValues, defaultFilterValues } from "@/components/filter-panel";
 
@@ -205,6 +205,12 @@ export default function TasksPage() {
     is_milestone: false,
   });
 
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkRows, setBulkRows] = useState<Record<string, string>[]>([]);
+  const [bulkErrors, setBulkErrors] = useState<string[]>([]);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ success: number; failed: number } | null>(null);
+
   const [filterValues, setFilterValues] = useState<FilterValues>({});
 
   const filterDefs: FilterDef[] = useMemo(
@@ -243,6 +249,19 @@ export default function TasksPage() {
         key: "taskType",
         label: "Task Type",
         options: taskTypes.map((t) => ({ value: t.id, label: t.name })),
+      },
+      {
+        type: "multi-select" as const,
+        key: "status",
+        label: "Status",
+        options: [
+          { value: "pending", label: "Pending" },
+          { value: "in_progress", label: "In Progress" },
+          { value: "completed", label: "Completed" },
+          { value: "cancelled", label: "Cancelled" },
+          { value: "blocked", label: "Blocked" },
+        ],
+        defaultValue: ["pending", "in_progress", "blocked"],
       },
       {
         type: "date-range" as const,
@@ -615,6 +634,167 @@ export default function TasksPage() {
     setSaving(false);
   };
 
+  const downloadTemplate = () => {
+    const headers = ["title", "description", "priority", "status", "start_date", "due_date", "contact", "project", "task_type", "is_milestone", "employees"];
+    const exampleRow = [
+      "Example Task",
+      "Task description here",
+      "medium",
+      "pending",
+      "2026-03-15",
+      "2026-03-30",
+      contacts[0] ? contactName(contacts[0]) : "John Doe",
+      projects[0]?.name || "Project Name",
+      taskTypes[0]?.name || "General",
+      "false",
+      employees.length > 0 ? employeeName(employees[0]) : "Jane Smith",
+    ];
+    const validValues = [
+      "# Valid values: priority = low | medium | high | urgent",
+      "# status = pending | in_progress | completed | blocked | cancelled",
+      "# start_date and due_date = YYYY-MM-DD",
+      "# is_milestone = true | false",
+      `# contact = ${contacts.slice(0, 5).map(contactName).join(" | ") || "Contact name"}`,
+      `# project = ${projects.slice(0, 5).map((p) => p.name).join(" | ") || "Project name"}`,
+      `# task_type = ${taskTypes.slice(0, 5).map((t) => t.name).join(" | ") || "Type name"}`,
+      `# employees = Semicolon-separated names (e.g. Jane Smith;John Doe)`,
+    ];
+    const csv = [headers.join(","), exampleRow.join(","), "", ...validValues].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "task_upload_template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleBulkFile = (file: File) => {
+    setBulkErrors([]);
+    setBulkResult(null);
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (result) => {
+        // Filter out comment rows
+        const rows = (result.data as Record<string, string>[]).filter(
+          (row) => !row.title?.startsWith("#")
+        );
+        if (rows.length === 0) {
+          setBulkErrors(["No data rows found in CSV."]);
+          return;
+        }
+        const errors: string[] = [];
+        rows.forEach((row, i) => {
+          if (!row.title?.trim()) errors.push(`Row ${i + 1}: title is required`);
+          if (row.priority && !["low", "medium", "high", "urgent"].includes(row.priority.trim().toLowerCase()))
+            errors.push(`Row ${i + 1}: invalid priority "${row.priority}"`);
+          if (row.status && !["pending", "in_progress", "completed", "blocked", "cancelled"].includes(row.status.trim().toLowerCase()))
+            errors.push(`Row ${i + 1}: invalid status "${row.status}"`);
+        });
+        setBulkErrors(errors);
+        setBulkRows(rows);
+      },
+      error: (err) => {
+        setBulkErrors([`Parse error: ${err.message}`]);
+      },
+    });
+  };
+
+  const handleBulkUpload = async () => {
+    if (bulkRows.length === 0) return;
+    setBulkUploading(true);
+    setBulkResult(null);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setBulkErrors(["Not authenticated"]); setBulkUploading(false); return; }
+
+    let success = 0;
+    let failed = 0;
+
+    for (const row of bulkRows) {
+      try {
+        // Resolve contact
+        let contactId: string | null = null;
+        if (row.contact?.trim()) {
+          const match = contacts.find((c) =>
+            contactName(c).toLowerCase() === row.contact.trim().toLowerCase()
+          );
+          if (match) contactId = match.id;
+        }
+
+        // Resolve project
+        let projectId: string | null = null;
+        if (row.project?.trim()) {
+          const match = projects.find((p) =>
+            p.name.toLowerCase() === row.project.trim().toLowerCase()
+          );
+          if (match) projectId = match.id;
+        }
+
+        // Resolve task type
+        let taskTypeId: string | null = null;
+        if (row.task_type?.trim()) {
+          const match = taskTypes.find((t) =>
+            t.name.toLowerCase() === row.task_type.trim().toLowerCase()
+          );
+          if (match) taskTypeId = match.id;
+        }
+
+        // Resolve employees
+        const empIds: string[] = [];
+        if (row.employees?.trim()) {
+          const names = row.employees.split(";").map((n) => n.trim().toLowerCase());
+          for (const name of names) {
+            const match = employees.find((e) =>
+              employeeName(e).toLowerCase() === name
+            );
+            if (match) empIds.push(match.id);
+          }
+        }
+
+        const { data: task, error: taskErr } = await supabase
+          .from("tasks")
+          .insert({
+            title: row.title.trim(),
+            description: row.description?.trim() || null,
+            priority: row.priority?.trim().toLowerCase() || "medium",
+            status: row.status?.trim().toLowerCase() || "pending",
+            start_date: row.start_date?.trim() || null,
+            due_date: row.due_date?.trim() || null,
+            is_milestone: row.is_milestone?.trim().toLowerCase() === "true",
+            contact_id: contactId,
+            task_type_id: taskTypeId,
+            created_by: user.id,
+          })
+          .select()
+          .single();
+
+        if (taskErr || !task) {
+          failed++;
+          continue;
+        }
+
+        if (empIds.length > 0) {
+          await supabase.from("task_assignees").insert(
+            empIds.map((empId) => ({ task_id: task.id, employee_id: empId }))
+          );
+        }
+
+        if (projectId) {
+          await supabase.from("project_tasks").insert({ task_id: task.id, project_id: projectId });
+        }
+
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+
+    setBulkResult({ success, failed });
+    setBulkUploading(false);
+    if (success > 0) fetchTasks();
+  };
+
   const toggleEmployee = (empId: string) => {
     setSelectedEmployees((prev) =>
       prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]
@@ -751,10 +931,15 @@ export default function TasksPage() {
       : { text: `in ${text}`, className: "text-muted-foreground" };
   };
 
-  const filterTasks = (filter: string) => {
+  const filterTasks = () => {
     let filtered = tasks;
-    if (filter === "milestones") filtered = tasks.filter((t) => t.is_milestone);
-    else if (filter !== "all") filtered = tasks.filter((t) => t.status === filter);
+
+    // Status filter (multi-select)
+    const statuses = filterValues.status;
+    if (Array.isArray(statuses) && statuses.length > 0) {
+      filtered = filtered.filter((t) => statuses.includes(t.status));
+    }
+
     if (search) {
       const q = search.toLowerCase();
       filtered = filtered.filter((t) =>
@@ -1004,6 +1189,101 @@ export default function TasksPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">Tasks</h2>
+        <div className="flex items-center gap-2">
+          <Dialog open={bulkOpen} onOpenChange={(v) => { setBulkOpen(v); if (!v) { setBulkRows([]); setBulkErrors([]); setBulkResult(null); } }}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Upload className="mr-2 h-4 w-4" />
+                Bulk Upload
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Bulk Upload Tasks</DialogTitle>
+                <DialogDescription>Upload a CSV file to create multiple tasks at once.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="flex items-center gap-3">
+                  <Button variant="outline" size="sm" onClick={downloadTemplate}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download Template
+                  </Button>
+                  <span className="text-xs text-muted-foreground">Download a CSV template with headers and example data</span>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Upload CSV File</Label>
+                  <Input
+                    type="file"
+                    accept=".csv"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleBulkFile(file);
+                    }}
+                  />
+                </div>
+
+                {bulkErrors.length > 0 && (
+                  <div className="rounded-md bg-destructive/10 p-3 space-y-1">
+                    {bulkErrors.map((err, i) => (
+                      <p key={i} className="text-sm text-destructive">{err}</p>
+                    ))}
+                  </div>
+                )}
+
+                {bulkRows.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">{bulkRows.length} row(s) parsed</p>
+                    <div className="max-h-64 overflow-auto border rounded-md">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">Title</TableHead>
+                            <TableHead className="text-xs">Priority</TableHead>
+                            <TableHead className="text-xs">Status</TableHead>
+                            <TableHead className="text-xs">Start</TableHead>
+                            <TableHead className="text-xs">Due</TableHead>
+                            <TableHead className="text-xs">Contact</TableHead>
+                            <TableHead className="text-xs">Project</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {bulkRows.map((row, i) => (
+                            <TableRow key={i}>
+                              <TableCell className="text-xs">{row.title}</TableCell>
+                              <TableCell className="text-xs capitalize">{row.priority || "medium"}</TableCell>
+                              <TableCell className="text-xs capitalize">{row.status || "pending"}</TableCell>
+                              <TableCell className="text-xs">{row.start_date || "-"}</TableCell>
+                              <TableCell className="text-xs">{row.due_date || "-"}</TableCell>
+                              <TableCell className="text-xs">{row.contact || "-"}</TableCell>
+                              <TableCell className="text-xs">{row.project || "-"}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+
+                {bulkResult && (
+                  <div className="rounded-md bg-green-50 p-3 text-sm">
+                    <p className="font-medium text-green-800">Upload complete</p>
+                    <p className="text-green-700">{bulkResult.success} task(s) created successfully{bulkResult.failed > 0 ? `, ${bulkResult.failed} failed` : ""}.</p>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setBulkOpen(false)}>
+                  {bulkResult ? "Close" : "Cancel"}
+                </Button>
+                {bulkRows.length > 0 && !bulkResult && (
+                  <Button onClick={handleBulkUpload} disabled={bulkUploading || bulkErrors.length > 0}>
+                    {bulkUploading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading...</> : `Upload ${bulkRows.length} Tasks`}
+                  </Button>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -1328,6 +1608,7 @@ export default function TasksPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {creationResult && (
@@ -1380,53 +1661,18 @@ export default function TasksPage() {
         values={filterValues}
         onChange={(key, value) => setFilterValues(prev => ({ ...prev, [key]: value }))}
         onClear={() => setFilterValues(defaultFilterValues(filterDefs))}
+        defaultOpen
       />
 
-      <Tabs defaultValue={searchParams.get("status") || "all"}>
-        <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="pending">Pending</TabsTrigger>
-          <TabsTrigger value="in_progress">In Progress</TabsTrigger>
-          <TabsTrigger value="completed">Completed</TabsTrigger>
-          <TabsTrigger value="milestones">
-            <Diamond className="mr-1.5 h-3 w-3" />
-            Milestones
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="all">
-          <Card>
-            <CardHeader>
-              <CardTitle>All Tasks</CardTitle>
-              <CardDescription>Complete list of all tasks.</CardDescription>
-            </CardHeader>
-            <CardContent>{renderTable(filterTasks("all"))}</CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="pending">
-          <Card>
-            <CardContent className="pt-6">{renderTable(filterTasks("pending"))}</CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="in_progress">
-          <Card>
-            <CardContent className="pt-6">{renderTable(filterTasks("in_progress"))}</CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="completed">
-          <Card>
-            <CardContent className="pt-6">{renderTable(filterTasks("completed"))}</CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="milestones">
-          <Card>
-            <CardHeader>
-              <CardTitle>Milestones</CardTitle>
-              <CardDescription>Key milestones across all tasks.</CardDescription>
-            </CardHeader>
-            <CardContent>{renderTable(filterTasks("milestones"))}</CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <Card>
+        <CardHeader>
+          <CardTitle>Tasks</CardTitle>
+          <CardDescription>
+            Showing {filterTasks().length} of {tasks.length} tasks.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>{renderTable(filterTasks())}</CardContent>
+      </Card>
     </div>
   );
 }

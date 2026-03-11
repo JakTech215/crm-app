@@ -36,7 +36,7 @@ import {
   X,
   RefreshCw,
 } from "lucide-react";
-import { formatDate, formatDateLong, nowCST } from "@/lib/dates";
+import { formatDate, formatDateLong, formatDateShort, nowCST } from "@/lib/dates";
 import { getFederalHolidays, buildHolidayMap } from "@/lib/holidays";
 
 interface GanttTask {
@@ -114,7 +114,7 @@ export default function GanttPage() {
   const [zoom, setZoom] = useState<ZoomLevel>("week");
   const [startDate, setStartDate] = useState(() => {
     const d = nowCST();
-    d.setDate(d.getDate() - 7);
+    d.setDate(d.getDate() - 90);
     return d;
   });
 
@@ -355,6 +355,26 @@ export default function GanttPage() {
     fetchData();
   }, []);
 
+  // Auto-scroll to today's position on initial load
+  const hasScrolledToToday = useRef(false);
+  useEffect(() => {
+    if (!loading && scrollRef.current && !hasScrolledToToday.current) {
+      hasScrolledToToday.current = true;
+      const colWidth = getColumnWidth();
+      // Days from startDate to today
+      const now = nowCST();
+      const diffMs = now.getTime() - startDate.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      let scrollTarget = 0;
+      if (zoom === "day") scrollTarget = diffDays * colWidth;
+      else if (zoom === "week") scrollTarget = (diffDays / 7) * colWidth;
+      else if (zoom === "month") scrollTarget = (diffDays / 30) * colWidth;
+      else scrollTarget = (diffDays / 90) * colWidth;
+      // Offset a bit so today isn't at the very left edge
+      scrollRef.current.scrollLeft = Math.max(0, scrollTarget - 200);
+    }
+  }, [loading]);
+
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filterProjects.length > 0) count++;
@@ -410,7 +430,7 @@ export default function GanttPage() {
   };
 
   const getColumnWidth = () => {
-    if (zoom === "day") return 40;
+    if (zoom === "day") return 80;
     if (zoom === "week") return 120;
     if (zoom === "month") return 160;
     return 200;
@@ -418,7 +438,7 @@ export default function GanttPage() {
 
   const getDateRange = () => {
     const colWidth = getColumnWidth();
-    const numCols = zoom === "day" ? 60 : zoom === "week" ? 16 : zoom === "month" ? 12 : 8;
+    const numCols = zoom === "day" ? 180 : zoom === "week" ? 52 : zoom === "month" ? 24 : 16;
     const dates: Date[] = [];
     const start = new Date(startDate);
 
@@ -511,7 +531,7 @@ export default function GanttPage() {
 
   const formatHeader = (d: Date) => {
     const toStr = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-    if (zoom === "day") return formatDate(toStr(d));
+    if (zoom === "day") return formatDateShort(toStr(d));
     if (zoom === "week") {
       const end = new Date(d);
       end.setDate(end.getDate() + 6);
@@ -889,9 +909,55 @@ export default function GanttPage() {
             </div>
           ) : (
             <>
-              <div className="flex">
-                <div className="w-56 shrink-0 border-r">
-                  <div className="h-10 border-b bg-muted/50 flex items-center px-3">
+              <div className="flex flex-wrap items-center gap-4 px-4 py-2 border-b bg-muted/20">
+                <span className="text-xs text-muted-foreground">Status:</span>
+                <div className="flex items-center gap-1">
+                  <div className="h-3 w-3 rounded-full bg-yellow-400" />
+                  <span className="text-xs">Pending</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-3 w-3 rounded-full bg-blue-500" />
+                  <span className="text-xs">In Progress</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-3 w-3 rounded-full bg-green-500" />
+                  <span className="text-xs">Completed</span>
+                </div>
+                <span className="text-xs text-muted-foreground ml-4">Bar types:</span>
+                <div className="flex items-center gap-1">
+                  <div className="h-3 w-8 rounded bg-blue-500 border-l-4 border-blue-700" />
+                  <span className="text-xs">Regular</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center">
+                    <div className="h-2.5 w-2.5 rounded-full bg-blue-500 border-2 border-white shadow-sm z-10" />
+                    <div className="h-0.5 w-2 bg-blue-200" />
+                    <div className="h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-white shadow-sm z-10" />
+                  </div>
+                  <span className="text-xs">Recurring</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-3 w-3 bg-purple-500 rotate-45 border border-purple-700" />
+                  <span className="text-xs ml-0.5">Event</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-3 w-5 bg-emerald-100 border border-emerald-400 rounded-sm" />
+                  <span className="text-xs">Holiday</span>
+                </div>
+                <span className="text-xs text-muted-foreground ml-4">Priority (left border):</span>
+                <div className="flex items-center gap-1">
+                  <div className="h-3 w-3 border-l-4 border-red-500" />
+                  <span className="text-xs">Urgent</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="h-3 w-3 border-l-4 border-orange-500" />
+                  <span className="text-xs">High</span>
+                </div>
+              </div>
+              <div className="max-h-[70vh] overflow-auto relative" ref={scrollRef}>
+                <div className="flex min-w-max">
+                <div className="w-56 shrink-0 border-r sticky left-0 z-30 bg-background">
+                  <div className="h-10 border-b bg-muted/50 flex items-center px-3 sticky top-0 z-40">
                     <span className="text-xs font-medium text-muted-foreground">Task</span>
                   </div>
                   {allRows.map((row) => (
@@ -1051,8 +1117,8 @@ export default function GanttPage() {
                   ))}
                 </div>
 
-                <div className="flex-1 overflow-x-auto" ref={scrollRef}>
-                  <div className="flex h-10 border-b bg-muted/50" style={{ width: totalWidth }}>
+                <div className="flex-1">
+                  <div className="flex h-10 border-b bg-muted/50 sticky top-0 z-20" style={{ width: totalWidth }}>
                     {dates.map((d, i) => (
                       <div
                         key={i}
@@ -1248,53 +1314,9 @@ export default function GanttPage() {
                     </svg>
                   </div>
                 </div>
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-4 px-4 py-3 border-t bg-muted/20">
-                <span className="text-xs text-muted-foreground">Status:</span>
-                <div className="flex items-center gap-1">
-                  <div className="h-3 w-3 rounded-full bg-yellow-400" />
-                  <span className="text-xs">Pending</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="h-3 w-3 rounded-full bg-blue-500" />
-                  <span className="text-xs">In Progress</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="h-3 w-3 rounded-full bg-green-500" />
-                  <span className="text-xs">Completed</span>
-                </div>
-                <span className="text-xs text-muted-foreground ml-4">Bar types:</span>
-                <div className="flex items-center gap-1">
-                  <div className="h-3 w-8 rounded bg-blue-500 border-l-4 border-blue-700" />
-                  <span className="text-xs">Regular</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="flex items-center">
-                    <div className="h-2.5 w-2.5 rounded-full bg-blue-500 border-2 border-white shadow-sm z-10" />
-                    <div className="h-0.5 w-2 bg-blue-200" />
-                    <div className="h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-white shadow-sm z-10" />
-                  </div>
-                  <span className="text-xs">Recurring</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="h-3 w-3 bg-purple-500 rotate-45 border border-purple-700" />
-                  <span className="text-xs ml-0.5">Event</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="h-3 w-5 bg-emerald-100 border border-emerald-400 rounded-sm" />
-                  <span className="text-xs">Holiday</span>
-                </div>
-                <span className="text-xs text-muted-foreground ml-4">Priority (left border):</span>
-                <div className="flex items-center gap-1">
-                  <div className="h-3 w-3 border-l-4 border-red-500" />
-                  <span className="text-xs">Urgent</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="h-3 w-3 border-l-4 border-orange-500" />
-                  <span className="text-xs">High</span>
-                </div>
-              </div>
             </>
           )}
         </CardContent>

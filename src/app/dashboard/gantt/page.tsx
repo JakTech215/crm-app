@@ -883,11 +883,38 @@ export default function GanttPage() {
             Showing {filteredTasks.filter((t) => t.start_date && t.due_date && !t.is_event).length} tasks
             {filteredTasks.filter((t) => t.is_event).length > 0 && ` + ${filteredTasks.filter((t) => t.is_event).length} events`}
             {" "}of {tasks.filter((t) => !t.is_event).length} total tasks
-            {filteredTasks.filter((t) => t.start_date && t.due_date).length !== filteredTasks.length && (
-              <span className="ml-1 text-orange-600">
-                ({filteredTasks.filter((t) => !t.start_date || !t.due_date).length} without dates)
-              </span>
-            )}
+            {(() => {
+              const noDates = filteredTasks.filter((t) => !t.start_date || !t.due_date);
+              if (noDates.length === 0) return null;
+              return (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <span className="ml-1 text-orange-600 underline decoration-dotted cursor-pointer hover:text-orange-700">
+                      ({noDates.length} without dates)
+                    </span>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-72 p-3" align="start">
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Tasks without dates:</p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {noDates.map((t) => (
+                        <div
+                          key={t.id}
+                          className="text-sm text-blue-600 hover:underline cursor-pointer truncate"
+                          onClick={() => router.push(t.is_event ? `/dashboard/events/${t.id}` : `/dashboard/tasks/${t.id}`)}
+                        >
+                          {t.title}
+                          {!t.start_date && !t.due_date
+                            ? <span className="text-xs text-muted-foreground ml-1">(no dates)</span>
+                            : !t.start_date
+                            ? <span className="text-xs text-muted-foreground ml-1">(no start)</span>
+                            : <span className="text-xs text-muted-foreground ml-1">(no due)</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              );
+            })()}
             {activeFilterCount > 0 && (
               <span className="ml-1">
                 ({activeFilterCount} filter{activeFilterCount !== 1 ? "s" : ""} active)

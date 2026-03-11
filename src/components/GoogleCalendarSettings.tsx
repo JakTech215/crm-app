@@ -5,7 +5,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Calendar, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Calendar, Loader2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 interface GoogleCalendar {
@@ -22,6 +22,7 @@ export default function GoogleCalendarSettings() {
   const [calendars, setCalendars] = useState<GoogleCalendar[]>([]);
   const [savingCalendar, setSavingCalendar] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -47,8 +48,14 @@ export default function GoogleCalendarSettings() {
         .maybeSingle();
 
       if (data) {
-        setConnected(true);
-        await fetchCalendars();
+        // Token row exists — validate by actually fetching calendars
+        const ok = await fetchCalendars();
+        if (ok) {
+          setConnected(true);
+          setConnectionError(null);
+        } else {
+          // fetchCalendars handles setting error / disconnected state
+        }
       }
     } catch (error) {
       console.error('Error checking connection:', error);
@@ -57,19 +64,35 @@ export default function GoogleCalendarSettings() {
     }
   };
 
-  const fetchCalendars = async () => {
+  const fetchCalendars = async (): Promise<boolean> => {
     try {
       const response = await fetch('/api/google/calendars');
       if (response.ok) {
         const data = await response.json();
         setCalendars(data.calendars || []);
+        return true;
       }
+      if (response.status === 401) {
+        const data = await response.json().catch(() => ({}));
+        if (data.reconnect) {
+          // Tokens were invalid and have been cleaned up server-side
+          setConnected(false);
+          setCalendars([]);
+          setConnectionError('Your Google Calendar connection expired. Please reconnect.');
+          return false;
+        }
+      }
+      setConnectionError('Failed to fetch calendars. Please try reconnecting.');
+      return false;
     } catch (error) {
       console.error('Error fetching calendars:', error);
+      setConnectionError('Network error fetching calendars.');
+      return false;
     }
   };
 
   const handleConnect = () => {
+    setConnectionError(null);
     window.location.href = '/api/google/auth';
   };
 
@@ -87,6 +110,7 @@ export default function GoogleCalendarSettings() {
       if (response.ok) {
         setConnected(false);
         setCalendars([]);
+        setConnectionError(null);
       }
     } catch (error) {
       console.error('Error disconnecting:', error);
@@ -161,6 +185,15 @@ export default function GoogleCalendarSettings() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {connectionError && (
+          <div className="rounded-md bg-orange-50 border border-orange-200 p-3 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-orange-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm text-orange-800">{connectionError}</p>
+            </div>
+          </div>
+        )}
+
         {!connected ? (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
@@ -168,7 +201,7 @@ export default function GoogleCalendarSettings() {
             </p>
             <Button onClick={handleConnect} className="w-full sm:w-auto">
               <Calendar className="mr-2 h-4 w-4" />
-              Connect Google Calendar
+              {connectionError ? 'Reconnect Google Calendar' : 'Connect Google Calendar'}
             </Button>
           </div>
         ) : (
@@ -180,7 +213,7 @@ export default function GoogleCalendarSettings() {
                   {calendars.filter(c => c.selected).length} of {calendars.length} selected
                 </span>
               </div>
-              
+
               {calendars.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No calendars found</p>
               ) : (

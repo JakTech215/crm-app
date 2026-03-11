@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 
-async function refreshAccessToken(refreshToken: string): Promise<string | null> {
+async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: string | null; expiresIn: number }> {
   try {
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -18,13 +18,13 @@ async function refreshAccessToken(refreshToken: string): Promise<string | null> 
       }),
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) return { accessToken: null, expiresIn: 0 };
 
     const tokens = await response.json();
-    return tokens.access_token;
+    return { accessToken: tokens.access_token, expiresIn: tokens.expires_in || 3600 };
   } catch (error) {
     console.error('Failed to refresh token:', error);
-    return null;
+    return { accessToken: null, expiresIn: 0 };
   }
 }
 
@@ -51,21 +51,26 @@ export async function GET() {
 
     let accessToken = tokenData.access_token;
 
-    // Check if token is expired
-    if (new Date(tokenData.token_expiry) < new Date()) {
-      // Refresh the token
-      const newAccessToken = await refreshAccessToken(tokenData.refresh_token);
-      
+    // Refresh proactively — 5 minutes before expiry
+    const expiryDate = new Date(tokenData.token_expiry);
+    const bufferMs = 5 * 60 * 1000;
+    if (expiryDate.getTime() - bufferMs < Date.now()) {
+      const { accessToken: newAccessToken, expiresIn } = await refreshAccessToken(tokenData.refresh_token);
+
       if (!newAccessToken) {
-        return NextResponse.json({ error: 'Failed to refresh token' }, { status: 401 });
+        // Refresh token is invalid/revoked — clear tokens so UI shows disconnected
+        await supabase
+          .from('google_calendar_tokens')
+          .delete()
+          .eq('user_id', user.id);
+        return NextResponse.json({ error: 'Token expired. Please reconnect Google Calendar.', reconnect: true }, { status: 401 });
       }
 
       accessToken = newAccessToken;
 
-      // Update stored token
-      const expiresIn = 3600;
+      // Store actual expiry from Google's response
       const tokenExpiry = new Date(Date.now() + expiresIn * 1000).toISOString();
-      
+
       await supabase
         .from('google_calendar_tokens')
         .update({
@@ -84,6 +89,14 @@ export async function GET() {
     });
 
     if (!calendarResponse.ok) {
+      // If Google rejects the token even after refresh, clean up
+      if (calendarResponse.status === 401) {
+        await supabase
+          .from('google_calendar_tokens')
+          .delete()
+          .eq('user_id', user.id);
+        return NextResponse.json({ error: 'Token rejected by Google. Please reconnect.', reconnect: true }, { status: 401 });
+      }
       throw new Error('Failed to fetch calendars');
     }
 

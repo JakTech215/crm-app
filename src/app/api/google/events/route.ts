@@ -58,20 +58,26 @@ export async function GET(request: NextRequest) {
 
     let accessToken = tokenData.access_token;
 
-    // Check if token is expired
-    if (new Date(tokenData.token_expiry) < new Date()) {
-      // Refresh the token
+    // Refresh proactively — 5 minutes before expiry
+    const expiryDate = new Date(tokenData.token_expiry);
+    const bufferMs = 5 * 60 * 1000;
+    if (expiryDate.getTime() - bufferMs < Date.now()) {
       const { accessToken: newAccessToken, expiresIn } = await refreshAccessToken(tokenData.refresh_token);
-      
+
       if (!newAccessToken) {
-        return NextResponse.json({ error: 'Failed to refresh token' }, { status: 401 });
+        // Refresh token is invalid/revoked — clear tokens so UI shows disconnected
+        await supabase
+          .from('google_calendar_tokens')
+          .delete()
+          .eq('user_id', user.id);
+        return NextResponse.json({ events: [], disconnected: true });
       }
 
       accessToken = newAccessToken;
 
-      // Update stored token
+      // Store actual expiry from Google's response
       const tokenExpiry = new Date(Date.now() + expiresIn * 1000).toISOString();
-      
+
       await supabase
         .from('google_calendar_tokens')
         .update({
@@ -115,6 +121,14 @@ export async function GET(request: NextRequest) {
         );
 
         if (!eventsResponse.ok) {
+          // If Google rejects the token, clean up and signal disconnected
+          if (eventsResponse.status === 401) {
+            await supabase
+              .from('google_calendar_tokens')
+              .delete()
+              .eq('user_id', user.id);
+            return NextResponse.json({ events: [], disconnected: true });
+          }
           console.error(`Failed to fetch events for calendar ${selection.calendar_id}`);
           continue;
         }

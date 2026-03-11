@@ -273,7 +273,7 @@ export default function UpcomingTasksPage() {
     { type: "multi-select", key: "employees", label: "Employee", options: employees.map(e => ({ value: e.id, label: employeeName(e) })) },
     { type: "multi-select", key: "contacts", label: "Contact", options: contacts.map(c => ({ value: c.id, label: contactName(c) })) },
     { type: "multi-select", key: "projects", label: "Project", options: projects.map(p => ({ value: p.id, label: p.name })) },
-    { type: "single-select", key: "priority", label: "Priority", allLabel: "All Priorities", options: [
+    { type: "multi-select", key: "priority", label: "Priority", options: [
       { value: "low", label: "Low" },
       { value: "medium", label: "Medium" },
       { value: "high", label: "High" },
@@ -303,9 +303,9 @@ export default function UpcomingTasksPage() {
       if (!tp || !tp.some((p) => projectIds.includes(p.id))) return false;
     }
 
-    // Priority filter
-    const priority = filterValues.priority;
-    if (typeof priority === "string" && priority !== "all" && task.priority !== priority) return false;
+    // Priority filter (multi-select)
+    const priorities = filterValues.priority;
+    if (Array.isArray(priorities) && priorities.length > 0 && !priorities.includes(task.priority)) return false;
 
     // Date range filter
     const dateFrom = filterValues.dateFrom;

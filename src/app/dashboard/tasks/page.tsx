@@ -228,7 +228,7 @@ export default function TasksPage() {
         options: employees.map((e) => ({ value: e.id, label: `${e.first_name} ${e.last_name}` })),
       },
       {
-        type: "single-select" as const,
+        type: "multi-select" as const,
         key: "priority",
         label: "Priority",
         options: [
@@ -239,7 +239,7 @@ export default function TasksPage() {
         ],
       },
       {
-        type: "single-select" as const,
+        type: "multi-select" as const,
         key: "taskType",
         label: "Task Type",
         options: taskTypes.map((t) => ({ value: t.id, label: t.name })),
@@ -783,14 +783,14 @@ export default function TasksPage() {
       );
     }
 
-    const priority = filterValues.priority;
-    if (typeof priority === "string" && priority !== "all") {
-      filtered = filtered.filter((t) => t.priority === priority);
+    const priorities = filterValues.priority;
+    if (Array.isArray(priorities) && priorities.length > 0) {
+      filtered = filtered.filter((t) => priorities.includes(t.priority));
     }
 
-    const taskType = filterValues.taskType;
-    if (typeof taskType === "string" && taskType !== "all") {
-      filtered = filtered.filter((t) => t.task_type_id === taskType);
+    const taskTypes = filterValues.taskType;
+    if (Array.isArray(taskTypes) && taskTypes.length > 0) {
+      filtered = filtered.filter((t) => t.task_type_id && taskTypes.includes(t.task_type_id));
     }
 
     const dateFrom = filterValues.dateFrom;

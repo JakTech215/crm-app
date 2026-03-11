@@ -43,6 +43,7 @@ export interface MultiSelectFilter {
   label: string;
   options: SelectOption[];
   placeholder?: string;
+  defaultValue?: string[];
 }
 
 export interface DateRangeFilter {
@@ -76,7 +77,7 @@ export function parseFilterParams(
       values[f.key] = searchParams.get(f.key) || "all";
     } else if (f.type === "multi-select") {
       const raw = searchParams.get(f.key);
-      values[f.key] = raw ? raw.split(",") : [];
+      values[f.key] = raw ? raw.split(",") : (f.defaultValue ?? []);
     } else if (f.type === "date-range") {
       values[f.keyFrom] = searchParams.get(f.keyFrom) || "";
       values[f.keyTo] = searchParams.get(f.keyTo) || "";
@@ -93,7 +94,7 @@ export function defaultFilterValues(filters: FilterDef[]): FilterValues {
     if (f.type === "single-select") {
       values[f.key] = "all";
     } else if (f.type === "multi-select") {
-      values[f.key] = [];
+      values[f.key] = f.defaultValue ?? [];
     } else if (f.type === "date-range") {
       values[f.keyFrom] = "";
       values[f.keyTo] = "";

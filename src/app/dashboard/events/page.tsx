@@ -201,12 +201,12 @@ export default function EventsPage() {
   const [filterValues, setFilterValues] = useState<FilterValues>({});
 
   const filterDefs: FilterDef[] = useMemo(() => [
-    { type: "single-select", key: "status", label: "Status", allLabel: "All Statuses", options: [
+    { type: "multi-select", key: "status", label: "Status", options: [
       { value: "scheduled", label: "Scheduled" },
       { value: "completed", label: "Completed" },
       { value: "cancelled", label: "Cancelled" },
-    ]},
-    { type: "single-select", key: "type", label: "Type", allLabel: "All Types", options: [
+    ], defaultValue: ["scheduled"] },
+    { type: "multi-select", key: "type", label: "Type", options: [
       { value: "meeting", label: "Meeting" },
       { value: "deadline", label: "Deadline" },
       { value: "milestone", label: "Milestone" },
@@ -487,13 +487,13 @@ export default function EventsPage() {
   // -----------------------------------------------------------------------
 
   const filteredEvents = events.filter((ev) => {
-    // Status filter
-    const status = filterValues.status;
-    if (typeof status === "string" && status !== "all" && ev.status !== status) return false;
+    // Status filter (multi-select)
+    const statuses = filterValues.status;
+    if (Array.isArray(statuses) && statuses.length > 0 && !statuses.includes(ev.status)) return false;
 
-    // Type filter
-    const type = filterValues.type;
-    if (typeof type === "string" && type !== "all" && ev.event_type !== type) return false;
+    // Type filter (multi-select)
+    const types = filterValues.type;
+    if (Array.isArray(types) && types.length > 0 && !types.includes(ev.event_type)) return false;
 
     // Project filter (multi-select)
     const projectIds = filterValues.projects;

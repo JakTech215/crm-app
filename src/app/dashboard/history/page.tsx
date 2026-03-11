@@ -127,11 +127,13 @@ export default function TaskHistoryPage() {
     { type: "multi-select", key: "contacts", label: "Contact", options: contacts.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` })) },
     { type: "multi-select", key: "employees", label: "Employee", options: employees.map(e => ({ value: e.id, label: `${e.first_name} ${e.last_name}` })) },
     { type: "multi-select", key: "projects", label: "Project", options: projects.map(p => ({ value: p.id, label: p.name })) },
-    { type: "single-select", key: "status", label: "Status", allLabel: "All Statuses", options: [
+    { type: "multi-select", key: "status", label: "Status", options: [
       { value: "pending", label: "Pending" },
       { value: "in_progress", label: "In Progress" },
       { value: "completed", label: "Completed" },
-    ]},
+      { value: "cancelled", label: "Cancelled" },
+      { value: "blocked", label: "Blocked" },
+    ], defaultValue: ["pending", "in_progress", "blocked"] },
     { type: "date-range", keyFrom: "dateFrom", keyTo: "dateTo", labelFrom: "Date From", labelTo: "Date To" },
   ], [contacts, employees, projects]);
 
@@ -272,9 +274,9 @@ export default function TaskHistoryPage() {
       if (!taskProjects || !taskProjects.some((p: TaskProject) => projectIds.includes(p.id))) return false;
     }
 
-    // Status filter
-    const status = filterValues.status;
-    if (typeof status === "string" && status !== "all" && task.status !== status) return false;
+    // Status filter (multi-select)
+    const statuses = filterValues.status;
+    if (Array.isArray(statuses) && statuses.length > 0 && !statuses.includes(task.status)) return false;
 
     // Date range filter
     const dateFrom = filterValues.dateFrom;

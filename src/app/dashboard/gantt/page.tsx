@@ -125,12 +125,14 @@ export default function GanttPage() {
     const p = searchParams.get("projects");
     return p ? p.split(",") : [];
   });
-  const [filterStatus, setFilterStatus] = useState(
-    searchParams.get("status") || "all"
-  );
-  const [filterPriority, setFilterPriority] = useState(
-    searchParams.get("priority") || "all"
-  );
+  const [filterStatus, setFilterStatus] = useState<string[]>(() => {
+    const raw = searchParams.get("status");
+    return raw ? raw.split(",") : ["pending", "in_progress", "blocked"];
+  });
+  const [filterPriority, setFilterPriority] = useState<string[]>(() => {
+    const raw = searchParams.get("priority");
+    return raw ? raw.split(",") : [];
+  });
   const [filterMilestoneOnly, setFilterMilestoneOnly] = useState(
     searchParams.get("milestone") === "true"
   );
@@ -140,9 +142,10 @@ export default function GanttPage() {
   const [filterDateTo, setFilterDateTo] = useState(
     searchParams.get("dateTo") || ""
   );
-  const [filterEmployee, setFilterEmployee] = useState(
-    searchParams.get("employee") || "all"
-  );
+  const [filterEmployee, setFilterEmployee] = useState<string[]>(() => {
+    const raw = searchParams.get("employee");
+    return raw ? raw.split(",") : [];
+  });
   const [showEvents, setShowEvents] = useState(true);
   const [showHolidays, setShowHolidays] = useState(true);
   const [holidayMap, setHolidayMap] = useState<Record<string, string[]>>({});
@@ -151,12 +154,12 @@ export default function GanttPage() {
     const params = new URLSearchParams();
     if (filtersOpen) params.set("filters", "open");
     if (filterProjects.length > 0) params.set("projects", filterProjects.join(","));
-    if (filterStatus !== "all") params.set("status", filterStatus);
-    if (filterPriority !== "all") params.set("priority", filterPriority);
+    if (filterStatus.length > 0) params.set("status", filterStatus.join(","));
+    if (filterPriority.length > 0) params.set("priority", filterPriority.join(","));
     if (filterMilestoneOnly) params.set("milestone", "true");
     if (filterDateFrom) params.set("dateFrom", filterDateFrom);
     if (filterDateTo) params.set("dateTo", filterDateTo);
-    if (filterEmployee !== "all") params.set("employee", filterEmployee);
+    if (filterEmployee.length > 0) params.set("employee", filterEmployee.join(","));
     const qs = params.toString();
     const newUrl = qs ? `?${qs}` : window.location.pathname;
     window.history.replaceState(null, "", newUrl);
@@ -355,22 +358,22 @@ export default function GanttPage() {
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filterProjects.length > 0) count++;
-    if (filterStatus !== "all") count++;
-    if (filterPriority !== "all") count++;
+    if (filterStatus.length > 0) count++;
+    if (filterPriority.length > 0) count++;
     if (filterMilestoneOnly) count++;
     if (filterDateFrom || filterDateTo) count++;
-    if (filterEmployee !== "all") count++;
+    if (filterEmployee.length > 0) count++;
     return count;
   }, [filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterDateFrom, filterDateTo, filterEmployee]);
 
   const clearAllFilters = () => {
     setFilterProjects([]);
-    setFilterStatus("all");
-    setFilterPriority("all");
+    setFilterStatus(["pending", "in_progress", "blocked"]);
+    setFilterPriority([]);
     setFilterMilestoneOnly(false);
     setFilterDateFrom("");
     setFilterDateTo("");
-    setFilterEmployee("all");
+    setFilterEmployee([]);
   };
 
   const filteredTasks = useMemo(() => {
@@ -386,12 +389,12 @@ export default function GanttPage() {
         }
       }
 
-      if (filterStatus !== "all" && t.status !== filterStatus) return false;
-      if (filterPriority !== "all" && t.priority !== filterPriority) return false;
+      if (filterStatus.length > 0 && !filterStatus.includes(t.status)) return false;
+      if (filterPriority.length > 0 && !filterPriority.includes(t.priority)) return false;
       if (filterMilestoneOnly && !t.is_milestone) return false;
       if (filterDateFrom && t.due_date && t.due_date < filterDateFrom) return false;
       if (filterDateTo && t.start_date && t.start_date > filterDateTo) return false;
-      if (filterEmployee !== "all" && !t.assignee_ids.includes(filterEmployee)) return false;
+      if (filterEmployee.length > 0 && !t.assignee_ids.some((aid) => filterEmployee.includes(aid))) return false;
       if (!showEvents && t.is_event) return false;
 
       return true;
@@ -532,16 +535,16 @@ export default function GanttPage() {
       onRemove: () => setFilterProjects([]),
     });
   }
-  if (filterStatus !== "all") {
+  if (filterStatus.length > 0) {
     filterBadges.push({
-      label: `Status: ${filterStatus.replace("_", " ")}`,
-      onRemove: () => setFilterStatus("all"),
+      label: `Status: ${filterStatus.map((s) => s.replace("_", " ")).join(", ")}`,
+      onRemove: () => setFilterStatus([]),
     });
   }
-  if (filterPriority !== "all") {
+  if (filterPriority.length > 0) {
     filterBadges.push({
-      label: `Priority: ${filterPriority}`,
-      onRemove: () => setFilterPriority("all"),
+      label: `Priority: ${filterPriority.join(", ")}`,
+      onRemove: () => setFilterPriority([]),
     });
   }
   if (filterMilestoneOnly) {
@@ -559,11 +562,14 @@ export default function GanttPage() {
       onRemove: () => { setFilterDateFrom(""); setFilterDateTo(""); },
     });
   }
-  if (filterEmployee !== "all") {
-    const emp = employees.find((e) => e.id === filterEmployee);
+  if (filterEmployee.length > 0) {
+    const names = filterEmployee.map((eid) => {
+      const emp = employees.find((e) => e.id === eid);
+      return emp ? employeeName(emp) : eid;
+    });
     filterBadges.push({
-      label: `Employee: ${emp ? employeeName(emp) : filterEmployee}`,
-      onRemove: () => setFilterEmployee("all"),
+      label: `Employee: ${names.join(", ")}`,
+      onRemove: () => setFilterEmployee([]),
     });
   }
 
@@ -668,52 +674,109 @@ export default function GanttPage() {
 
               <div className="grid gap-1.5">
                 <Label className="text-xs">Status</Label>
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                    <SelectItem value="blocked">Blocked</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="justify-start h-9 text-sm">
+                      {filterStatus.length > 0
+                        ? `${filterStatus.length} selected`
+                        : "All Statuses"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-2" align="start">
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {[
+                        { value: "pending", label: "Pending" },
+                        { value: "in_progress", label: "In Progress" },
+                        { value: "completed", label: "Completed" },
+                        { value: "cancelled", label: "Cancelled" },
+                        { value: "blocked", label: "Blocked" },
+                      ].map((opt) => (
+                        <label key={opt.value} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer">
+                          <Checkbox
+                            checked={filterStatus.includes(opt.value)}
+                            onCheckedChange={() => {
+                              setFilterStatus((prev) =>
+                                prev.includes(opt.value)
+                                  ? prev.filter((v) => v !== opt.value)
+                                  : [...prev, opt.value]
+                              );
+                            }}
+                          />
+                          <span className="text-sm">{opt.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div className="grid gap-1.5">
                 <Label className="text-xs">Priority</Label>
-                <Select value={filterPriority} onValueChange={setFilterPriority}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Priorities</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="justify-start h-9 text-sm">
+                      {filterPriority.length > 0
+                        ? `${filterPriority.length} selected`
+                        : "All Priorities"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-2" align="start">
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {[
+                        { value: "low", label: "Low" },
+                        { value: "medium", label: "Medium" },
+                        { value: "high", label: "High" },
+                        { value: "urgent", label: "Urgent" },
+                      ].map((opt) => (
+                        <label key={opt.value} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer">
+                          <Checkbox
+                            checked={filterPriority.includes(opt.value)}
+                            onCheckedChange={() => {
+                              setFilterPriority((prev) =>
+                                prev.includes(opt.value)
+                                  ? prev.filter((v) => v !== opt.value)
+                                  : [...prev, opt.value]
+                              );
+                            }}
+                          />
+                          <span className="text-sm">{opt.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div className="grid gap-1.5">
                 <Label className="text-xs">Employee</Label>
-                <Select value={filterEmployee} onValueChange={setFilterEmployee}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Employees</SelectItem>
-                    {employees.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {employeeName(e)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="justify-start h-9 text-sm">
+                      {filterEmployee.length > 0
+                        ? `${filterEmployee.length} selected`
+                        : "All Employees"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" align="start">
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {employees.map((e) => (
+                        <label key={e.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer">
+                          <Checkbox
+                            checked={filterEmployee.includes(e.id)}
+                            onCheckedChange={() => {
+                              setFilterEmployee((prev) =>
+                                prev.includes(e.id)
+                                  ? prev.filter((v) => v !== e.id)
+                                  : [...prev, e.id]
+                              );
+                            }}
+                          />
+                          <span className="text-sm">{employeeName(e)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div className="grid gap-1.5">

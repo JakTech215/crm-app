@@ -38,6 +38,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Search } from "lucide-react";
 import { todayCST, formatDate } from "@/lib/dates";
 
@@ -95,7 +101,10 @@ export default function ContactsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "active");
+  const [statusFilter, setStatusFilter] = useState<string[]>(() => {
+    const raw = searchParams.get("status");
+    return raw ? raw.split(",") : ["active"];
+  });
   const [contactTasksMap, setContactTasksMap] = useState<Record<string, ContactUpcomingTask[]>>({});
   const [form, setForm] = useState({
     first_name: "",
@@ -189,7 +198,7 @@ export default function ContactsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-4">
   <h2 className="text-2xl font-bold">
-    {statusFilter === "all" ? "All Contacts" : statusFilter === "active" ? "Active Contacts" : "Inactive Contacts"}
+    {statusFilter.length === 0 ? "All Contacts" : `${statusFilter.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(", ")} Contacts`}
   </h2>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -307,19 +316,34 @@ export default function ContactsPage() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-3">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  {statuses.map((s) => (
-                    <SelectItem key={s.id} value={s.name} className="capitalize">
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-40 justify-start text-sm">
+                    {statusFilter.length > 0
+                      ? `${statusFilter.length} selected`
+                      : "All Statuses"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-2" align="start">
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {statuses.map((s) => (
+                      <label key={s.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer">
+                        <Checkbox
+                          checked={statusFilter.includes(s.name)}
+                          onCheckedChange={() => {
+                            setStatusFilter((prev) =>
+                              prev.includes(s.name)
+                                ? prev.filter((v) => v !== s.name)
+                                : [...prev, s.name]
+                            );
+                          }}
+                        />
+                        <span className="text-sm capitalize">{s.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
               <div className="relative w-64">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -352,7 +376,7 @@ export default function ContactsPage() {
                   </TableCell>
                 </TableRow>
               ) : contacts.filter((c) => {
-                if (statusFilter !== "all" && c.status !== statusFilter) return false;
+                if (statusFilter.length > 0 && !statusFilter.includes(c.status)) return false;
                 const q = search.toLowerCase();
                 return !q || contactName(c).toLowerCase().includes(q) ||
                   c.email?.toLowerCase().includes(q) ||
@@ -368,7 +392,7 @@ export default function ContactsPage() {
                 </TableRow>
               ) : (
                 contacts.filter((c) => {
-                  if (statusFilter !== "all" && c.status !== statusFilter) return false;
+                  if (statusFilter.length > 0 && !statusFilter.includes(c.status)) return false;
                   const q = search.toLowerCase();
                   return !q || contactName(c).toLowerCase().includes(q) ||
                     c.email?.toLowerCase().includes(q) ||

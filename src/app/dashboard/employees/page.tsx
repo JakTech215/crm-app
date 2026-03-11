@@ -38,6 +38,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Search } from "lucide-react";
 import { todayCST, formatDate } from "@/lib/dates";
 
@@ -70,7 +76,7 @@ export default function EmployeesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("active");
+  const [statusFilter, setStatusFilter] = useState<string[]>(["active"]);
   const [employeeTasksMap, setEmployeeTasksMap] = useState<Record<string, UpcomingTask[]>>({});
   const [form, setForm] = useState({
     first_name: "",
@@ -176,7 +182,7 @@ export default function EmployeesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold">
-          {statusFilter === "all" ? "All Employees" : "Active Employees"}
+          {statusFilter.length === 0 ? "All Employees" : `${statusFilter.map(s => s.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")).join(", ")} Employees`}
         </h2>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -291,24 +297,45 @@ export default function EmployeesPage() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>
-                {statusFilter === "all" ? "All Employees" : `${statusFilter.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} Employees`}
+                {statusFilter.length === 0 ? "All Employees" : `${statusFilter.map(s => s.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")).join(", ")} Employees`}
               </CardTitle>
               <CardDescription>
                 Your organization&apos;s team members.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="on_leave">On Leave</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[140px] justify-start text-sm">
+                    {statusFilter.length > 0
+                      ? `${statusFilter.length} selected`
+                      : "All Statuses"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-2" align="start">
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {[
+                      { value: "active", label: "Active" },
+                      { value: "on_leave", label: "On Leave" },
+                      { value: "inactive", label: "Inactive" },
+                    ].map((opt) => (
+                      <label key={opt.value} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer">
+                        <Checkbox
+                          checked={statusFilter.includes(opt.value)}
+                          onCheckedChange={() => {
+                            setStatusFilter((prev) =>
+                              prev.includes(opt.value)
+                                ? prev.filter((v) => v !== opt.value)
+                                : [...prev, opt.value]
+                            );
+                          }}
+                        />
+                        <span className="text-sm">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
               <div className="relative w-64">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -341,7 +368,7 @@ export default function EmployeesPage() {
                   </TableCell>
                 </TableRow>
               ) : employees.filter((emp) => {
-                if (statusFilter !== "all" && emp.status !== statusFilter) return false;
+                if (statusFilter.length > 0 && !statusFilter.includes(emp.status)) return false;
                 const q = search.toLowerCase();
                 return !q || employeeName(emp).toLowerCase().includes(q) ||
                   emp.email.toLowerCase().includes(q) ||
@@ -359,7 +386,7 @@ export default function EmployeesPage() {
                 </TableRow>
               ) : (
                 employees.filter((emp) => {
-                  if (statusFilter !== "all" && emp.status !== statusFilter) return false;
+                  if (statusFilter.length > 0 && !statusFilter.includes(emp.status)) return false;
                   const q = search.toLowerCase();
                   return !q || employeeName(emp).toLowerCase().includes(q) ||
                     emp.email.toLowerCase().includes(q) ||

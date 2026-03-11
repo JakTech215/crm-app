@@ -211,7 +211,9 @@ export default function TasksPage() {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ success: number; failed: number } | null>(null);
 
-  const [filterValues, setFilterValues] = useState<FilterValues>({});
+  const [filterValues, setFilterValues] = useState<FilterValues>({
+    status: ["pending", "in_progress", "blocked"],
+  });
 
   const filterDefs: FilterDef[] = useMemo(
     () => [

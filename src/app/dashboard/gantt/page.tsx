@@ -147,6 +147,10 @@ export default function GanttPage() {
     return raw ? raw.split(",") : [];
   });
   const [showEvents, setShowEvents] = useState(true);
+  const [nameColWidth, setNameColWidth] = useState(224);
+  const resizingRef = useRef(false);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(224);
   const [showHolidays, setShowHolidays] = useState(true);
   const [holidayMap, setHolidayMap] = useState<Record<string, string[]>>({});
 
@@ -168,6 +172,26 @@ export default function GanttPage() {
   useEffect(() => {
     syncFiltersToUrl();
   }, [syncFiltersToUrl]);
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    resizeStartXRef.current = e.clientX;
+    resizeStartWidthRef.current = nameColWidth;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const newWidth = Math.max(120, Math.min(600, resizeStartWidthRef.current + ev.clientX - resizeStartXRef.current));
+      setNameColWidth(newWidth);
+    };
+    const onMouseUp = () => {
+      resizingRef.current = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [nameColWidth]);
 
   const fetchData = async () => {
     const [taskResult, depResult, projResult, ptResult, assigneeResult, empResult] =
@@ -983,10 +1007,14 @@ export default function GanttPage() {
               </div>
               <div className="max-h-[70vh] overflow-auto relative" ref={scrollRef}>
                 <div className="flex min-w-max">
-                <div className="w-56 shrink-0 border-r sticky left-0 z-30 bg-background">
+                <div className="shrink-0 border-r sticky left-0 z-30 bg-background relative" style={{ width: nameColWidth }}>
                   <div className="h-10 border-b bg-muted/50 flex items-center px-3 sticky top-0 z-40">
                     <span className="text-xs font-medium text-muted-foreground">Task</span>
                   </div>
+                  <div
+                    className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize z-50 hover:bg-blue-400/40 active:bg-blue-500/50 transition-colors"
+                    onMouseDown={handleResizeMouseDown}
+                  />
                   {allRows.map((row) => (
                     <div
                       key={row.rowKey}

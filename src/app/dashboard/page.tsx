@@ -733,7 +733,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
       {/* Overdue Tasks */}
       {!loading && (
         <Card className={overdue.length > 0 ? "border-red-200" : ""}>
-          <CardHeader>
+          <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
               <AlertTriangle className={`h-5 w-5 ${overdue.length > 0 ? "text-red-500" : "text-green-500"}`} />
               <CardTitle className={overdue.length > 0 ? "text-red-700" : "text-green-700"}>
@@ -745,8 +745,58 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
             {overdue.length === 0 ? (
               <p className="text-sm text-green-600 font-medium">No overdue tasks!</p>
             ) : (
-              <div className="space-y-3">
-                {overdue.map((task) => renderTaskRow(task, true))}
+              <div className="space-y-1">
+                {overdue.map((task) => (
+                  <div
+                    key={task.id}
+                    className="flex items-center gap-2 py-1.5 px-2 rounded-md cursor-pointer hover:bg-muted/50 transition-colors border-l-4 border-l-red-500 text-sm"
+                    onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
+                  >
+                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0 shrink-0">
+                      {task.days_overdue}d
+                    </Badge>
+                    <Select value={task.priority} onValueChange={(v) => handleDashboardInlineUpdate(task.id, "priority", v)}>
+                      <SelectTrigger className={`h-6 w-[80px] rounded-full border-0 text-[11px] font-semibold shadow-none capitalize ${priorityColors[task.priority] || ""}`} onClick={(e) => e.stopPropagation()}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="font-medium truncate">{task.title}</span>
+                    <Select value={task.status || "pending"} onValueChange={(v) => handleDashboardInlineUpdate(task.id, "status", v)}>
+                      <SelectTrigger className={`h-6 w-[110px] rounded-full border-0 text-[11px] font-semibold shadow-none capitalize shrink-0 ${statusColors[task.status || "pending"] || ""}`} onClick={(e) => e.stopPropagation()}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="in_progress">In Progress</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="cancelled">Cancelled</SelectItem>
+                        <SelectItem value="blocked">Blocked</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {task.contact && (
+                      <span
+                        className="text-xs text-blue-600 hover:underline shrink-0"
+                        onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/contacts/${task.contact!.id}`); }}
+                      >
+                        {task.contact.first_name}{task.contact.last_name ? ` ${task.contact.last_name}` : ""}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground shrink-0 ml-auto">{formatDate(task.due_date)}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[11px] px-2 shrink-0"
+                      onClick={(e) => { e.stopPropagation(); handleMarkComplete(task.id); }}
+                    >
+                      Complete
+                    </Button>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>

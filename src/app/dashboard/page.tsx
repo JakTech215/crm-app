@@ -527,7 +527,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
                         {taskCount > (hasMilestone ? 2 : 3) && (
                           <span className="text-[8px] text-muted-foreground">+{taskCount - (hasMilestone ? 2 : 3)}</span>
                         )}
-                        {dayEvents.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                        {dayEvents.length > 0 && <div className="w-1.5 h-1.5 rounded-full bg-teal-500" />}
                       </div>
                     )}
                   </div>
@@ -855,7 +855,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
             <span className="flex items-center gap-1"><div className="w-3 h-3 rounded ring-2 ring-blue-500" /> Today</span>
             <span className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-red-50 border" /> Overdue</span>
             <span className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-emerald-50 border border-emerald-200" /> Holiday</span>
-            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-400" /> Google Calendar</span>
+            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-teal-500" /> Google Calendar</span>
           </div>
 
           {/* Selected date task list */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -27,11 +27,13 @@ import {
   ExternalLink,
   Users,
   User,
+  UserCog,
   Loader2,
   Search,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { todayCST, formatDate, nowUTC, isBeforeToday } from "@/lib/dates";
+import { formatDate, nowUTC, isBeforeToday } from "@/lib/dates";
+import { FilterPanel, FilterDef, FilterValues, defaultFilterValues } from "@/components/filter-panel";
 
 interface Employee {
   id: string;
@@ -93,6 +95,14 @@ const STATUSES = [
   { key: "cancelled", label: "Cancelled", color: "bg-gray-400" },
 ];
 
+const statusColors: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-800",
+  in_progress: "bg-blue-100 text-blue-800",
+  completed: "bg-green-100 text-green-800",
+  cancelled: "bg-gray-100 text-gray-800",
+  blocked: "bg-red-100 text-red-800",
+};
+
 const priorityColors: Record<string, string> = {
   low: "bg-slate-100 text-slate-700 border-slate-200",
   medium: "bg-blue-100 text-blue-700 border-blue-200",
@@ -113,6 +123,14 @@ const employeeName = (e: { first_name: string; last_name: string }) =>
 const contactName = (c: { first_name: string; last_name: string | null }) =>
   `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
 
+interface BoardColumn {
+  id: string;
+  label: string;
+  sublabel?: string;
+  type: "employee" | "contact";
+  icon: "employee" | "contact";
+}
+
 export default function TaskBoardPage() {
   const supabase = createClient();
   const router = useRouter();
@@ -120,11 +138,57 @@ export default function TaskBoardPage() {
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filterAssignee, setFilterAssignee] = useState("all");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
+
+  const [filterValues, setFilterValues] = useState<FilterValues>({
+    status: ["pending", "in_progress", "blocked"],
+  });
+
+  const filterDefs: FilterDef[] = useMemo(
+    () => [
+      {
+        type: "multi-select" as const,
+        key: "status",
+        label: "Status",
+        options: [
+          { value: "pending", label: "Pending" },
+          { value: "in_progress", label: "In Progress" },
+          { value: "completed", label: "Completed" },
+          { value: "cancelled", label: "Cancelled" },
+          { value: "blocked", label: "Blocked" },
+        ],
+        defaultValue: ["pending", "in_progress", "blocked"],
+      },
+      {
+        type: "multi-select" as const,
+        key: "priority",
+        label: "Priority",
+        options: [
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" },
+          { value: "high", label: "High" },
+          { value: "urgent", label: "Urgent" },
+        ],
+      },
+      {
+        type: "multi-select" as const,
+        key: "taskType",
+        label: "Task Type",
+        options: taskTypes.map((t) => ({ value: t.id, label: t.name })),
+      },
+      {
+        type: "date-range" as const,
+        keyFrom: "dateFrom",
+        keyTo: "dateTo",
+        labelFrom: "Due From",
+        labelTo: "Due To",
+      },
+    ],
+    [taskTypes]
+  );
 
   const fetchData = useCallback(async () => {
     const [
@@ -136,7 +200,7 @@ export default function TaskBoardPage() {
       supabase
         .from("tasks")
         .select("*, contacts:contact_id(id, first_name, last_name, company)")
-        .order("created_at", { ascending: false }),
+        .order("due_date", { ascending: true, nullsFirst: false }),
       supabase
         .from("employees")
         .select("id, first_name, last_name")
@@ -225,32 +289,209 @@ export default function TaskBoardPage() {
     }
   };
 
-  const filteredTasks = tasks.filter((t) => {
+  // Apply filters to tasks
+  const filteredTasks = useMemo(() => {
+    let filtered = tasks;
+
+    // Search
     if (search) {
       const q = search.toLowerCase();
-      if (
-        !t.title.toLowerCase().includes(q) &&
-        !t.description?.toLowerCase().includes(q)
-      )
-        return false;
+      filtered = filtered.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          t.description?.toLowerCase().includes(q)
+      );
     }
-    if (filterAssignee !== "all") {
-      if (filterAssignee.startsWith("emp:")) {
-        const empId = filterAssignee.replace("emp:", "");
-        if (!t.task_assignees?.some((a) => a.employee_id === empId)) return false;
-      } else if (filterAssignee.startsWith("con:")) {
-        const conId = filterAssignee.replace("con:", "");
-        if (t.contact_id !== conId) return false;
+
+    // Status filter
+    const statuses = filterValues.status;
+    if (Array.isArray(statuses) && statuses.length > 0) {
+      filtered = filtered.filter((t) => statuses.includes(t.status));
+    }
+
+    // Priority filter
+    const priorities = filterValues.priority;
+    if (Array.isArray(priorities) && priorities.length > 0) {
+      filtered = filtered.filter((t) => priorities.includes(t.priority));
+    }
+
+    // Task type filter
+    const types = filterValues.taskType;
+    if (Array.isArray(types) && types.length > 0) {
+      filtered = filtered.filter((t) => t.task_type_id && types.includes(t.task_type_id));
+    }
+
+    // Date range filter
+    const dateFrom = filterValues.dateFrom;
+    const dateTo = filterValues.dateTo;
+    if (typeof dateFrom === "string" && dateFrom) {
+      filtered = filtered.filter((t) => t.due_date && t.due_date >= dateFrom);
+    }
+    if (typeof dateTo === "string" && dateTo) {
+      filtered = filtered.filter((t) => t.due_date && t.due_date <= dateTo);
+    }
+
+    return filtered;
+  }, [tasks, search, filterValues]);
+
+  // Build columns: one per employee who has tasks, one per contact who has tasks
+  const { columns, tasksByColumn, unassignedTasks } = useMemo(() => {
+    const cols: BoardColumn[] = [];
+    const colTasks: Record<string, Task[]> = {};
+    const assignedTaskIds = new Set<string>();
+
+    // Employee columns — include any employee assigned to at least one filtered task
+    for (const emp of employees) {
+      const empTasks = filteredTasks.filter((t) =>
+        t.task_assignees.some((a) => a.employee_id === emp.id)
+      );
+      if (empTasks.length > 0) {
+        const colId = `emp:${emp.id}`;
+        cols.push({
+          id: colId,
+          label: employeeName(emp),
+          type: "employee",
+          icon: "employee",
+        });
+        colTasks[colId] = empTasks;
+        empTasks.forEach((t) => assignedTaskIds.add(t.id));
       }
     }
-    return true;
-  });
 
-  const tasksByStatus = (status: string) =>
-    filteredTasks.filter((t) => t.status === status);
+    // Contact columns — include contacts that are assigned to tasks (via contact_id)
+    // but only if the task isn't already covered by an employee column
+    for (const con of contacts) {
+      const conTasks = filteredTasks.filter((t) => t.contact_id === con.id);
+      if (conTasks.length > 0) {
+        const colId = `con:${con.id}`;
+        cols.push({
+          id: colId,
+          label: contactName(con),
+          sublabel: con.company || undefined,
+          type: "contact",
+          icon: "contact",
+        });
+        colTasks[colId] = conTasks;
+        conTasks.forEach((t) => assignedTaskIds.add(t.id));
+      }
+    }
+
+    // Tasks with no employee assignee and no contact
+    const unassigned = filteredTasks.filter((t) => !assignedTaskIds.has(t.id));
+
+    return { columns: cols, tasksByColumn: colTasks, unassignedTasks: unassigned };
+  }, [filteredTasks, employees, contacts]);
 
   const getTaskType = (typeId: string | null) =>
     typeId ? taskTypes.find((t) => t.id === typeId) : null;
+
+  const renderTaskTile = (task: Task) => {
+    const taskType = getTaskType(task.task_type_id);
+    const overdue =
+      task.due_date &&
+      task.status !== "completed" &&
+      task.status !== "cancelled" &&
+      isBeforeToday(task.due_date);
+    const statusDot = STATUSES.find((s) => s.key === task.status);
+
+    return (
+      <div
+        key={task.id}
+        onClick={() => setSelectedTask(task)}
+        className={`group relative bg-background rounded-md border border-l-4 ${
+          priorityBorder[task.priority] || "border-l-slate-300"
+        } p-3 cursor-pointer hover:shadow-md transition-shadow space-y-2`}
+      >
+        {/* Title row */}
+        <div className="flex items-start gap-1.5">
+          {task.is_milestone && (
+            <Diamond className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+          )}
+          <p className="text-sm font-medium leading-tight line-clamp-2">
+            {task.title}
+          </p>
+        </div>
+
+        {/* Description preview */}
+        {task.description && (
+          <p className="text-xs text-muted-foreground line-clamp-2">
+            {task.description}
+          </p>
+        )}
+
+        {/* Task type + status badges */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {taskType && (
+            <Badge
+              variant="secondary"
+              className={`text-[10px] h-4 px-1.5 ${COLOR_MAP[taskType.color] || ""}`}
+            >
+              {taskType.name}
+            </Badge>
+          )}
+          {statusDot && (
+            <Badge
+              variant="secondary"
+              className={`text-[10px] h-4 px-1.5 capitalize ${statusColors[task.status] || ""}`}
+            >
+              {statusDot.label}
+            </Badge>
+          )}
+        </div>
+
+        {/* Dates */}
+        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+          {task.start_date && (
+            <span className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {formatDate(task.start_date)}
+            </span>
+          )}
+          {task.due_date && (
+            <span
+              className={`flex items-center gap-1 ${
+                overdue ? "text-red-600 font-medium" : ""
+              }`}
+            >
+              <CalendarDays className="h-3 w-3" />
+              {formatDate(task.due_date)}
+              {overdue && " (overdue)"}
+            </span>
+          )}
+        </div>
+
+        {/* Footer: priority + complete */}
+        <div className="flex items-center justify-between pt-1">
+          <Badge
+            variant="outline"
+            className={`text-[10px] h-4 px-1.5 capitalize ${priorityColors[task.priority] || ""}`}
+          >
+            {task.priority}
+          </Badge>
+
+          {task.status !== "completed" && task.status !== "cancelled" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-green-600 hover:text-green-700 hover:bg-green-50"
+              title="Mark as completed"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleComplete(task.id);
+              }}
+              disabled={completing === task.id}
+            >
+              {completing === task.id ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -264,199 +505,81 @@ export default function TaskBoardPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Task Board</h1>
-        <div className="flex items-center gap-3">
-          <div className="relative w-56">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search tasks..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8"
-            />
-          </div>
-          <Select value={filterAssignee} onValueChange={setFilterAssignee}>
-            <SelectTrigger className="w-52">
-              <SelectValue placeholder="All assignees" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Assignees</SelectItem>
-              {employees.length > 0 && (
-                <>
-                  <Separator className="my-1" />
-                  <p className="px-2 py-1 text-xs font-medium text-muted-foreground">Employees</p>
-                  {employees.map((e) => (
-                    <SelectItem key={`emp:${e.id}`} value={`emp:${e.id}`}>
-                      {employeeName(e)}
-                    </SelectItem>
-                  ))}
-                </>
-              )}
-              {contacts.length > 0 && (
-                <>
-                  <Separator className="my-1" />
-                  <p className="px-2 py-1 text-xs font-medium text-muted-foreground">Contacts</p>
-                  {contacts.map((c) => (
-                    <SelectItem key={`con:${c.id}`} value={`con:${c.id}`}>
-                      {contactName(c)}
-                      {c.company ? ` (${c.company})` : ""}
-                    </SelectItem>
-                  ))}
-                </>
-              )}
-            </SelectContent>
-          </Select>
+        <div className="relative w-56">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search tasks..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
         </div>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {STATUSES.map((col) => {
-          const columnTasks = tasksByStatus(col.key);
-          return (
-            <div
-              key={col.key}
-              className="flex-shrink-0 w-72 flex flex-col bg-muted/30 rounded-lg"
-            >
-              {/* Column header */}
+      <FilterPanel
+        filters={filterDefs}
+        values={filterValues}
+        onChange={(key, value) => setFilterValues((prev) => ({ ...prev, [key]: value }))}
+        onClear={() => setFilterValues(defaultFilterValues(filterDefs))}
+        defaultOpen
+      />
+
+      {columns.length === 0 && unassignedTasks.length === 0 ? (
+        <div className="flex items-center justify-center h-48 text-muted-foreground">
+          No tasks match the current filters.
+        </div>
+      ) : (
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {columns.map((col) => {
+            const colTasks = tasksByColumn[col.id] || [];
+            return (
+              <div
+                key={col.id}
+                className="flex-shrink-0 w-80 flex flex-col bg-muted/30 rounded-lg"
+              >
+                {/* Column header */}
+                <div className="flex items-center gap-2 p-3 pb-2">
+                  {col.icon === "employee" ? (
+                    <UserCog className="h-4 w-4 text-blue-600 shrink-0" />
+                  ) : (
+                    <User className="h-4 w-4 text-violet-600 shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold truncate">{col.label}</h3>
+                    {col.sublabel && (
+                      <p className="text-[11px] text-muted-foreground truncate">{col.sublabel}</p>
+                    )}
+                  </div>
+                  <Badge variant="secondary" className="ml-auto text-xs h-5 px-1.5 shrink-0">
+                    {colTasks.length}
+                  </Badge>
+                </div>
+
+                {/* Task tiles */}
+                <div className="flex-1 overflow-y-auto p-2 pt-0 space-y-2 min-h-[200px] max-h-[calc(100vh-280px)]">
+                  {colTasks.map(renderTaskTile)}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Unassigned column */}
+          {unassignedTasks.length > 0 && (
+            <div className="flex-shrink-0 w-80 flex flex-col bg-muted/30 rounded-lg">
               <div className="flex items-center gap-2 p-3 pb-2">
-                <div className={`w-2.5 h-2.5 rounded-full ${col.color}`} />
-                <h3 className="text-sm font-semibold">{col.label}</h3>
-                <Badge variant="secondary" className="ml-auto text-xs h-5 px-1.5">
-                  {columnTasks.length}
+                <Users className="h-4 w-4 text-gray-400 shrink-0" />
+                <h3 className="text-sm font-semibold text-muted-foreground">Unassigned</h3>
+                <Badge variant="secondary" className="ml-auto text-xs h-5 px-1.5 shrink-0">
+                  {unassignedTasks.length}
                 </Badge>
               </div>
-
-              {/* Task tiles */}
-              <div className="flex-1 overflow-y-auto p-2 pt-0 space-y-2 min-h-[200px] max-h-[calc(100vh-220px)]">
-                {columnTasks.length === 0 ? (
-                  <div className="flex items-center justify-center h-24 text-xs text-muted-foreground">
-                    No tasks
-                  </div>
-                ) : (
-                  columnTasks.map((task) => {
-                    const taskType = getTaskType(task.task_type_id);
-                    const overdue =
-                      task.due_date &&
-                      task.status !== "completed" &&
-                      task.status !== "cancelled" &&
-                      isBeforeToday(task.due_date);
-
-                    return (
-                      <div
-                        key={task.id}
-                        onClick={() => setSelectedTask(task)}
-                        className={`group relative bg-background rounded-md border border-l-4 ${
-                          priorityBorder[task.priority] || "border-l-slate-300"
-                        } p-3 cursor-pointer hover:shadow-md transition-shadow space-y-2`}
-                      >
-                        {/* Title row */}
-                        <div className="flex items-start gap-1.5">
-                          {task.is_milestone && (
-                            <Diamond className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
-                          )}
-                          <p className="text-sm font-medium leading-tight line-clamp-2">
-                            {task.title}
-                          </p>
-                        </div>
-
-                        {/* Description preview */}
-                        {task.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-2">
-                            {task.description}
-                          </p>
-                        )}
-
-                        {/* Task type badge */}
-                        {taskType && (
-                          <Badge
-                            variant="secondary"
-                            className={`text-[10px] h-4 px-1.5 ${
-                              COLOR_MAP[taskType.color] || ""
-                            }`}
-                          >
-                            {taskType.name}
-                          </Badge>
-                        )}
-
-                        {/* Dates */}
-                        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                          {task.start_date && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {formatDate(task.start_date)}
-                            </span>
-                          )}
-                          {task.due_date && (
-                            <span
-                              className={`flex items-center gap-1 ${
-                                overdue ? "text-red-600 font-medium" : ""
-                              }`}
-                            >
-                              <CalendarDays className="h-3 w-3" />
-                              {formatDate(task.due_date)}
-                              {overdue && " (overdue)"}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Footer: assignees + priority + complete */}
-                        <div className="flex items-center justify-between pt-1">
-                          <div className="flex items-center gap-1.5">
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] h-4 px-1.5 capitalize ${
-                                priorityColors[task.priority] || ""
-                              }`}
-                            >
-                              {task.priority}
-                            </Badge>
-                            {task.contacts && (
-                              <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground" title={contactName(task.contacts)}>
-                                <User className="h-3 w-3" />
-                              </span>
-                            )}
-                            {task.task_assignees.length > 0 && (
-                              <span
-                                className="flex items-center gap-0.5 text-[10px] text-muted-foreground"
-                                title={task.task_assignees
-                                  .map((a) => employeeName(a.employees))
-                                  .join(", ")}
-                              >
-                                <Users className="h-3 w-3" />
-                                <span>{task.task_assignees.length}</span>
-                              </span>
-                            )}
-                          </div>
-
-                          {task.status !== "completed" &&
-                            task.status !== "cancelled" && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-green-600 hover:text-green-700 hover:bg-green-50"
-                                title="Mark as completed"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleComplete(task.id);
-                                }}
-                                disabled={completing === task.id}
-                              >
-                                {completing === task.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <CheckCircle2 className="h-4 w-4" />
-                                )}
-                              </Button>
-                            )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
+              <div className="flex-1 overflow-y-auto p-2 pt-0 space-y-2 min-h-[200px] max-h-[calc(100vh-280px)]">
+                {unassignedTasks.map(renderTaskTile)}
               </div>
             </div>
-          );
-        })}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Expanded task detail dialog */}
       <Dialog

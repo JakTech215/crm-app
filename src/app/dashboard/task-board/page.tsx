@@ -768,60 +768,54 @@ export default function TaskBoardPage() {
       </div>
 
       {/* Compact inline filters */}
-      <div className="flex items-end gap-3 flex-wrap">
+      <div className="flex items-center gap-3 flex-wrap">
         {/* Status checkboxes inline */}
-        <div className="space-y-0.5">
-          <Label className="text-[11px] text-muted-foreground">Status</Label>
-          <div className="flex items-center gap-2.5">
-            {([
-              { key: "pending", label: "Pending" },
-              { key: "in_progress", label: "In Progress" },
-              { key: "blocked", label: "Blocked" },
-              { key: "completed", label: "Completed" },
-              { key: "cancelled", label: "Cancelled" },
-            ] as const).map((s) => (
-              <label key={s.key} className="flex items-center gap-1 cursor-pointer">
-                <Checkbox
-                  className="h-3.5 w-3.5"
-                  checked={statusFilter.includes(s.key)}
-                  onCheckedChange={() => toggleFilter(statusFilter, s.key, setStatusFilter)}
-                />
-                <span className="text-xs">{s.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
+        <span className="text-xs font-medium text-muted-foreground">Status</span>
+        {([
+          { key: "pending", label: "Pending" },
+          { key: "in_progress", label: "In Progress" },
+          { key: "blocked", label: "Blocked" },
+          { key: "completed", label: "Completed" },
+          { key: "cancelled", label: "Cancelled" },
+        ] as const).map((s) => (
+          <label key={s.key} className="flex items-center gap-1 cursor-pointer">
+            <Checkbox
+              className="h-3.5 w-3.5"
+              checked={statusFilter.includes(s.key)}
+              onCheckedChange={() => toggleFilter(statusFilter, s.key, setStatusFilter)}
+            />
+            <span className="text-xs">{s.label}</span>
+          </label>
+        ))}
 
-        <Separator orientation="vertical" className="h-7" />
+        <Separator orientation="vertical" className="h-5" />
 
         {/* Priority multi-select */}
-        <div className="space-y-0.5">
-          <Label className="text-[11px] text-muted-foreground">Priority</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="h-7 text-xs px-2.5 font-normal">
-                {priorityFilter.length > 0 ? `${priorityFilter.length} selected` : "All"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-40 p-1.5" align="start">
-              {(["low", "medium", "high", "urgent"] as const).map((p) => (
-                <label key={p} className="flex items-center gap-2 rounded p-1.5 hover:bg-muted cursor-pointer">
-                  <Checkbox
-                    className="h-3.5 w-3.5"
-                    checked={priorityFilter.includes(p)}
-                    onCheckedChange={() => toggleFilter(priorityFilter, p, setPriorityFilter)}
-                  />
-                  <span className="text-xs capitalize">{p}</span>
-                </label>
-              ))}
-            </PopoverContent>
-          </Popover>
-        </div>
+        <span className="text-xs font-medium text-muted-foreground">Priority</span>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="h-7 text-xs px-2.5 font-normal">
+              {priorityFilter.length > 0 ? `${priorityFilter.length} selected` : "All"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-40 p-1.5" align="start">
+            {(["low", "medium", "high", "urgent"] as const).map((p) => (
+              <label key={p} className="flex items-center gap-2 rounded p-1.5 hover:bg-muted cursor-pointer">
+                <Checkbox
+                  className="h-3.5 w-3.5"
+                  checked={priorityFilter.includes(p)}
+                  onCheckedChange={() => toggleFilter(priorityFilter, p, setPriorityFilter)}
+                />
+                <span className="text-xs capitalize">{p}</span>
+              </label>
+            ))}
+          </PopoverContent>
+        </Popover>
 
         {/* Task type multi-select */}
         {taskTypes.length > 0 && (
-          <div className="space-y-0.5">
-            <Label className="text-[11px] text-muted-foreground">Type</Label>
+          <>
+            <span className="text-xs font-medium text-muted-foreground">Type</span>
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" className="h-7 text-xs px-2.5 font-normal">
@@ -843,32 +837,26 @@ export default function TaskBoardPage() {
                 </div>
               </PopoverContent>
             </Popover>
-          </div>
+          </>
         )}
 
-        <Separator orientation="vertical" className="h-7" />
+        <Separator orientation="vertical" className="h-5" />
 
         {/* Date range */}
-        <div className="flex items-end gap-1.5">
-          <div className="space-y-0.5">
-            <Label className="text-[11px] text-muted-foreground">Due From</Label>
-            <Input
-              type="date"
-              className="h-7 text-xs w-32 px-2"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
-          </div>
-          <div className="space-y-0.5">
-            <Label className="text-[11px] text-muted-foreground">Due To</Label>
-            <Input
-              type="date"
-              className="h-7 text-xs w-32 px-2"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
-          </div>
-        </div>
+        <span className="text-xs font-medium text-muted-foreground">Due From</span>
+        <Input
+          type="date"
+          className="h-7 text-xs w-32 px-2"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+        />
+        <span className="text-xs font-medium text-muted-foreground">Due To</span>
+        <Input
+          type="date"
+          className="h-7 text-xs w-32 px-2"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+        />
 
         {/* Clear all */}
         {(statusFilter.length > 0 || priorityFilter.length > 0 || taskTypeFilter.length > 0 || dateFrom || dateTo) && (

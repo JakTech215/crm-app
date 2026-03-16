@@ -29,6 +29,7 @@ import {
   Clock,
   Diamond,
   ExternalLink,
+  Pencil,
   Plus,
   Users,
   User,
@@ -1100,16 +1101,28 @@ export default function TaskBoardPage() {
               <Separator />
 
               <div className="flex items-center justify-between">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    router.push(`/dashboard/tasks/${selectedTask.id}`);
-                  }}
-                >
-                  <ExternalLink className="mr-2 h-3.5 w-3.5" />
-                  Full Details
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      router.push(`/dashboard/tasks/${selectedTask.id}`);
+                    }}
+                  >
+                    <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                    Full Details
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      router.push(`/dashboard/tasks/${selectedTask.id}?edit=1`);
+                    }}
+                  >
+                    <Pencil className="mr-2 h-3.5 w-3.5" />
+                    Edit Task
+                  </Button>
+                </div>
 
                 {selectedTask.status !== "completed" &&
                   selectedTask.status !== "cancelled" && (

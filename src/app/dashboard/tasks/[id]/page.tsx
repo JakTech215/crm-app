@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -222,6 +222,7 @@ export default function TaskDetailPage() {
   const supabase = createClient();
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const taskId = params.id as string;
 
   const [task, setTask] = useState<Task | null>(null);
@@ -491,6 +492,13 @@ export default function TaskDetailPage() {
     fetchTaskTypes();
     fetchNotes();
   }, [taskId]);
+
+  // Auto-open edit dialog when navigated with ?edit=1
+  useEffect(() => {
+    if (task && searchParams.get("edit") === "1") {
+      openEditDialog();
+    }
+  }, [task, searchParams]);
 
   useEffect(() => {
     if (task?.parent_task_id) {

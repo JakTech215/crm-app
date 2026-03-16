@@ -8,9 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -25,6 +29,7 @@ import {
   Clock,
   Diamond,
   ExternalLink,
+  Plus,
   Users,
   User,
   UserCog,
@@ -39,7 +44,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { formatDate, nowUTC, isBeforeToday } from "@/lib/dates";
+import { todayCST, formatDate, nowUTC, isBeforeToday, addDaysToDate } from "@/lib/dates";
 
 interface Employee {
   id: string;
@@ -129,6 +134,11 @@ const employeeName = (e: { first_name: string; last_name: string }) =>
 const contactName = (c: { first_name: string; last_name: string | null }) =>
   `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
 
+interface ProjectOption {
+  id: string;
+  name: string;
+}
+
 interface BoardColumn {
   id: string;
   label: string;
@@ -146,8 +156,26 @@ export default function TaskBoardPage() {
   const [search, setSearch] = useState("");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [contacts, setContacts] = useState<ContactOption[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
+
+  // New Task dialog state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createEmployees, setCreateEmployees] = useState<string[]>([]);
+  const [createForm, setCreateForm] = useState({
+    title: "",
+    description: "",
+    project_id: "",
+    contact_id: "",
+    priority: "medium",
+    status: "pending",
+    start_date: "",
+    due_date: "",
+    is_milestone: false,
+  });
 
   const [statusFilter, setStatusFilter] = useState<string[]>(["pending", "in_progress", "blocked"]);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
@@ -165,6 +193,7 @@ export default function TaskBoardPage() {
       { data: empData },
       { data: contactData },
       { data: typeData },
+      { data: projData },
     ] = await Promise.all([
       supabase
         .from("tasks")
@@ -184,11 +213,16 @@ export default function TaskBoardPage() {
         .select("id, name, color")
         .eq("is_active", true)
         .order("name"),
+      supabase
+        .from("projects")
+        .select("id, name")
+        .order("name"),
     ]);
 
     setEmployees(empData || []);
     setContacts(contactData || []);
     setTaskTypes(typeData || []);
+    setProjects(projData || []);
 
     const taskIds = (taskData || []).map((t: { id: string }) => t.id);
     const assigneeMap: Record<string, TaskAssignee[]> = {};
@@ -256,6 +290,71 @@ export default function TaskBoardPage() {
         setSelectedTask((prev) => prev ? { ...prev, status: newStatus } : null);
       }
     }
+  };
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateSaving(true);
+    setCreateError(null);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      setCreateError(authError?.message || "You must be logged in.");
+      setCreateSaving(false);
+      return;
+    }
+
+    const { data: task, error: insertError } = await supabase
+      .from("tasks")
+      .insert({
+        title: createForm.title,
+        description: createForm.description || null,
+        contact_id: createForm.contact_id || null,
+        priority: createForm.priority,
+        status: createForm.status,
+        start_date: createForm.start_date || null,
+        due_date: createForm.due_date || null,
+        is_milestone: createForm.is_milestone,
+        created_by: user.id,
+      })
+      .select("*, contacts:contact_id(id, first_name, last_name, company)")
+      .single();
+
+    if (insertError) {
+      setCreateError(insertError.message);
+      setCreateSaving(false);
+      return;
+    }
+
+    if (task && createEmployees.length > 0) {
+      await supabase.from("task_assignees").insert(
+        createEmployees.map((empId) => ({ task_id: task.id, employee_id: empId }))
+      );
+    }
+
+    if (task && createForm.project_id) {
+      await supabase.from("project_tasks").insert({
+        task_id: task.id,
+        project_id: createForm.project_id,
+      });
+    }
+
+    // Reset form and refresh
+    setCreateForm({
+      title: "",
+      description: "",
+      project_id: "",
+      contact_id: "",
+      priority: "medium",
+      status: "pending",
+      start_date: "",
+      due_date: "",
+      is_milestone: false,
+    });
+    setCreateEmployees([]);
+    setCreateOpen(false);
+    setCreateSaving(false);
+    fetchData();
   };
 
   // Apply filters to tasks
@@ -460,14 +559,211 @@ export default function TaskBoardPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Task Board</h1>
-        <div className="relative w-56">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search tasks..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
-          />
+        <div className="flex items-center gap-3">
+          <div className="relative w-56">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search tasks..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                New Task
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+              <form onSubmit={handleCreateTask}>
+                <DialogHeader>
+                  <DialogTitle>New Task</DialogTitle>
+                  <DialogDescription>Create a new task.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  {createError && (
+                    <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{createError}</div>
+                  )}
+                  <div className="grid gap-2">
+                    <Label htmlFor="create-title">Title *</Label>
+                    <Input
+                      id="create-title"
+                      value={createForm.title}
+                      onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="create-desc">Description</Label>
+                    <Textarea
+                      id="create-desc"
+                      value={createForm.description}
+                      onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="create-start">Start Date</Label>
+                      <Input
+                        id="create-start"
+                        type="date"
+                        value={createForm.start_date}
+                        onChange={(e) => setCreateForm({ ...createForm, start_date: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="create-due">Due Date</Label>
+                      <Input
+                        id="create-due"
+                        type="date"
+                        value={createForm.due_date}
+                        onChange={(e) => setCreateForm({ ...createForm, due_date: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  {/* Quick duration buttons */}
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: "1d", days: 1 },
+                      { label: "3d", days: 3 },
+                      { label: "1w", days: 7 },
+                      { label: "2w", days: 14 },
+                      { label: "1m", days: 30 },
+                    ].map((q) => (
+                      <Button
+                        key={q.label}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs px-2"
+                        onClick={() => {
+                          const startStr = createForm.start_date || todayCST();
+                          const due = addDaysToDate(startStr, q.days);
+                          setCreateForm((prev) => ({
+                            ...prev,
+                            start_date: prev.start_date || todayCST(),
+                            due_date: due,
+                          }));
+                        }}
+                      >
+                        {q.label}
+                      </Button>
+                    ))}
+                  </div>
+                  {projects.length > 0 && (
+                    <div className="grid gap-2">
+                      <Label>Project</Label>
+                      <Select
+                        value={createForm.project_id || "none"}
+                        onValueChange={(v) => setCreateForm({ ...createForm, project_id: v === "none" ? "" : v })}
+                      >
+                        <SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No project</SelectItem>
+                          {projects.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {contacts.length > 0 && (
+                    <div className="grid gap-2">
+                      <Label>Contact</Label>
+                      <Select
+                        value={createForm.contact_id || "none"}
+                        onValueChange={(v) => setCreateForm({ ...createForm, contact_id: v === "none" ? "" : v })}
+                      >
+                        <SelectTrigger><SelectValue placeholder="No contact" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No contact</SelectItem>
+                          {contacts.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {contactName(c)}{c.company ? ` (${c.company})` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label>Priority</Label>
+                      <Select value={createForm.priority} onValueChange={(v) => setCreateForm({ ...createForm, priority: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                          <SelectItem value="urgent">Urgent</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Status</Label>
+                      <Select value={createForm.status} onValueChange={(v) => setCreateForm({ ...createForm, status: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Employees</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" type="button" className="justify-start">
+                          <Users className="mr-2 h-4 w-4" />
+                          {createEmployees.length > 0 ? `${createEmployees.length} selected` : "Select employees..."}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-2" align="start">
+                        {employees.length === 0 ? (
+                          <p className="text-sm text-muted-foreground p-2">No active employees found.</p>
+                        ) : (
+                          <div className="space-y-1 max-h-48 overflow-y-auto">
+                            {employees.map((emp) => (
+                              <label key={emp.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer">
+                                <Checkbox
+                                  checked={createEmployees.includes(emp.id)}
+                                  onCheckedChange={() =>
+                                    setCreateEmployees((prev) =>
+                                      prev.includes(emp.id) ? prev.filter((id) => id !== emp.id) : [...prev, emp.id]
+                                    )
+                                  }
+                                />
+                                <span className="text-sm">{employeeName(emp)}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={createForm.is_milestone}
+                      onCheckedChange={(checked) => setCreateForm({ ...createForm, is_milestone: !!checked })}
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <Diamond className="h-4 w-4 text-amber-500" />
+                      <span className="text-sm font-medium">Mark as milestone</span>
+                    </div>
+                  </label>
+                </div>
+                <DialogFooter>
+                  <Button type="submit" disabled={createSaving}>
+                    {createSaving ? "Saving..." : "Create Task"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

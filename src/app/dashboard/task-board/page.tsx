@@ -292,6 +292,22 @@ export default function TaskBoardPage() {
     }
   };
 
+  const handlePriorityChange = async (taskId: string, newPriority: string) => {
+    const { error } = await supabase
+      .from("tasks")
+      .update({ priority: newPriority })
+      .eq("id", taskId);
+
+    if (!error) {
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, priority: newPriority } : t))
+      );
+      if (selectedTask?.id === taskId) {
+        setSelectedTask((prev) => prev ? { ...prev, priority: newPriority } : null);
+      }
+    }
+  };
+
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateSaving(true);
@@ -973,12 +989,22 @@ export default function TaskBoardPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Badge
-                  variant="outline"
-                  className={`capitalize ${priorityColors[selectedTask.priority] || ""}`}
+                <span className="text-sm text-muted-foreground">Priority</span>
+                <Select
+                  value={selectedTask.priority}
+                  onValueChange={(val) => handlePriorityChange(selectedTask.id, val)}
                 >
-                  {selectedTask.priority}
-                </Badge>
+                  <SelectTrigger className={`w-32 h-8 text-sm capitalize ${priorityColors[selectedTask.priority] || ""}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(["low", "medium", "high", "urgent"] as const).map((p) => (
+                      <SelectItem key={p} value={p}>
+                        <span className="capitalize">{p}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Task type */}

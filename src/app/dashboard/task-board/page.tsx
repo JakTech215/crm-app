@@ -426,10 +426,9 @@ export default function TaskBoardPage() {
 
           {task.status !== "completed" && task.status !== "cancelled" && (
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-green-600 hover:text-green-700 hover:bg-green-50"
-              title="Mark as completed"
+              className="h-6 text-[10px] px-2 opacity-0 group-hover:opacity-100 transition-opacity text-green-700 border-green-300 hover:bg-green-50 hover:text-green-800"
               onClick={(e) => {
                 e.stopPropagation();
                 handleComplete(task.id);
@@ -437,10 +436,11 @@ export default function TaskBoardPage() {
               disabled={completing === task.id}
             >
               {completing === task.id ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
               ) : (
-                <CheckCircle2 className="h-4 w-4" />
+                <CheckCircle2 className="mr-1 h-3 w-3" />
               )}
+              Mark Complete
             </Button>
           )}
         </div>

@@ -735,6 +735,13 @@ export default function TaskDetailPage() {
 
     setSavingEdit(false);
     setEditOpen(false);
+
+    // If opened via ?edit=1 (e.g. from Task Board), go back after saving
+    if (searchParams.get("edit") === "1") {
+      router.back();
+      return;
+    }
+
     fetchTask();
     fetchLinkedProjects();
     fetchChildTasks();

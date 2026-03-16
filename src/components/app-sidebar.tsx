@@ -13,6 +13,7 @@ import {
   Calendar,
   StickyNote,
   BarChart3,
+  Columns3,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -35,6 +36,7 @@ const navItems = [
   { title: "Projects", href: "/dashboard/projects", icon: FolderKanban },
   { title: "Gantt", href: "/dashboard/gantt", icon: BarChart3 },
   { title: "Tasks", href: "/dashboard/tasks", icon: CheckSquare },
+  { title: "Task Board", href: "/dashboard/task-board", icon: Columns3 },
   { title: "Events", href: "/dashboard/events", icon: Calendar },
   { title: "Notes", href: "/dashboard/notes", icon: StickyNote },
   { title: "Employees", href: "/dashboard/employees", icon: UserCog },

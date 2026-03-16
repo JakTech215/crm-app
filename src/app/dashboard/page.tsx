@@ -793,7 +793,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
                       className="h-6 text-[11px] px-2 shrink-0"
                       onClick={(e) => { e.stopPropagation(); handleMarkComplete(task.id); }}
                     >
-                      Complete
+                      Mark Complete
                     </Button>
                   </div>
                 ))}

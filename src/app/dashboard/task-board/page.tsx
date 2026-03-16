@@ -32,8 +32,14 @@ import {
   Search,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { formatDate, nowUTC, isBeforeToday } from "@/lib/dates";
-import { FilterPanel, FilterDef, FilterValues, defaultFilterValues } from "@/components/filter-panel";
 
 interface Employee {
   id: string;
@@ -143,52 +149,15 @@ export default function TaskBoardPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
 
-  const [filterValues, setFilterValues] = useState<FilterValues>({
-    status: ["pending", "in_progress", "blocked"],
-  });
+  const [statusFilter, setStatusFilter] = useState<string[]>(["pending", "in_progress", "blocked"]);
+  const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
+  const [taskTypeFilter, setTaskTypeFilter] = useState<string[]>([]);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
-  const filterDefs: FilterDef[] = useMemo(
-    () => [
-      {
-        type: "multi-select" as const,
-        key: "status",
-        label: "Status",
-        options: [
-          { value: "pending", label: "Pending" },
-          { value: "in_progress", label: "In Progress" },
-          { value: "completed", label: "Completed" },
-          { value: "cancelled", label: "Cancelled" },
-          { value: "blocked", label: "Blocked" },
-        ],
-        defaultValue: ["pending", "in_progress", "blocked"],
-      },
-      {
-        type: "multi-select" as const,
-        key: "priority",
-        label: "Priority",
-        options: [
-          { value: "low", label: "Low" },
-          { value: "medium", label: "Medium" },
-          { value: "high", label: "High" },
-          { value: "urgent", label: "Urgent" },
-        ],
-      },
-      {
-        type: "multi-select" as const,
-        key: "taskType",
-        label: "Task Type",
-        options: taskTypes.map((t) => ({ value: t.id, label: t.name })),
-      },
-      {
-        type: "date-range" as const,
-        keyFrom: "dateFrom",
-        keyTo: "dateTo",
-        labelFrom: "Due From",
-        labelTo: "Due To",
-      },
-    ],
-    [taskTypes]
-  );
+  const toggleFilter = (arr: string[], val: string, setter: (v: string[]) => void) => {
+    setter(arr.includes(val) ? arr.filter((v) => v !== val) : [...arr, val]);
+  };
 
   const fetchData = useCallback(async () => {
     const [
@@ -293,7 +262,6 @@ export default function TaskBoardPage() {
   const filteredTasks = useMemo(() => {
     let filtered = tasks;
 
-    // Search
     if (search) {
       const q = search.toLowerCase();
       filtered = filtered.filter(
@@ -302,37 +270,24 @@ export default function TaskBoardPage() {
           t.description?.toLowerCase().includes(q)
       );
     }
-
-    // Status filter
-    const statuses = filterValues.status;
-    if (Array.isArray(statuses) && statuses.length > 0) {
-      filtered = filtered.filter((t) => statuses.includes(t.status));
+    if (statusFilter.length > 0) {
+      filtered = filtered.filter((t) => statusFilter.includes(t.status));
     }
-
-    // Priority filter
-    const priorities = filterValues.priority;
-    if (Array.isArray(priorities) && priorities.length > 0) {
-      filtered = filtered.filter((t) => priorities.includes(t.priority));
+    if (priorityFilter.length > 0) {
+      filtered = filtered.filter((t) => priorityFilter.includes(t.priority));
     }
-
-    // Task type filter
-    const types = filterValues.taskType;
-    if (Array.isArray(types) && types.length > 0) {
-      filtered = filtered.filter((t) => t.task_type_id && types.includes(t.task_type_id));
+    if (taskTypeFilter.length > 0) {
+      filtered = filtered.filter((t) => t.task_type_id && taskTypeFilter.includes(t.task_type_id));
     }
-
-    // Date range filter
-    const dateFrom = filterValues.dateFrom;
-    const dateTo = filterValues.dateTo;
-    if (typeof dateFrom === "string" && dateFrom) {
+    if (dateFrom) {
       filtered = filtered.filter((t) => t.due_date && t.due_date >= dateFrom);
     }
-    if (typeof dateTo === "string" && dateTo) {
+    if (dateTo) {
       filtered = filtered.filter((t) => t.due_date && t.due_date <= dateTo);
     }
 
     return filtered;
-  }, [tasks, search, filterValues]);
+  }, [tasks, search, statusFilter, priorityFilter, taskTypeFilter, dateFrom, dateTo]);
 
   // Build columns: one per employee who has tasks, one per contact who has tasks
   const { columns, tasksByColumn, unassignedTasks } = useMemo(() => {
@@ -516,13 +471,127 @@ export default function TaskBoardPage() {
         </div>
       </div>
 
-      <FilterPanel
-        filters={filterDefs}
-        values={filterValues}
-        onChange={(key, value) => setFilterValues((prev) => ({ ...prev, [key]: value }))}
-        onClear={() => setFilterValues(defaultFilterValues(filterDefs))}
-        defaultOpen
-      />
+      {/* Compact inline filters */}
+      <div className="flex items-end gap-3 flex-wrap">
+        {/* Status checkboxes inline */}
+        <div className="space-y-0.5">
+          <Label className="text-[11px] text-muted-foreground">Status</Label>
+          <div className="flex items-center gap-2.5">
+            {([
+              { key: "pending", label: "Pending" },
+              { key: "in_progress", label: "In Progress" },
+              { key: "blocked", label: "Blocked" },
+              { key: "completed", label: "Completed" },
+              { key: "cancelled", label: "Cancelled" },
+            ] as const).map((s) => (
+              <label key={s.key} className="flex items-center gap-1 cursor-pointer">
+                <Checkbox
+                  className="h-3.5 w-3.5"
+                  checked={statusFilter.includes(s.key)}
+                  onCheckedChange={() => toggleFilter(statusFilter, s.key, setStatusFilter)}
+                />
+                <span className="text-xs">{s.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <Separator orientation="vertical" className="h-7" />
+
+        {/* Priority multi-select */}
+        <div className="space-y-0.5">
+          <Label className="text-[11px] text-muted-foreground">Priority</Label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="h-7 text-xs px-2.5 font-normal">
+                {priorityFilter.length > 0 ? `${priorityFilter.length} selected` : "All"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-40 p-1.5" align="start">
+              {(["low", "medium", "high", "urgent"] as const).map((p) => (
+                <label key={p} className="flex items-center gap-2 rounded p-1.5 hover:bg-muted cursor-pointer">
+                  <Checkbox
+                    className="h-3.5 w-3.5"
+                    checked={priorityFilter.includes(p)}
+                    onCheckedChange={() => toggleFilter(priorityFilter, p, setPriorityFilter)}
+                  />
+                  <span className="text-xs capitalize">{p}</span>
+                </label>
+              ))}
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        {/* Task type multi-select */}
+        {taskTypes.length > 0 && (
+          <div className="space-y-0.5">
+            <Label className="text-[11px] text-muted-foreground">Type</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="h-7 text-xs px-2.5 font-normal">
+                  {taskTypeFilter.length > 0 ? `${taskTypeFilter.length} selected` : "All"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-1.5" align="start">
+                <div className="max-h-48 overflow-y-auto space-y-0.5">
+                  {taskTypes.map((t) => (
+                    <label key={t.id} className="flex items-center gap-2 rounded p-1.5 hover:bg-muted cursor-pointer">
+                      <Checkbox
+                        className="h-3.5 w-3.5"
+                        checked={taskTypeFilter.includes(t.id)}
+                        onCheckedChange={() => toggleFilter(taskTypeFilter, t.id, setTaskTypeFilter)}
+                      />
+                      <span className="text-xs">{t.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
+
+        <Separator orientation="vertical" className="h-7" />
+
+        {/* Date range */}
+        <div className="flex items-end gap-1.5">
+          <div className="space-y-0.5">
+            <Label className="text-[11px] text-muted-foreground">Due From</Label>
+            <Input
+              type="date"
+              className="h-7 text-xs w-32 px-2"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </div>
+          <div className="space-y-0.5">
+            <Label className="text-[11px] text-muted-foreground">Due To</Label>
+            <Input
+              type="date"
+              className="h-7 text-xs w-32 px-2"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Clear all */}
+        {(statusFilter.length > 0 || priorityFilter.length > 0 || taskTypeFilter.length > 0 || dateFrom || dateTo) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-muted-foreground"
+            onClick={() => {
+              setStatusFilter(["pending", "in_progress", "blocked"]);
+              setPriorityFilter([]);
+              setTaskTypeFilter([]);
+              setDateFrom("");
+              setDateTo("");
+            }}
+          >
+            Reset
+          </Button>
+        )}
+      </div>
 
       {columns.length === 0 && unassignedTasks.length === 0 ? (
         <div className="flex items-center justify-center h-48 text-muted-foreground">

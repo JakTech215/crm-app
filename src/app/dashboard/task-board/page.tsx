@@ -629,6 +629,15 @@ export default function TaskBoardPage() {
                         value={createForm.start_date}
                         onChange={(e) => setCreateForm({ ...createForm, start_date: e.target.value })}
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs px-2 w-fit"
+                        onClick={() => setCreateForm((prev) => ({ ...prev, start_date: todayCST() }))}
+                      >
+                        Today
+                      </Button>
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="create-due">Due Date</Label>
@@ -638,36 +647,35 @@ export default function TaskBoardPage() {
                         value={createForm.due_date}
                         onChange={(e) => setCreateForm({ ...createForm, due_date: e.target.value })}
                       />
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: "1d", days: 1 },
+                          { label: "3d", days: 3 },
+                          { label: "1w", days: 7 },
+                          { label: "2w", days: 14 },
+                          { label: "1m", days: 30 },
+                        ].map((q) => (
+                          <Button
+                            key={q.label}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs px-2"
+                            onClick={() => {
+                              const startStr = createForm.start_date || todayCST();
+                              const due = addDaysToDate(startStr, q.days);
+                              setCreateForm((prev) => ({
+                                ...prev,
+                                start_date: prev.start_date || todayCST(),
+                                due_date: due,
+                              }));
+                            }}
+                          >
+                            {q.label}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                  {/* Quick duration buttons */}
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "1d", days: 1 },
-                      { label: "3d", days: 3 },
-                      { label: "1w", days: 7 },
-                      { label: "2w", days: 14 },
-                      { label: "1m", days: 30 },
-                    ].map((q) => (
-                      <Button
-                        key={q.label}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs px-2"
-                        onClick={() => {
-                          const startStr = createForm.start_date || todayCST();
-                          const due = addDaysToDate(startStr, q.days);
-                          setCreateForm((prev) => ({
-                            ...prev,
-                            start_date: prev.start_date || todayCST(),
-                            due_date: due,
-                          }));
-                        }}
-                      >
-                        {q.label}
-                      </Button>
-                    ))}
                   </div>
                   {projects.length > 0 && (
                     <div className="grid gap-2">
@@ -705,31 +713,6 @@ export default function TaskBoardPage() {
                       </Select>
                     </div>
                   )}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label>Priority</Label>
-                      <Select value={createForm.priority} onValueChange={(v) => setCreateForm({ ...createForm, priority: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                          <SelectItem value="urgent">Urgent</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Status</Label>
-                      <Select value={createForm.status} onValueChange={(v) => setCreateForm({ ...createForm, status: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
                   <div className="grid gap-2">
                     <Label>Employees</Label>
                     <Popover>
@@ -761,6 +744,31 @@ export default function TaskBoardPage() {
                         )}
                       </PopoverContent>
                     </Popover>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label>Priority</Label>
+                      <Select value={createForm.priority} onValueChange={(v) => setCreateForm({ ...createForm, priority: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                          <SelectItem value="urgent">Urgent</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Status</Label>
+                      <Select value={createForm.status} onValueChange={(v) => setCreateForm({ ...createForm, status: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <Checkbox

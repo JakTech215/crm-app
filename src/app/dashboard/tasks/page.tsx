@@ -1389,6 +1389,15 @@ export default function TasksPage() {
                       {form.start_date && (
                         <span className="text-xs text-muted-foreground">{formatDate(form.start_date)}</span>
                       )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs px-2 w-fit"
+                        onClick={() => setForm((prev) => ({ ...prev, start_date: todayCST() }))}
+                      >
+                        Today
+                      </Button>
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="due_date">
@@ -1406,44 +1415,43 @@ export default function TasksPage() {
                       {form.due_date && (
                         <span className="text-xs text-muted-foreground">{formatDate(form.due_date)}</span>
                       )}
+                      {/* Quick duration buttons - only for non-recurring */}
+                      {!(() => {
+                        const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
+                        return tmpl?.is_recurring;
+                      })() && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { label: "4h", days: 0 },
+                            { label: "1d", days: 1 },
+                            { label: "3d", days: 3 },
+                            { label: "1w", days: 7 },
+                            { label: "2w", days: 14 },
+                            { label: "1m", days: 30 },
+                          ].map((q) => (
+                            <Button
+                              key={q.label}
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs px-2"
+                              onClick={() => {
+                                const startStr = form.start_date || todayCST();
+                                const due = addDaysToDate(startStr, q.days);
+                                setForm((prev) => ({
+                                  ...prev,
+                                  start_date: prev.start_date || todayCST(),
+                                  due_date: due,
+                                }));
+                              }}
+                            >
+                              {q.label}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
-
-                  {/* Quick duration buttons - only for non-recurring */}
-                  {!(() => {
-                    const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
-                    return tmpl?.is_recurring;
-                  })() && (
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { label: "4h", days: 0 },
-                        { label: "1d", days: 1 },
-                        { label: "3d", days: 3 },
-                        { label: "1w", days: 7 },
-                        { label: "2w", days: 14 },
-                        { label: "1m", days: 30 },
-                      ].map((q) => (
-                        <Button
-                          key={q.label}
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs px-2"
-                          onClick={() => {
-                            const startStr = form.start_date || todayCST();
-                            const due = addDaysToDate(startStr, q.days);
-                            setForm((prev) => ({
-                              ...prev,
-                              start_date: prev.start_date || todayCST(),
-                              due_date: due,
-                            }));
-                          }}
-                        >
-                          {q.label}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
 
                   {/* Recurring dates preview */}
                   {(() => {
@@ -1538,31 +1546,6 @@ export default function TasksPage() {
                     </Select>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="priority">Priority</Label>
-                    <Select value={form.priority} onValueChange={(value) => setForm({ ...form, priority: value })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="urgent">Urgent</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="in_progress">In Progress</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
                 <div className="grid gap-2">
                   <Label>Employees</Label>
                   <Popover>
@@ -1590,6 +1573,31 @@ export default function TasksPage() {
                       )}
                     </PopoverContent>
                   </Popover>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="priority">Priority</Label>
+                    <Select value={form.priority} onValueChange={(value) => setForm({ ...form, priority: value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                        <SelectItem value="urgent">Urgent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="status">Status</Label>
+                    <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="in_progress">In Progress</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <Checkbox

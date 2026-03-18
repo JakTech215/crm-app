@@ -192,7 +192,7 @@ const getTimeframeDate = (code: string): string => {
       }
       return formatDate(workDay);
     }
-    case 'eom-p': {
+    case 'eom-c': {
       const lastDay = new Date(year, month + 1, 0);
       return formatDate(lastDay);
     }
@@ -209,7 +209,7 @@ const getTimeframeDate = (code: string): string => {
       }
       return formatDate(firstDay);
     }
-    case 'bom-p': {
+    case 'bom-c': {
       const firstDay = new Date(year, month + 1, 1);
       return formatDate(firstDay);
     }
@@ -1048,6 +1048,45 @@ export default function TaskDetailPage() {
                   </Select>
                 </div>
               )}
+              <div className="grid gap-2">
+                <Label>Employees</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      className="justify-start"
+                    >
+                      <Users className="mr-2 h-4 w-4" />
+                      {editSelectedEmployees.length > 0
+                        ? `${editSelectedEmployees.length} selected`
+                        : "Select employees..."}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" align="start">
+                    {allEmployees.length === 0 ? (
+                      <p className="text-sm text-muted-foreground p-2">
+                        No active employees found.
+                      </p>
+                    ) : (
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {allEmployees.map((emp) => (
+                          <label
+                            key={emp.id}
+                            className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer"
+                          >
+                            <Checkbox
+                              checked={editSelectedEmployees.includes(emp.id)}
+                              onCheckedChange={() => toggleEditEmployee(emp.id)}
+                            />
+                            <span className="text-sm">{employeeName(emp)}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              </div>
               {allProjects.length > 0 && (
                 <div className="grid gap-2">
                   <Label>Projects</Label>
@@ -1122,7 +1161,7 @@ export default function TaskDetailPage() {
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 items-start">
                 <div className="grid gap-2">
                   <Label htmlFor="edit_start_date">Start Date</Label>
                   <Input
@@ -1141,6 +1180,24 @@ export default function TaskDetailPage() {
                   {editForm.start_date && (
                     <span className="text-xs text-muted-foreground">{formatDate(editForm.start_date)}</span>
                   )}
+                  <div className="flex flex-wrap gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-xs px-2"
+                      title="Today"
+                      onClick={() => {
+                        setEditForm((prev) => ({
+                          ...prev,
+                          start_date: todayCST(),
+                          due_date: prev.due_date || todayCST(),
+                        }));
+                      }}
+                    >
+                      today
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit_due_date">Due Date</Label>
@@ -1187,10 +1244,10 @@ export default function TaskDetailPage() {
                     <div className="flex flex-wrap gap-1">
                       {[
                         { label: "eom-w", tooltip: "End of month (work day)" },
-                        { label: "eom-p", tooltip: "End of month (period)" },
+                        { label: "eom-c", tooltip: "End of month (calendar)" },
                         { label: "bow-w", tooltip: "Begin next week (Mon)" },
                         { label: "bom-w", tooltip: "Begin next month (work day)" },
-                        { label: "bom-p", tooltip: "Begin next month (period)" },
+                        { label: "bom-c", tooltip: "Begin next month (calendar)" },
                       ].map((q) => (
                         <Button
                           key={q.label}
@@ -1214,45 +1271,6 @@ export default function TaskDetailPage() {
                     </div>
                   </div>
                 </div>
-              </div>
-              <div className="grid gap-2">
-                <Label>Employees</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      type="button"
-                      className="justify-start"
-                    >
-                      <Users className="mr-2 h-4 w-4" />
-                      {editSelectedEmployees.length > 0
-                        ? `${editSelectedEmployees.length} selected`
-                        : "Select employees..."}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2" align="start">
-                    {allEmployees.length === 0 ? (
-                      <p className="text-sm text-muted-foreground p-2">
-                        No active employees found.
-                      </p>
-                    ) : (
-                      <div className="space-y-1 max-h-48 overflow-y-auto">
-                        {allEmployees.map((emp) => (
-                          <label
-                            key={emp.id}
-                            className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer"
-                          >
-                            <Checkbox
-                              checked={editSelectedEmployees.includes(emp.id)}
-                              onCheckedChange={() => toggleEditEmployee(emp.id)}
-                            />
-                            <span className="text-sm">{employeeName(emp)}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </PopoverContent>
-                </Popover>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <Checkbox

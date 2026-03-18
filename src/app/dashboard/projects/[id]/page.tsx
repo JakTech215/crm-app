@@ -54,7 +54,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ArrowLeft, Pencil, Trash2, Plus, Diamond, Search, X, Loader2, Check, Calendar, StickyNote } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ArrowLeft, Pencil, Trash2, Plus, Diamond, Search, X, Loader2, Check, Calendar, StickyNote, Users } from "lucide-react";
 import Link from "next/link";
 import { todayCST, formatDate, formatDateTime, isBeforeToday } from "@/lib/dates";
 
@@ -95,6 +96,12 @@ interface ProjectTask {
   contact_id: string | null;
   contacts: { first_name: string; last_name: string | null } | null;
   task_assignees: TaskAssigneeInfo[];
+}
+
+interface Employee {
+  id: string;
+  first_name: string;
+  last_name: string;
 }
 
 const employeeName = (e: { first_name: string; last_name: string }) =>
@@ -169,6 +176,8 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [editSelectedEmployees, setEditSelectedEmployees] = useState<string[]>([]);
   const [projectStatuses, setProjectStatuses] = useState<StatusOption[]>(FALLBACK_STATUSES);
   const [taskProjectMap, setTaskProjectMap] = useState<Record<string, TaskProject[]>>({});
   const [loading, setLoading] = useState(true);
@@ -374,6 +383,23 @@ export default function ProjectDetailPage() {
     setContacts(data || []);
   };
 
+  const fetchEmployees = async () => {
+    const { data } = await supabase
+      .from("employees")
+      .select("id, first_name, last_name")
+      .eq("status", "active")
+      .order("first_name");
+    setAllEmployees((data as Employee[]) || []);
+  };
+
+  const fetchProjectEmployees = async () => {
+    const { data } = await supabase
+      .from("project_employees")
+      .select("employee_id")
+      .eq("project_id", projectId);
+    setEditSelectedEmployees((data || []).map((d: { employee_id: string }) => d.employee_id));
+  };
+
   const fetchStatuses = async () => {
     const { data } = await supabase
       .from("project_statuses")
@@ -474,6 +500,8 @@ export default function ProjectDetailPage() {
     fetchProject();
     fetchTasks();
     fetchContacts();
+    fetchEmployees();
+    fetchProjectEmployees();
     fetchStatuses();
     fetchAllTasks();
     fetchEvents();
@@ -522,9 +550,18 @@ export default function ProjectDetailPage() {
       return;
     }
 
+    // Update employee associations
+    await supabase.from("project_employees").delete().eq("project_id", projectId);
+    if (editSelectedEmployees.length > 0) {
+      await supabase.from("project_employees").insert(
+        editSelectedEmployees.map((eid) => ({ project_id: projectId, employee_id: eid }))
+      );
+    }
+
     setSavingEdit(false);
     setEditOpen(false);
     fetchProject();
+    fetchProjectEmployees();
   };
 
   const handleDelete = async () => {
@@ -730,6 +767,51 @@ export default function ProjectDetailPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Employees</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      className="justify-start"
+                    >
+                      <Users className="mr-2 h-4 w-4" />
+                      {editSelectedEmployees.length > 0
+                        ? `${editSelectedEmployees.length} selected`
+                        : "Select employees..."}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" align="start">
+                    {allEmployees.length === 0 ? (
+                      <p className="text-sm text-muted-foreground p-2">
+                        No active employees found.
+                      </p>
+                    ) : (
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {allEmployees.map((emp) => (
+                          <label
+                            key={emp.id}
+                            className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer"
+                          >
+                            <Checkbox
+                              checked={editSelectedEmployees.includes(emp.id)}
+                              onCheckedChange={() => {
+                                setEditSelectedEmployees((prev) =>
+                                  prev.includes(emp.id)
+                                    ? prev.filter((id) => id !== emp.id)
+                                    : [...prev, emp.id]
+                                );
+                              }}
+                            />
+                            <span className="text-sm">{employeeName(emp)}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="grid gap-2">
                 <Label>Status</Label>

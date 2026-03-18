@@ -45,7 +45,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Users } from "lucide-react";
 import { todayCST, formatDate } from "@/lib/dates";
 
 interface Contact {
@@ -56,6 +56,15 @@ interface Contact {
 
 const contactName = (c: { first_name: string; last_name: string | null }) =>
   `${c.first_name}${c.last_name ? ` ${c.last_name}` : ""}`;
+
+interface Employee {
+  id: string;
+  first_name: string;
+  last_name: string;
+}
+
+const employeeName = (e: { first_name: string; last_name: string }) =>
+  `${e.first_name} ${e.last_name}`;
 
 interface Project {
   id: string;
@@ -105,6 +114,8 @@ export default function ProjectsPage() {
   const searchParams = useSearchParams();
   const [projects, setProjects] = useState<Project[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [projectStatuses, setProjectStatuses] = useState<StatusOption[]>(FALLBACK_STATUSES);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -140,6 +151,15 @@ export default function ProjectsPage() {
       .select("id, first_name, last_name")
       .order("first_name");
     setContacts(data || []);
+  };
+
+  const fetchEmployees = async () => {
+    const { data } = await supabase
+      .from("employees")
+      .select("id, first_name, last_name")
+      .eq("status", "active")
+      .order("first_name");
+    setAllEmployees((data as Employee[]) || []);
   };
 
   const fetchStatuses = async () => {
@@ -194,6 +214,7 @@ export default function ProjectsPage() {
   useEffect(() => {
     fetchProjects();
     fetchContacts();
+    fetchEmployees();
     fetchStatuses();
     fetchProjectTasks();
   }, []);
@@ -207,7 +228,7 @@ export default function ProjectsPage() {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const { error: insertError } = await supabase.from("projects").insert({
+    const { data: inserted, error: insertError } = await supabase.from("projects").insert({
       name: form.name,
       description: form.description || null,
       contact_id: form.contact_id || null,
@@ -215,12 +236,19 @@ export default function ProjectsPage() {
       start_date: form.start_date || null,
       due_date: form.due_date || null,
       created_by: user?.id,
-    });
+    }).select("id").single();
 
     if (insertError) {
       setError(insertError.message);
       setSaving(false);
       return;
+    }
+
+    // Link employees to project
+    if (inserted && selectedEmployees.length > 0) {
+      await supabase.from("project_employees").insert(
+        selectedEmployees.map((eid) => ({ project_id: inserted.id, employee_id: eid }))
+      );
     }
 
     setForm({
@@ -231,6 +259,7 @@ export default function ProjectsPage() {
       start_date: "",
       due_date: "",
     });
+    setSelectedEmployees([]);
     setOpen(false);
     fetchProjects();
     setSaving(false);
@@ -317,6 +346,51 @@ export default function ProjectsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Employees</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        type="button"
+                        className="justify-start"
+                      >
+                        <Users className="mr-2 h-4 w-4" />
+                        {selectedEmployees.length > 0
+                          ? `${selectedEmployees.length} selected`
+                          : "Select employees..."}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2" align="start">
+                      {allEmployees.length === 0 ? (
+                        <p className="text-sm text-muted-foreground p-2">
+                          No active employees found.
+                        </p>
+                      ) : (
+                        <div className="space-y-1 max-h-48 overflow-y-auto">
+                          {allEmployees.map((emp) => (
+                            <label
+                              key={emp.id}
+                              className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer"
+                            >
+                              <Checkbox
+                                checked={selectedEmployees.includes(emp.id)}
+                                onCheckedChange={() => {
+                                  setSelectedEmployees((prev) =>
+                                    prev.includes(emp.id)
+                                      ? prev.filter((id) => id !== emp.id)
+                                      : [...prev, emp.id]
+                                  );
+                                }}
+                              />
+                              <span className="text-sm">{employeeName(emp)}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="status">Status</Label>

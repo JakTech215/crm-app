@@ -1024,10 +1024,7 @@ export default function TaskDetailPage() {
               </div>
               {allContacts.length > 0 && (
                 <div className="grid gap-2">
-                  <Label>
-                    Contact{" "}
-                    <span className="text-muted-foreground font-normal">(optional)</span>
-                  </Label>
+                  <Label>Contact</Label>
                   <Select
                     value={editForm.contact_id || "none"}
                     onValueChange={(value) =>

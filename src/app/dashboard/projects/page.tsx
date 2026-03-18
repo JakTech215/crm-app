@@ -127,6 +127,7 @@ export default function ProjectsPage() {
     return raw ? raw.split(",") : ["active"];
   });
   const [projectTasksMap, setProjectTasksMap] = useState<Record<string, UpcomingTask[]>>({});
+  const [projectEmployeesMap, setProjectEmployeesMap] = useState<Record<string, Employee[]>>({});
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -160,6 +161,19 @@ export default function ProjectsPage() {
       .eq("status", "active")
       .order("first_name");
     setAllEmployees((data as Employee[]) || []);
+  };
+
+  const fetchProjectEmployees = async () => {
+    const { data: links } = await supabase
+      .from("project_employees")
+      .select("project_id, employee_id, employees(id, first_name, last_name)");
+    if (!links) return;
+    const map: Record<string, Employee[]> = {};
+    for (const link of links as unknown as { project_id: string; employees: Employee }[]) {
+      if (!map[link.project_id]) map[link.project_id] = [];
+      map[link.project_id].push(link.employees);
+    }
+    setProjectEmployeesMap(map);
   };
 
   const fetchStatuses = async () => {
@@ -215,6 +229,7 @@ export default function ProjectsPage() {
     fetchProjects();
     fetchContacts();
     fetchEmployees();
+    fetchProjectEmployees();
     fetchStatuses();
     fetchProjectTasks();
   }, []);
@@ -509,6 +524,7 @@ export default function ProjectsPage() {
               <TableRow>
                 <TableHead>Project Name</TableHead>
                 <TableHead>Contact</TableHead>
+                <TableHead>Employees</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Upcoming Tasks</TableHead>
                 <TableHead>Start Date</TableHead>
@@ -518,7 +534,7 @@ export default function ProjectsPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     Loading...
                   </TableCell>
                 </TableRow>
@@ -530,7 +546,7 @@ export default function ProjectsPage() {
               }).length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="text-center text-muted-foreground py-8"
                   >
                     No projects yet. Click &quot;New Project&quot; to create
@@ -554,6 +570,11 @@ export default function ProjectsPage() {
                     </TableCell>
                     <TableCell>
                       {project.contacts ? contactName(project.contacts) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      {(projectEmployeesMap[project.id] || []).length > 0
+                        ? projectEmployeesMap[project.id].map((e) => employeeName(e)).join(", ")
+                        : "—"}
                     </TableCell>
                     <TableCell>
                       <Badge

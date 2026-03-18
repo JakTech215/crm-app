@@ -905,13 +905,25 @@ export default function ProjectDetailPage() {
             </div>
             {project.contacts && (
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Linked Contact</p>
+                <p className="text-sm font-medium text-muted-foreground">Contact</p>
                 <p
                   className="mt-1 text-primary cursor-pointer hover:underline"
                   onClick={() => router.push(`/dashboard/contacts/${project.contacts!.id}`)}
                 >
                   {contactName(project.contacts)}
                 </p>
+              </div>
+            )}
+            {editSelectedEmployees.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Employees</p>
+                <div className="mt-1 space-y-0.5">
+                  {allEmployees
+                    .filter((emp) => editSelectedEmployees.includes(emp.id))
+                    .map((emp) => (
+                      <p key={emp.id} className="text-sm">{employeeName(emp)}</p>
+                    ))}
+                </div>
               </div>
             )}
           </div>

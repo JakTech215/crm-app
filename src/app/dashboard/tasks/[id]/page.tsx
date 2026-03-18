@@ -585,8 +585,8 @@ export default function TaskDetailPage() {
       contact_id: task.contact_id || "",
       priority: task.priority,
       status: task.status,
-      start_date: task.start_date || "",
-      due_date: task.due_date || "",
+      start_date: "",
+      due_date: "",
       is_milestone: task.is_milestone,
       task_type_id: task.task_type_id || "",
       is_recurring: task.is_recurring || false,
@@ -1177,9 +1177,6 @@ export default function TaskDetailPage() {
                       }));
                     }}
                   />
-                  {editForm.start_date && (
-                    <span className="text-xs text-muted-foreground">{formatDate(editForm.start_date)}</span>
-                  )}
                   <div className="flex flex-wrap gap-1">
                     <Button
                       type="button"
@@ -1209,9 +1206,6 @@ export default function TaskDetailPage() {
                       setEditForm({ ...editForm, due_date: e.target.value })
                     }
                   />
-                  {editForm.due_date && (
-                    <span className="text-xs text-muted-foreground">{formatDate(editForm.due_date)}</span>
-                  )}
                   <div className="space-y-2">
                     <div className="flex flex-wrap gap-1">
                       {[

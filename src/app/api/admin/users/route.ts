@@ -30,11 +30,19 @@ export async function POST(request: Request) {
   if (!email) return NextResponse.json({ error: "Email is required" }, { status: 400 });
 
   try {
-    // Create user record directly
-    const userRows = await sql`
-      INSERT INTO users ${sql({ email, password_hash: "" })} RETURNING *
+    // Create auth user record
+    const authRows = await sql`
+      INSERT INTO auth.users (id, email, encrypted_password, email_confirmed_at, created_at, updated_at, is_sso_user, is_anonymous)
+      VALUES (gen_random_uuid(), ${email}, '', NOW(), NOW(), NOW(), false, false)
+      RETURNING id, email
     `;
-    const newUser = userRows[0];
+    const newUser = authRows[0];
+
+    // Create public user record
+    await sql`
+      INSERT INTO public.users (id, full_name, role)
+      VALUES (${newUser.id}, ${full_name || null}, ${role || "user"})
+    `;
 
     // Create profile entry
     const profileRows = await sql`
@@ -85,8 +93,10 @@ export async function DELETE(request: Request) {
   if (!id) return NextResponse.json({ error: "User ID is required" }, { status: 400 });
 
   try {
+    await sql`DELETE FROM public.sessions WHERE user_id = ${id}`;
     await sql`DELETE FROM user_profiles WHERE id = ${id}`;
-    await sql`DELETE FROM users WHERE id = ${id}`;
+    await sql`DELETE FROM public.users WHERE id = ${id}`;
+    await sql`DELETE FROM auth.users WHERE id = ${id}`;
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

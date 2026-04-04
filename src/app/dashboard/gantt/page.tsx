@@ -260,7 +260,7 @@ export default function GanttPage() {
     );
 
     const seriesGroups: Record<string, number[]> = {};
-    enriched.forEach((t, idx) => {
+    enriched.forEach((t: any, idx: number) => {
       if (t.recurrence_source_task_id) {
         if (!seriesGroups[t.recurrence_source_task_id]) seriesGroups[t.recurrence_source_task_id] = [];
         seriesGroups[t.recurrence_source_task_id].push(idx);
@@ -276,7 +276,7 @@ export default function GanttPage() {
         .filter((t) => t.due_date)
         .map((t) => ({ id: t.id, date: t.due_date!, status: t.status }));
 
-      const sourceIdx = enriched.findIndex((t) => t.id === sourceId);
+      const sourceIdx = enriched.findIndex((t: any) => t.id === sourceId);
       if (sourceIdx >= 0) {
         enriched[sourceIdx].occurrences = occurrences;
         if (seriesTasks[0].due_date) enriched[sourceIdx].start_date = seriesTasks[0].due_date;
@@ -288,7 +288,7 @@ export default function GanttPage() {
       }
     }
 
-    const finalTasks = enriched.filter((t) => !collapsedIds.has(t.id)) as GanttTask[];
+    const finalTasks = enriched.filter((t: any) => !collapsedIds.has(t.id)) as GanttTask[];
 
     const eventData = await fetchGanttEvents();
 

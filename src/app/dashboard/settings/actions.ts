@@ -6,7 +6,8 @@ import { getSessionUser } from "@/lib/auth";
 // ---- Contact Statuses ----
 
 export async function fetchContactStatuses() {
-  return await sql`SELECT * FROM contact_statuses ORDER BY name`;
+  const rows = await sql`SELECT * FROM contact_statuses ORDER BY name`;
+  return [...rows] as any;
 }
 
 export async function saveContactStatus(id: string | null, data: { name: string; color: string; description: string | null }) {
@@ -24,7 +25,8 @@ export async function deleteContactStatus(id: string) {
 // ---- Project Statuses ----
 
 export async function fetchProjectStatuses() {
-  return await sql`SELECT * FROM project_statuses ORDER BY name`;
+  const rows = await sql`SELECT * FROM project_statuses ORDER BY name`;
+  return [...rows] as any;
 }
 
 export async function saveProjectStatus(id: string | null, data: { name: string; color: string; description: string | null }) {
@@ -42,7 +44,8 @@ export async function deleteProjectStatus(id: string) {
 // ---- Task Types ----
 
 export async function fetchTaskTypes() {
-  return await sql`SELECT * FROM task_types ORDER BY name`;
+  const rows = await sql`SELECT * FROM task_types ORDER BY name`;
+  return [...rows] as any;
 }
 
 export async function saveTaskType(id: string | null, data: { name: string; color: string; is_active: boolean }) {
@@ -60,15 +63,18 @@ export async function deleteTaskType(id: string) {
 // ---- Task Templates ----
 
 export async function fetchTaskTemplates() {
-  return await sql`SELECT * FROM task_templates ORDER BY name`;
+  const rows = await sql`SELECT * FROM task_templates ORDER BY name`;
+  return [...rows] as any;
 }
 
 export async function fetchWorkflowSteps() {
-  return await sql`SELECT * FROM task_workflow_steps ORDER BY step_order`;
+  const rows = await sql`SELECT * FROM task_workflow_steps ORDER BY step_order`;
+  return [...rows] as any;
 }
 
 export async function fetchActiveTaskTypes() {
-  return await sql`SELECT id, name, color, is_active FROM task_types WHERE is_active = true ORDER BY name`;
+  const rows = await sql`SELECT id, name, color, is_active FROM task_types WHERE is_active = true ORDER BY name`;
+  return [...rows] as any;
 }
 
 export async function saveTaskTemplate(
@@ -120,7 +126,8 @@ export async function checkIsAdmin() {
 // ---- Holidays ----
 
 export async function fetchHolidays() {
-  return await sql`SELECT * FROM holidays ORDER BY holiday_date ASC`;
+  const rows = await sql`SELECT * FROM holidays ORDER BY holiday_date ASC`;
+  return [...rows] as any;
 }
 
 export async function saveHoliday(

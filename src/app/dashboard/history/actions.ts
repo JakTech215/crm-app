@@ -3,12 +3,13 @@
 import sql from "@/lib/db";
 
 export async function fetchAllTasks() {
-  return await sql`
+  const rows = await sql`
     SELECT t.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM tasks t
     LEFT JOIN contacts c ON t.contact_id = c.id
     ORDER BY t.created_at DESC
   `;
+  return [...rows] as any;
 }
 
 export async function fetchTaskAssignees(taskIds: string[]) {
@@ -38,21 +39,25 @@ export async function fetchProjectTaskLinks(taskIds: string[]) {
   if (projectTasks.length === 0) return { projectTasks: [], projects: [] };
   const projectIds = [...new Set(projectTasks.map((pt) => pt.project_id))];
   const projects = await sql`SELECT id, name FROM projects WHERE id = ANY(${projectIds})`;
-  return { projectTasks, projects };
+  return { projectTasks: [...projectTasks] as any, projects: [...projects] as any };
 }
 
 export async function fetchContacts() {
-  return await sql`SELECT id, first_name, last_name FROM contacts ORDER BY first_name`;
+  const rows = await sql`SELECT id, first_name, last_name FROM contacts ORDER BY first_name`;
+  return [...rows] as any;
 }
 
 export async function fetchActiveEmployees() {
-  return await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
+  const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
+  return [...rows] as any;
 }
 
 export async function fetchProjects() {
-  return await sql`SELECT id, name FROM projects ORDER BY name`;
+  const rows = await sql`SELECT id, name FROM projects ORDER BY name`;
+  return [...rows] as any;
 }
 
 export async function fetchTaskTypes() {
-  return await sql`SELECT id, name, color FROM task_types WHERE is_active = true ORDER BY name`;
+  const rows = await sql`SELECT id, name, color FROM task_types WHERE is_active = true ORDER BY name`;
+  return [...rows] as any;
 }

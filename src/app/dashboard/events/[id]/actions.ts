@@ -17,7 +17,7 @@ export async function fetchEvent(eventId: string) {
     contacts: r.contact_id
       ? { id: r.contact_id_ref, first_name: r.contact_first_name, last_name: r.contact_last_name }
       : null,
-  };
+  } as any;
 }
 
 export async function fetchAttendees(eventId: string) {
@@ -34,7 +34,7 @@ export async function fetchAttendees(eventId: string) {
     employee_id: r.employee_id,
     attendance_status: r.attendance_status,
     employees: { id: r.emp_id, first_name: r.first_name, last_name: r.last_name },
-  }));
+  })) as any;
 }
 
 export async function fetchNotes(eventId: string) {
@@ -43,7 +43,7 @@ export async function fetchNotes(eventId: string) {
     WHERE event_id = ${eventId}
     ORDER BY created_at DESC
   `;
-  return [...rows];
+  return [...rows] as any;
 }
 
 export async function fetchProjectName(projectId: string) {
@@ -53,17 +53,17 @@ export async function fetchProjectName(projectId: string) {
 
 export async function fetchActiveEmployees() {
   const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
-  return [...rows];
+  return [...rows] as any;
 }
 
 export async function fetchAllProjects() {
   const rows = await sql`SELECT id, name FROM projects ORDER BY name`;
-  return [...rows];
+  return [...rows] as any;
 }
 
 export async function fetchAllContacts() {
   const rows = await sql`SELECT id, first_name, last_name FROM contacts ORDER BY first_name`;
-  return [...rows];
+  return [...rows] as any;
 }
 
 export async function updateEventStatus(eventId: string, status: string) {

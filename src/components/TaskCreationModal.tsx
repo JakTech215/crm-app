@@ -1,7 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import {
+  createTask,
+  fetchProjectOptions,
+  fetchContactOptions,
+  fetchEmployeeOptions,
+} from './actions';
 
 interface TaskCreationModalProps {
   isOpen: boolean;
@@ -36,15 +41,10 @@ export default function TaskCreationModal({
   const [dueDate, setDueDate] = useState('');
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  
+
   const [projects, setProjects] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
-  
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => {
     if (isOpen) {
@@ -53,38 +53,34 @@ export default function TaskCreationModal({
       setDescription(defaultDescription);
       setProjectId(defaultProjectId || '');
       setContactId(defaultContactId || '');
-      
+
       // Leave dates empty - user will fill them in
       setStartDate('');
       setDueDate('');
-      
+
       // Fetch options
-      fetchOptions();
+      loadOptions();
     }
   }, [isOpen, defaultTitle, defaultDescription, defaultProjectId, defaultContactId]);
 
-  const fetchOptions = async () => {
-    const [projectsRes, contactsRes, employeesRes] = await Promise.all([
-      supabase.from('projects').select('id, name').eq('status', 'active').order('name'),
-      supabase.from('contacts').select('id, first_name, last_name').eq('status', 'active').order('first_name'),
-      supabase.from('employees').select('id, first_name, last_name').order('first_name')
+  const loadOptions = async () => {
+    const [p, c, e] = await Promise.all([
+      fetchProjectOptions(),
+      fetchContactOptions(),
+      fetchEmployeeOptions(),
     ]);
-    
-    if (projectsRes.data) setProjects(projectsRes.data);
-    if (contactsRes.data) setContacts(contactsRes.data);
-    if (employeesRes.data) setEmployees(employeesRes.data);
+    setProjects(p);
+    setContacts(c);
+    setEmployees(e);
   };
 
   const handleSave = async () => {
     if (!title || !startDate || !dueDate) return;
-    
+
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    // Create task
-    const { data: task, error } = await supabase
-      .from('tasks')
-      .insert({
+
+    try {
+      const task = await createTask({
         title,
         description,
         status,
@@ -95,31 +91,17 @@ export default function TaskCreationModal({
         contact_id: contactId || null,
         source_type: sourceType,
         source_id: sourceId,
-        created_by: user?.id
-      })
-      .select()
-      .single();
-    
-    if (error || !task) {
+        employee_ids: selectedEmployees,
+      });
+
+      setSaving(false);
+      onSuccess(task.id);
+      onClose();
+    } catch (error: any) {
       console.error('Failed to create task:', error);
       alert('Failed to create task: ' + (error?.message || 'Unknown error'));
       setSaving(false);
-      return;
     }
-    
-    // Assign employees if selected
-    if (selectedEmployees.length > 0) {
-      const assignments = selectedEmployees.map(empId => ({
-        task_id: task.id,
-        employee_id: empId,
-        assigned_by: user?.id
-      }));
-      await supabase.from('task_assignees').insert(assignments);
-    }
-    
-    setSaving(false);
-    onSuccess(task.id);
-    onClose();
   };
 
   if (!isOpen) return null;

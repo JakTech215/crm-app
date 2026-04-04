@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { createBrowserClient } from '@supabase/ssr';
+import { fetchMeetingNoteDetails, linkItemToTask } from './actions';
 import TaskCreationModal from './TaskCreationModal';
 import { Edit2 } from 'lucide-react';
 
@@ -19,51 +19,18 @@ export default function MeetingNoteCard({ note, onUpdate, onEdit }: MeetingNoteC
   const [expanded, setExpanded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<any>(null);
-  
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => {
     if (expanded) {
-      fetchDetails();
+      loadDetails();
     }
   }, [expanded]);
 
-  const fetchDetails = async () => {
-    const { data: attendeesData } = await supabase
-      .from('meeting_attendees')
-      .select(`
-        *,
-        contacts(first_name, last_name),
-        employees(first_name, last_name)
-      `)
-      .eq('meeting_note_id', note.id);
-    
-    if (attendeesData) setAttendees(attendeesData);
-
-    const { data: dpData } = await supabase
-      .from('discussion_points')
-      .select(`
-        *,
-        tasks(id, title)
-      `)
-      .eq('meeting_note_id', note.id)
-      .order('sort_order');
-    
-    if (dpData) setDiscussionPoints(dpData);
-
-    const { data: aiData } = await supabase
-      .from('action_items')
-      .select(`
-        *,
-        tasks(id, title)
-      `)
-      .eq('meeting_note_id', note.id)
-      .order('sort_order');
-    
-    if (aiData) setActionItems(aiData);
+  const loadDetails = async () => {
+    const details = await fetchMeetingNoteDetails(note.id);
+    setAttendees(details.attendees);
+    setDiscussionPoints(details.discussionPoints);
+    setActionItems(details.actionItems);
   };
 
   const openTaskModal = (type: 'discussion' | 'action', item: any) => {
@@ -80,14 +47,11 @@ export default function MeetingNoteCard({ note, onUpdate, onEdit }: MeetingNoteC
 
   const handleTaskCreated = async (taskId: string) => {
     if (!modalData) return;
-    
+
     const table = modalData.type === 'discussion' ? 'discussion_points' : 'action_items';
-    await supabase
-      .from(table)
-      .update({ task_id: taskId })
-      .eq('id', modalData.item.id);
-    
-    fetchDetails();
+    await linkItemToTask(table, modalData.item.id, taskId);
+
+    loadDetails();
     onUpdate();
     setModalData(null);
   };
@@ -102,7 +66,7 @@ export default function MeetingNoteCard({ note, onUpdate, onEdit }: MeetingNoteC
 
   return (
     <div className="bg-white p-4 rounded-lg border hover:border-blue-300 transition-colors">
-      <div 
+      <div
         className="flex items-start justify-between cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
@@ -111,7 +75,7 @@ export default function MeetingNoteCard({ note, onUpdate, onEdit }: MeetingNoteC
           <p className="text-sm text-gray-600 mt-1">
             {formatDate(note.meeting_date)}
           </p>
-          
+
           {(note.projects || note.contacts || note.employees || note.events) && (
             <div className="mt-2 flex flex-wrap gap-2">
               {note.projects && (
@@ -179,7 +143,7 @@ export default function MeetingNoteCard({ note, onUpdate, onEdit }: MeetingNoteC
                   <div key={dp.id} className="flex items-center justify-between text-sm bg-gray-50 p-2 rounded">
                     <span>• {dp.content}</span>
                     {dp.task_id && dp.tasks ? (
-                      <a 
+                      <a
                         href={`/dashboard/tasks/${dp.tasks.id}`}
                         onClick={(e) => e.stopPropagation()}
                         className="text-green-600 hover:text-green-800 text-xs flex items-center gap-1"
@@ -212,7 +176,7 @@ export default function MeetingNoteCard({ note, onUpdate, onEdit }: MeetingNoteC
                   <div key={ai.id} className="flex items-center justify-between text-sm bg-gray-50 p-2 rounded">
                     <span>• {ai.content}</span>
                     {ai.task_id && ai.tasks ? (
-                      <a 
+                      <a
                         href={`/dashboard/tasks/${ai.tasks.id}`}
                         onClick={(e) => e.stopPropagation()}
                         className="text-green-600 hover:text-green-800 text-xs flex items-center gap-1"

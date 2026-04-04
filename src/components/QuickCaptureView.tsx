@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import {
+  fetchStandaloneNotes,
+  createStandaloneNote,
+  updateStandaloneNote,
+  deleteStandaloneNote,
+  fetchProjectOptions,
+  fetchContactOptions,
+  fetchEmployeeOptions,
+  fetchEventOptions,
+} from './actions';
 import TaskCreationModal from './TaskCreationModal';
 import { X, Edit2 } from 'lucide-react';
 
@@ -21,21 +30,16 @@ export default function QuickCaptureView() {
   const [selectedNote, setSelectedNote] = useState<any>(null);
   const [editingNote, setEditingNote] = useState<any>(null);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
   useEffect(() => {
-    fetchNotes();
-    fetchOptions();
+    loadNotes();
+    loadOptions();
   }, []);
 
   // Auto-load note for editing from URL param (from dashboard)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const editNoteId = params.get('editNote');
-    
+
     if (editNoteId && notes.length > 0) {
       const noteToEdit = notes.find(n => n.id === editNoteId);
       if (noteToEdit) {
@@ -46,74 +50,51 @@ export default function QuickCaptureView() {
     }
   }, [notes]);
 
-  const fetchNotes = async () => {
-    const { data } = await supabase
-      .from('notes_standalone')
-      .select(`
-        *,
-        projects(name),
-        contacts(first_name, last_name),
-        employees(first_name, last_name),
-        events(title)
-      `)
-      .order('created_at', { ascending: false });
-    
-    if (data) setNotes(data);
+  const loadNotes = async () => {
+    const data = await fetchStandaloneNotes();
+    setNotes(data);
   };
 
-  const fetchOptions = async () => {
-    const [projectsRes, contactsRes, employeesRes, eventsRes] = await Promise.all([
-      supabase.from('projects').select('id, name').eq('status', 'active').order('name'),
-      supabase.from('contacts').select('id, first_name, last_name').eq('status', 'active').order('first_name'),
-      supabase.from('employees').select('id, first_name, last_name').order('first_name'),
-      supabase.from('events').select('id, title').order('event_date', { ascending: false }).limit(50)
+  const loadOptions = async () => {
+    const [p, c, e, ev] = await Promise.all([
+      fetchProjectOptions(),
+      fetchContactOptions(),
+      fetchEmployeeOptions(),
+      fetchEventOptions(),
     ]);
-    
-    if (projectsRes.data) setProjects(projectsRes.data);
-    if (contactsRes.data) setContacts(contactsRes.data);
-    if (employeesRes.data) setEmployees(employeesRes.data);
-    if (eventsRes.data) setEvents(eventsRes.data);
+    setProjects(p);
+    setContacts(c);
+    setEmployees(e);
+    setEvents(ev);
   };
 
   const handleSave = async () => {
     if (!content.trim()) return;
-    
+
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    
+
+    const noteData = {
+      content,
+      project_id: projectId || null,
+      contact_id: contactId || null,
+      employee_id: employeeId || null,
+      event_id: eventId || null,
+    };
+
     if (editingNote) {
-      // Update existing note
-      await supabase
-        .from('notes_standalone')
-        .update({
-          content,
-          project_id: projectId || null,
-          contact_id: contactId || null,
-          employee_id: employeeId || null,
-          event_id: eventId || null,
-        })
-        .eq('id', editingNote.id);
-      
+      await updateStandaloneNote(editingNote.id, noteData);
       setEditingNote(null);
     } else {
-      // Create new note
-      await supabase.from('notes_standalone').insert({
-        content,
-        project_id: projectId || null,
-        contact_id: contactId || null,
-        employee_id: employeeId || null,
-        event_id: eventId || null,
-        created_by: user?.id
-      });
+      await createStandaloneNote(noteData);
     }
-    
+
     setContent('');
     setProjectId('');
     setContactId('');
     setEmployeeId('');
     setEventId('');
     setSaving(false);
-    fetchNotes();
+    loadNotes();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -145,13 +126,8 @@ export default function QuickCaptureView() {
 
   const handleDelete = async (noteId: string) => {
     if (!confirm('Delete this note?')) return;
-    
-    await supabase
-      .from('notes_standalone')
-      .delete()
-      .eq('id', noteId);
-    
-    fetchNotes();
+    await deleteStandaloneNote(noteId);
+    loadNotes();
   };
 
   const openTaskModal = (note: any) => {
@@ -161,12 +137,8 @@ export default function QuickCaptureView() {
 
   const handleTaskCreated = async (taskId: string) => {
     if (selectedNote) {
-      await supabase
-        .from('notes_standalone')
-        .delete()
-        .eq('id', selectedNote.id);
-      
-      fetchNotes();
+      await deleteStandaloneNote(selectedNote.id);
+      loadNotes();
       setSelectedNote(null);
     }
   };
@@ -189,7 +161,7 @@ export default function QuickCaptureView() {
             </button>
           )}
         </div>
-        
+
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
@@ -197,7 +169,7 @@ export default function QuickCaptureView() {
           className="w-full border rounded px-3 py-2 min-h-[120px] mb-4"
           placeholder="Type your note here... (Press Enter to save, Shift+Enter for new line)"
         />
-        
+
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
           <select
             value={projectId}
@@ -209,7 +181,7 @@ export default function QuickCaptureView() {
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
-          
+
           <select
             value={contactId}
             onChange={(e) => setContactId(e.target.value)}
@@ -246,7 +218,7 @@ export default function QuickCaptureView() {
               <option key={evt.id} value={evt.id}>{evt.title}</option>
             ))}
           </select>
-          
+
           <button
             onClick={handleSave}
             disabled={saving || !content.trim()}
@@ -264,13 +236,13 @@ export default function QuickCaptureView() {
           <p className="text-gray-500 text-sm">No notes yet. Create your first quick note above!</p>
         ) : (
           notes.map(note => (
-            <div 
-              key={note.id} 
+            <div
+              key={note.id}
               className="bg-white p-4 rounded-lg border hover:border-blue-300 transition-colors cursor-pointer"
               onClick={() => handleEdit(note)}
             >
               <p className="text-gray-800 mb-2">{note.content}</p>
-              
+
               <div className="flex items-center justify-between">
                 <div className="flex gap-2 flex-wrap">
                   {note.projects && (
@@ -297,7 +269,7 @@ export default function QuickCaptureView() {
                     {new Date(note.created_at).toLocaleDateString()}
                   </span>
                 </div>
-                
+
                 <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => handleEdit(note)}

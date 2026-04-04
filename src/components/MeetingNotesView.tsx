@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { fetchMeetingNotes } from './actions';
 import MeetingNoteForm from './MeetingNoteForm';
 import MeetingNoteCard from './MeetingNoteCard';
 
@@ -20,40 +20,23 @@ interface MeetingNote {
   events?: { title: string };
 }
 
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
 export default function MeetingNotesView() {
   const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingNote, setEditingNote] = useState<MeetingNote | null>(null);
-  
-  const fetchMeetingNotes = async () => {
-    const { data, error } = await supabase
-      .from('meeting_notes')
-      .select(`
-        *,
-        projects(name),
-        contacts(first_name, last_name),
-        employees(first_name, last_name),
-        events(title)
-      `)
-      .order('meeting_date', { ascending: false });
 
-    if (!error && data) {
-      setMeetingNotes(data);
-    }
+  const loadMeetingNotes = async () => {
+    const data = await fetchMeetingNotes();
+    setMeetingNotes(data as MeetingNote[]);
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchMeetingNotes();
+    loadMeetingNotes();
   }, []);
 
   const handleSave = () => {
-    fetchMeetingNotes();
+    loadMeetingNotes();
     setEditingNote(null);
   };
 
@@ -69,12 +52,12 @@ export default function MeetingNotesView() {
 
   return (
     <div>
-      <MeetingNoteForm 
-        onSave={handleSave} 
-        editingNote={editingNote} 
+      <MeetingNoteForm
+        onSave={handleSave}
+        editingNote={editingNote}
         onCancelEdit={handleCancelEdit}
       />
-      
+
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">Meeting Notes</h2>
         {loading ? (
@@ -84,10 +67,10 @@ export default function MeetingNotesView() {
         ) : (
           <div className="grid gap-4">
             {meetingNotes.map((note) => (
-              <MeetingNoteCard 
-                key={note.id} 
-                note={note} 
-                onUpdate={fetchMeetingNotes}
+              <MeetingNoteCard
+                key={note.id}
+                note={note}
+                onUpdate={loadMeetingNotes}
                 onEdit={handleEdit}
               />
             ))}

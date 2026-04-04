@@ -1,7 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import {
+  createMeetingNote,
+  updateMeetingNote,
+  fetchAllProjectOptions,
+  fetchAllContactOptions,
+  fetchEmployeeOptions,
+  fetchEventOptions,
+} from './actions';
 
 interface MeetingNoteFormProps {
   onSave: () => void;
@@ -17,43 +24,37 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
   const [employeeId, setEmployeeId] = useState('');
   const [eventId, setEventId] = useState('');
   const [saving, setSaving] = useState(false);
-  
+
   const [attendees, setAttendees] = useState<Array<{id: string; name: string; type: 'contact' | 'employee'}>>([]);
   const [attendeeType, setAttendeeType] = useState<'contact' | 'employee'>('contact');
   const [selectedAttendee, setSelectedAttendee] = useState('');
-  
+
   const [discussionPoints, setDiscussionPoints] = useState<Array<{id: string; content: string}>>([]);
   const [discussionInput, setDiscussionInput] = useState('');
-  
+
   const [actionItems, setActionItems] = useState<Array<{id: string; content: string}>>([]);
   const [actionInput, setActionInput] = useState('');
-  
+
   const [projects, setProjects] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
-  
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => {
-    const fetchOptions = async () => {
-      const [projectsRes, contactsRes, employeesRes, eventsRes] = await Promise.all([
-        supabase.from('projects').select('id, name').order('name'),
-        supabase.from('contacts').select('id, first_name, last_name').order('first_name'),
-        supabase.from('employees').select('id, first_name, last_name').order('first_name'),
-        supabase.from('events').select('id, title').order('event_date', { ascending: false }).limit(50)
+    const loadOptions = async () => {
+      const [p, c, e, ev] = await Promise.all([
+        fetchAllProjectOptions(),
+        fetchAllContactOptions(),
+        fetchEmployeeOptions(),
+        fetchEventOptions(),
       ]);
-      
-      if (projectsRes.data) setProjects(projectsRes.data);
-      if (contactsRes.data) setContacts(contactsRes.data);
-      if (employeesRes.data) setEmployees(employeesRes.data);
-      if (eventsRes.data) setEvents(eventsRes.data);
+      setProjects(p);
+      setContacts(c);
+      setEmployees(e);
+      setEvents(ev);
     };
-    
-    fetchOptions();
+
+    loadOptions();
   }, []);
 
   useEffect(() => {
@@ -64,19 +65,16 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
       setContactId(editingNote.contact_id || '');
       setEmployeeId(editingNote.employee_id || '');
       setEventId(editingNote.event_id || '');
-      
-      // Load existing attendees, discussion points, action items would go here
-      // For now, they'll be empty when editing
     }
   }, [editingNote]);
 
   const addAttendee = () => {
     if (!selectedAttendee) return;
-    
+
     const list = attendeeType === 'contact' ? contacts : employees;
     const person = list.find(p => p.id === selectedAttendee);
     if (!person) return;
-    
+
     const name = `${person.first_name} ${person.last_name}`;
     setAttendees([...attendees, { id: selectedAttendee, name, type: attendeeType }]);
     setSelectedAttendee('');
@@ -113,24 +111,19 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !meetingDate) return;
-    
+
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (editingNote) {
-      // Update existing meeting note
-      await supabase
-        .from('meeting_notes')
-        .update({
-          title,
-          meeting_date: meetingDate,
-          project_id: projectId || null,
-          contact_id: contactId || null,
-          employee_id: employeeId || null,
-          event_id: eventId || null,
-        })
-        .eq('id', editingNote.id);
-      
+      await updateMeetingNote(editingNote.id, {
+        title,
+        meeting_date: meetingDate,
+        project_id: projectId || null,
+        contact_id: contactId || null,
+        employee_id: employeeId || null,
+        event_id: eventId || null,
+      });
+
       // Reset form
       setTitle('');
       setMeetingDate('');
@@ -146,57 +139,29 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
       setSaving(false);
       return;
     }
-    
-    // Create new meeting note
-    const { data: meetingNote, error: meetingError } = await supabase
-      .from('meeting_notes')
-      .insert({
-        title,
-        meeting_date: meetingDate,
-        project_id: projectId || null,
-        contact_id: contactId || null,
-        employee_id: employeeId || null,
-        event_id: eventId || null,
-        created_by: user?.id
-      })
-      .select()
-      .single();
-    
-    if (meetingError || !meetingNote) {
-      setSaving(false);
-      return;
-    }
-    
-    // Save attendees
-    if (attendees.length > 0) {
-      const attendeeRecords = attendees.map(a => ({
-        meeting_note_id: meetingNote.id,
+
+    // Create new meeting note with attendees, discussion points, action items
+    await createMeetingNote({
+      title,
+      meeting_date: meetingDate,
+      project_id: projectId || null,
+      contact_id: contactId || null,
+      employee_id: employeeId || null,
+      event_id: eventId || null,
+      attendees: attendees.map(a => ({
         contact_id: a.type === 'contact' ? a.id : null,
-        employee_id: a.type === 'employee' ? a.id : null
-      }));
-      await supabase.from('meeting_attendees').insert(attendeeRecords);
-    }
-    
-    // Save discussion points
-    if (discussionPoints.length > 0) {
-      const dpRecords = discussionPoints.map((dp, index) => ({
-        meeting_note_id: meetingNote.id,
+        employee_id: a.type === 'employee' ? a.id : null,
+      })),
+      discussion_points: discussionPoints.map((dp, index) => ({
         content: dp.content,
-        sort_order: index
-      }));
-      await supabase.from('discussion_points').insert(dpRecords);
-    }
-    
-    // Save action items
-    if (actionItems.length > 0) {
-      const aiRecords = actionItems.map((ai, index) => ({
-        meeting_note_id: meetingNote.id,
+        sort_order: index,
+      })),
+      action_items: actionItems.map((ai, index) => ({
         content: ai.content,
-        sort_order: index
-      }));
-      await supabase.from('action_items').insert(aiRecords);
-    }
-    
+        sort_order: index,
+      })),
+    });
+
     // Reset form
     setTitle('');
     setMeetingDate('');
@@ -227,7 +192,7 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
           </button>
         )}
       </div>
-      
+
       {/* Basic Info */}
       <div className="space-y-4">
         <div>

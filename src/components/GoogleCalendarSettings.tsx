@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { checkGoogleCalendarConnection } from './actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -24,38 +24,23 @@ export default function GoogleCalendarSettings() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
   useEffect(() => {
     checkConnection();
   }, []);
 
   const checkConnection = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const result = await checkGoogleCalendarConnection();
+      if (!result.connected) {
         setLoading(false);
         return;
       }
 
-      const { data } = await supabase
-        .from('google_calendar_tokens')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (data) {
-        // Token row exists — validate by actually fetching calendars
-        const ok = await fetchCalendars();
-        if (ok) {
-          setConnected(true);
-          setConnectionError(null);
-        } else {
-          // fetchCalendars handles setting error / disconnected state
-        }
+      // Token row exists — validate by actually fetching calendars
+      const ok = await fetchCalendars();
+      if (ok) {
+        setConnected(true);
+        setConnectionError(null);
       }
     } catch (error) {
       console.error('Error checking connection:', error);
@@ -75,7 +60,6 @@ export default function GoogleCalendarSettings() {
       if (response.status === 401) {
         const data = await response.json().catch(() => ({}));
         if (data.reconnect) {
-          // Tokens were invalid and have been cleaned up server-side
           setConnected(false);
           setCalendars([]);
           setConnectionError('Your Google Calendar connection expired. Please reconnect.');

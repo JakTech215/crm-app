@@ -1,34 +1,30 @@
 // src/app/api/google/disconnect/route.ts
 // Disconnects Google Calendar integration
 
-import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
+import { NextResponse } from "next/server";
+import sql from "@/lib/db";
+import { getSessionUser } from "@/lib/auth";
 
 export async function POST() {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
 
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Delete tokens
-    await supabase
-      .from('google_calendar_tokens')
-      .delete()
-      .eq('user_id', user.id);
+    await sql`DELETE FROM google_calendar_tokens WHERE user_id = ${user.id}`;
 
     // Delete calendar selections
-    await supabase
-      .from('google_calendar_selections')
-      .delete()
-      .eq('user_id', user.id);
+    await sql`DELETE FROM google_calendar_selections WHERE user_id = ${user.id}`;
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error disconnecting Google Calendar:', error);
-    return NextResponse.json({ error: 'Failed to disconnect' }, { status: 500 });
+    console.error("Error disconnecting Google Calendar:", error);
+    return NextResponse.json(
+      { error: "Failed to disconnect" },
+      { status: 500 }
+    );
   }
 }

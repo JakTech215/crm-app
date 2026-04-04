@@ -1,31 +1,22 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import sql from "@/lib/db";
+import { getSessionUser } from "@/lib/auth";
 
 export async function DELETE(
   request: Request,
   { params }: { params: { id: string } }
 ) {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
 
-  if (userError || !user) {
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // try to delete the task; server client still obeys RLS but will
-  // return any rows removed so the caller can detect 0-row deletes.
-  const { data, error } = await supabase
-    .from("tasks")
-    .delete()
-    .eq("id", params.id)
-    .select();
+  try {
+    const data = await sql`DELETE FROM tasks WHERE id = ${params.id} RETURNING *`;
 
-  if (error) {
+    return NextResponse.json({ deleted: data.length, data });
+  } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-
-  return NextResponse.json({ deleted: data?.length || 0, data });
 }

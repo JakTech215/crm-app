@@ -1,23 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-
-function getAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
+import sql from "@/lib/db";
+import { getSessionUser } from "@/lib/auth";
 
 async function verifyAdmin() {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (!profile || profile.role !== "admin") return null;
+  const user = await getSessionUser();
+  if (!user || user.role !== "admin") return null;
   return user;
 }
 
@@ -25,14 +12,12 @@ export async function GET() {
   const admin = await verifyAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
-  const supabase = await createServerClient();
-  const { data, error } = await supabase
-    .from("user_profiles")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  try {
+    const data = await sql`SELECT * FROM user_profiles ORDER BY created_at DESC`;
+    return NextResponse.json(data);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -44,28 +29,27 @@ export async function POST(request: Request) {
 
   if (!email) return NextResponse.json({ error: "Email is required" }, { status: 400 });
 
-  const adminClient = getAdminClient();
+  try {
+    // Create user record directly
+    const userRows = await sql`
+      INSERT INTO users ${sql({ email, password_hash: "" })} RETURNING *
+    `;
+    const newUser = userRows[0];
 
-  // Invite user via Supabase Admin API
-  const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email);
+    // Create profile entry
+    const profileRows = await sql`
+      INSERT INTO user_profiles ${sql({
+        id: newUser.id,
+        email,
+        full_name: full_name || null,
+        role: role || "user",
+      })} RETURNING *
+    `;
 
-  if (inviteError) return NextResponse.json({ error: inviteError.message }, { status: 500 });
-
-  // Create profile entry
-  const supabase = await createServerClient();
-  const { data: profile, error: profileError } = await supabase
-    .from("user_profiles")
-    .insert({
-      id: inviteData.user.id,
-      email,
-      full_name: full_name || null,
-      role: role || "user",
-    })
-    .select()
-    .single();
-
-  if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 });
-  return NextResponse.json(profile);
+    return NextResponse.json(profileRows[0]);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
 
 export async function PATCH(request: Request) {
@@ -77,20 +61,18 @@ export async function PATCH(request: Request) {
 
   if (!id) return NextResponse.json({ error: "User ID is required" }, { status: 400 });
 
-  const supabase = await createServerClient();
   const updates: Record<string, string> = {};
   if (role) updates.role = role;
   if (full_name !== undefined) updates.full_name = full_name;
 
-  const { data, error } = await supabase
-    .from("user_profiles")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  try {
+    const rows = await sql`
+      UPDATE user_profiles SET ${sql(updates)} WHERE id = ${id} RETURNING *
+    `;
+    return NextResponse.json(rows[0]);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
 
 export async function DELETE(request: Request) {
@@ -102,9 +84,11 @@ export async function DELETE(request: Request) {
 
   if (!id) return NextResponse.json({ error: "User ID is required" }, { status: 400 });
 
-  const adminClient = getAdminClient();
-  const { error } = await adminClient.auth.admin.deleteUser(id);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+  try {
+    await sql`DELETE FROM user_profiles WHERE id = ${id}`;
+    await sql`DELETE FROM users WHERE id = ${id}`;
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }

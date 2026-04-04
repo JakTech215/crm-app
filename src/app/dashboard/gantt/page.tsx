@@ -2,7 +2,12 @@
 
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchGanttData,
+  fetchGanttEvents,
+  fetchGanttEventAttendees,
+  fetchCustomHolidays,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -101,7 +106,6 @@ const PRIORITY_BORDER: Record<string, string> = {
 type ZoomLevel = "day" | "week" | "month" | "quarter";
 
 export default function GanttPage() {
-  const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -194,31 +198,15 @@ export default function GanttPage() {
   }, [nameColWidth]);
 
   const fetchData = async () => {
-    const [taskResult, depResult, projResult, ptResult, assigneeResult, empResult] =
-      await Promise.all([
-        supabase
-          .from("tasks")
-          .select("*, contacts:contact_id(id, first_name, last_name)")
-          .order("start_date"),
-        supabase.from("task_dependencies").select("task_id, depends_on_task_id, dependency_type, lag_days"),
-        supabase.from("projects").select("id, name").order("name"),
-        supabase.from("project_tasks").select("task_id, project_id"),
-        supabase.from("task_assignees").select("task_id, employee_id"),
-        supabase.from("employees").select("id, first_name, last_name").eq("status", "active").order("first_name"),
-      ]);
+    const { taskData: rawTaskData, depData, projData, ptLinks, assigneeData, empData } = await fetchGanttData();
 
-    if (taskResult.error) console.error("Gantt: tasks query failed:", taskResult.error);
-    if (projResult.error) console.error("Gantt: projects query failed:", projResult.error);
-    if (ptResult.error) console.error("Gantt: project_tasks query failed:", ptResult.error);
-    if (assigneeResult.error) console.error("Gantt: task_assignees query failed:", assigneeResult.error);
-    if (empResult.error) console.error("Gantt: employees query failed:", empResult.error);
-
-    const taskData = taskResult.data;
-    const depData = depResult.data;
-    const projData = projResult.data;
-    const ptLinks = ptResult.data;
-    const assigneeData = assigneeResult.data;
-    const empData = empResult.data;
+    // Map task rows to include contacts in expected format
+    const taskData = rawTaskData.map((r: Record<string, unknown>) => ({
+      ...r,
+      contacts: r.contact_id
+        ? { first_name: r.contact_first_name, last_name: r.contact_last_name }
+        : null,
+    }));
 
     const taskProjectsMap: Record<string, string[]> = {};
     (ptLinks || []).forEach((link: { task_id: string; project_id: string }) => {
@@ -302,31 +290,20 @@ export default function GanttPage() {
 
     const finalTasks = enriched.filter((t) => !collapsedIds.has(t.id)) as GanttTask[];
 
-    const { data: eventData } = await supabase
-      .from("events")
-      .select("id, title, event_date, event_type, status, project_id, contact_id, contacts:contact_id(id, first_name, last_name)")
-      .order("event_date");
+    const eventData = await fetchGanttEvents();
 
-    if (eventData) {
-      const { data: eaData } = await supabase
-        .from("event_attendees")
-        .select("event_id, employee_id")
-        .in("event_id", eventData.map((e: { id: string }) => e.id));
-
-      const eventAttendeeMap: Record<string, string[]> = {};
-      (eaData || []).forEach((ea: { event_id: string; employee_id: string }) => {
-        if (!eventAttendeeMap[ea.event_id]) eventAttendeeMap[ea.event_id] = [];
-        eventAttendeeMap[ea.event_id].push(ea.employee_id);
-      });
+    if (eventData && eventData.length > 0) {
+      const eventAttendeeMap = await fetchGanttEventAttendees(eventData.map((e: { id: string }) => e.id));
 
       const eventRows: GanttTask[] = eventData.map((e: Record<string, unknown>) => {
-        const contactObj = Array.isArray(e.contacts) ? e.contacts[0] : e.contacts;
-        const attIds = eventAttendeeMap[e.id as string] || [];
+        const attIds = (eventAttendeeMap as Record<string, string[]>)[e.id as string] || [];
         const projId = e.project_id as string | null;
         const projName = projId ? (projData || []).find((p: { id: string }) => p.id === projId)?.name : null;
+        const contactFirstName = e.contact_first_name as string | null;
+        const contactLastName = e.contact_last_name as string | null;
         return {
           id: `event-${e.id}`,
-          title: `📅 ${e.title}`,
+          title: `\u{1F4C5} ${e.title}`,
           status: e.status as string,
           priority: "medium",
           start_date: e.event_date as string,
@@ -340,7 +317,7 @@ export default function GanttPage() {
             return emp ? employeeName(emp) : "";
           }).filter(Boolean),
           contact_id: e.contact_id as string | null,
-          contact_name: contactObj ? `${(contactObj as { first_name: string }).first_name} ${(contactObj as { last_name: string }).last_name || ""}`.trim() : null,
+          contact_name: contactFirstName ? `${contactFirstName}${contactLastName ? ` ${contactLastName}` : ""}` : null,
           is_recurring: false,
           recurrence_source_task_id: null,
           recurrence_frequency: null,
@@ -355,13 +332,13 @@ export default function GanttPage() {
     }
 
     try {
-      const [fedHolidays, customResult] = await Promise.all([
+      const [fedHolidays, customHolidayRows] = await Promise.all([
         getFederalHolidays(),
-        supabase.from("holidays").select("holiday_date, name"),
+        fetchCustomHolidays(),
       ]);
       const allHolidays = [
         ...fedHolidays,
-        ...((customResult.data || []) as { holiday_date: string; name: string }[]).map(h => ({ date: h.holiday_date, name: h.name })),
+        ...(customHolidayRows || []).map((h: { holiday_date: string; name: string }) => ({ date: h.holiday_date, name: h.name })),
       ];
       setHolidayMap(buildHolidayMap(allHolidays));
     } catch {

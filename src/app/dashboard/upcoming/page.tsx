@@ -2,7 +2,16 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchUpcomingTasks,
+  fetchTaskAssignees,
+  fetchProjectTaskLinks,
+  fetchTaskTypes as fetchTaskTypesAction,
+  fetchActiveEmployees,
+  fetchContacts as fetchContactsAction,
+  fetchProjects as fetchProjectsAction,
+  updateTask,
+} from "./actions";
 import {
   Card,
   CardContent,
@@ -114,7 +123,6 @@ interface TaskProject {
 }
 
 export default function UpcomingTasksPage() {
-  const supabase = createClient();
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -133,67 +141,32 @@ export default function UpcomingTasksPage() {
   const fetchTasks = async () => {
     const today = todayCST();
 
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*, contacts:contact_id(id, first_name, last_name)")
-      .neq("status", "completed")
-      .gte("due_date", today)
-      .order("due_date", { ascending: true });
+    try {
+      const data = await fetchUpcomingTasks(today);
+      const rows = (data || []).map((r: Record<string, unknown>) => ({
+        ...r,
+        contacts: r.contact_id
+          ? { id: r.contact_id_ref, first_name: r.contact_first_name, last_name: r.contact_last_name }
+          : null,
+      }));
 
-    if (error) {
-      console.error("Failed to fetch upcoming tasks:", error);
-      setLoading(false);
-      return;
-    }
+      const taskIds = rows.map((t: { id: string }) => t.id);
+      const assigneeMap = await fetchTaskAssignees(taskIds);
 
-    const taskIds = (data || []).map((t: { id: string }) => t.id);
-    const assigneeMap: Record<string, TaskAssignee[]> = {};
+      const tasksWithAssignees = rows.map((t: Task) => ({
+        ...t,
+        task_assignees: (assigneeMap as Record<string, TaskAssignee[]>)[t.id] || [],
+      }));
 
-    if (taskIds.length > 0) {
-      const { data: assignees } = await supabase
-        .from("task_assignees")
-        .select("task_id, employee_id, employees(id, first_name, last_name)")
-        .in("task_id", taskIds);
+      setTasks(tasksWithAssignees as Task[]);
 
-      if (assignees) {
-        for (const a of assignees as unknown as (TaskAssignee & {
-          task_id: string;
-        })[]) {
-          if (!assigneeMap[a.task_id]) assigneeMap[a.task_id] = [];
-          assigneeMap[a.task_id].push(a);
-        }
-      }
-    }
+      // Fetch project links
+      const { projectTasks, projects: projectData } = await fetchProjectTaskLinks(taskIds);
 
-    const tasksWithAssignees = (data || []).map((t: Task) => ({
-      ...t,
-      task_assignees: assigneeMap[t.id] || [],
-    }));
-
-    setTasks(tasksWithAssignees as Task[]);
-
-    // Fetch project links from project_tasks junction table
-    if (taskIds.length > 0) {
-      const { data: projectTasks } = await supabase
-        .from("project_tasks")
-        .select("task_id, project_id")
-        .in("task_id", taskIds);
-
-      if (projectTasks && projectTasks.length > 0) {
-        const projectIds = [
-          ...new Set(projectTasks.map((pt: { project_id: string }) => pt.project_id)),
-        ];
-
-        const { data: projectData } = await supabase
-          .from("projects")
-          .select("id, name")
-          .in("id", projectIds);
-
+      if (projectTasks.length > 0) {
         const projectNameMap: Record<string, string> = {};
-        if (projectData) {
-          for (const p of projectData) {
-            projectNameMap[p.id] = p.name;
-          }
+        for (const p of projectData) {
+          projectNameMap[p.id] = p.name;
         }
 
         const tpMap: Record<string, TaskProject[]> = {};
@@ -207,42 +180,30 @@ export default function UpcomingTasksPage() {
 
         setTaskProjectMap(tpMap);
       }
+    } catch (err) {
+      console.error("Failed to fetch upcoming tasks:", err);
     }
 
     setLoading(false);
   };
 
-  const fetchTaskTypes = async () => {
-    const { data } = await supabase
-      .from("task_types")
-      .select("id, name, color")
-      .eq("is_active", true)
-      .order("name");
+  const fetchTaskTypesData = async () => {
+    const data = await fetchTaskTypesAction();
     setTaskTypes(data || []);
   };
 
-  const fetchEmployees = async () => {
-    const { data } = await supabase
-      .from("employees")
-      .select("id, first_name, last_name")
-      .eq("status", "active")
-      .order("first_name");
+  const fetchEmployeesData = async () => {
+    const data = await fetchActiveEmployees();
     setEmployees(data || []);
   };
 
-  const fetchContacts = async () => {
-    const { data } = await supabase
-      .from("contacts")
-      .select("id, first_name, last_name")
-      .order("first_name");
+  const fetchContactsData = async () => {
+    const data = await fetchContactsAction();
     setContacts(data || []);
   };
 
-  const fetchProjects = async () => {
-    const { data } = await supabase
-      .from("projects")
-      .select("id, name")
-      .order("name");
+  const fetchProjectsData = async () => {
+    const data = await fetchProjectsAction();
     setProjects(data || []);
   };
 
@@ -254,7 +215,7 @@ export default function UpcomingTasksPage() {
     if (field === "status" && value === "completed") {
       updateData.completed_at = nowUTC();
     }
-    await supabase.from("tasks").update(updateData).eq("id", taskId);
+    await updateTask(taskId, updateData);
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } : t));
     setSavingCell(null);
     setSavedCell(key);
@@ -263,10 +224,10 @@ export default function UpcomingTasksPage() {
 
   useEffect(() => {
     fetchTasks();
-    fetchEmployees();
-    fetchTaskTypes();
-    fetchContacts();
-    fetchProjects();
+    fetchEmployeesData();
+    fetchTaskTypesData();
+    fetchContactsData();
+    fetchProjectsData();
   }, []);
 
   const filterDefs: FilterDef[] = useMemo(() => [

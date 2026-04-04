@@ -2,8 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatDateTime, formatTime, isBeforeToday } from "@/lib/dates";
+import {
+  fetchEvent as fetchEventAction,
+  fetchAttendees as fetchAttendeesAction,
+  fetchNotes as fetchNotesAction,
+  fetchProjectName as fetchProjectNameAction,
+  fetchActiveEmployees,
+  fetchAllProjects,
+  fetchAllContacts,
+  updateEventStatus,
+  addAttendee,
+  removeAttendee,
+  addNote,
+  deleteNote as deleteNoteAction,
+  updateEventFull,
+  deleteEventFull,
+  convertEventToTask,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -146,7 +162,6 @@ const attendanceStatusColors: Record<string, string> = {
 };
 
 export default function EventDetailPage() {
-  const supabase = createClient();
   const router = useRouter();
   const params = useParams();
   const eventId = params.id as string;
@@ -201,90 +216,64 @@ export default function EventDetailPage() {
 
   // --- Data fetching ---
 
-  const fetchEvent = async () => {
-    const { data, error } = await supabase
-      .from("events")
-      .select("*, contacts:contact_id(id, first_name, last_name)")
-      .eq("id", eventId)
-      .single();
-
-    if (error) {
-      console.error("Failed to fetch event:", error);
-      setFetchError(error.message);
-      setLoading(false);
-      return;
+  const fetchEventData = async () => {
+    try {
+      const data = await fetchEventAction(eventId);
+      if (!data) {
+        setFetchError("Event not found");
+        setLoading(false);
+        return;
+      }
+      setEvent(data as unknown as EventRecord);
+    } catch (err) {
+      console.error("Failed to fetch event:", err);
+      setFetchError(err instanceof Error ? err.message : "Failed to fetch event");
     }
-
-    setEvent(data as EventRecord);
     setLoading(false);
   };
 
-  const fetchAttendees = async () => {
-    const { data } = await supabase
-      .from("event_attendees")
-      .select("*, employees:employee_id(id, first_name, last_name)")
-      .eq("event_id", eventId);
-
+  const fetchAttendeesData = async () => {
+    const data = await fetchAttendeesAction(eventId);
     setAttendees((data as unknown as EventAttendee[]) || []);
   };
 
-  const fetchNotes = async () => {
-    const { data } = await supabase
-      .from("notes_standalone")
-      .select("*")
-      .eq("event_id", eventId)
-      .order("created_at", { ascending: false });
-
+  const fetchNotesData = async () => {
+    const data = await fetchNotesAction(eventId);
     setNotes(data || []);
   };
 
-  const fetchProjectName = async (projectId: string) => {
-    const { data } = await supabase
-      .from("projects")
-      .select("name")
-      .eq("id", projectId)
-      .single();
-
-    setProjectName(data?.name || null);
+  const fetchProjectNameData = async (projectId: string) => {
+    const name = await fetchProjectNameAction(projectId);
+    setProjectName(name);
   };
 
-  const fetchAllEmployees = async () => {
-    const { data } = await supabase
-      .from("employees")
-      .select("id, first_name, last_name")
-      .eq("status", "active")
-      .order("first_name");
+  const fetchAllEmployeesData = async () => {
+    const data = await fetchActiveEmployees();
     setAllEmployees(data || []);
   };
 
-  const fetchAllProjects = async () => {
-    const { data } = await supabase
-      .from("projects")
-      .select("id, name")
-      .order("name");
+  const fetchAllProjectsData = async () => {
+    const data = await fetchAllProjects();
     setAllProjects(data || []);
   };
 
-  const fetchAllContacts = async () => {
-    const { data } = await supabase
-      .from("contacts")
-      .select("id, first_name, last_name")
-      .order("first_name");
+  const fetchAllContactsData = async () => {
+    const data = await fetchAllContacts();
     setAllContacts(data || []);
   };
 
   useEffect(() => {
-    fetchEvent();
-    fetchAttendees();
-    fetchNotes();
-    fetchAllEmployees();
-    fetchAllProjects();
-    fetchAllContacts();
+    fetchEventData();
+    fetchAttendeesData();
+    fetchNotesData();
+    fetchAllEmployeesData();
+    fetchAllProjectsData();
+    fetchAllContactsData();
   }, [eventId]);
 
   useEffect(() => {
     if (event?.project_id) {
-      fetchProjectName(event.project_id);
+      fetchProjectNameData(event.project_id);
     } else {
       setProjectName(null);
     }
@@ -297,7 +286,7 @@ export default function EventDetailPage() {
     setSavingField("status");
     setSavedField(null);
 
-    await supabase.from("events").update({ status: value }).eq("id", event.id);
+    await updateEventStatus(event.id, value);
 
     setEvent({ ...event, status: value });
     setSavingField(null);
@@ -308,17 +297,13 @@ export default function EventDetailPage() {
   // --- Attendee handlers ---
 
   const handleAddAttendee = async (employeeId: string) => {
-    await supabase.from("event_attendees").insert({
-      event_id: eventId,
-      employee_id: employeeId,
-      attendance_status: "invited",
-    });
-    fetchAttendees();
+    await addAttendee(eventId, employeeId);
+    fetchAttendeesData();
   };
 
   const handleRemoveAttendee = async (attendeeId: string) => {
-    await supabase.from("event_attendees").delete().eq("id", attendeeId);
-    fetchAttendees();
+    await removeAttendee(attendeeId);
+    fetchAttendeesData();
   };
 
   // --- Notes handlers ---
@@ -327,25 +312,17 @@ export default function EventDetailPage() {
     if (!newNote.trim()) return;
     setSavingNote(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    await supabase.from("notes_standalone").insert({
-      content: newNote.trim(),
-      event_id: eventId,
-      created_by: user?.id || null,
-    });
+    await addNote(eventId, newNote.trim());
 
     setNewNote("");
     setSavingNote(false);
-    fetchNotes();
+    fetchNotesData();
   };
 
   const handleDeleteNote = async (noteId: string) => {
-    await supabase.from("notes_standalone").delete().eq("id", noteId);
+    await deleteNoteAction(noteId);
     setDeleteNoteId(null);
-    fetchNotes();
+    fetchNotesData();
   };
 
   // --- Edit handlers ---
@@ -381,61 +358,33 @@ export default function EventDetailPage() {
     setSavingEdit(true);
     setEditError(null);
 
-    const { error } = await supabase
-      .from("events")
-      .update({
-        title: editForm.title,
-        description: editForm.description || null,
-        event_date: editForm.event_date || null,
-        event_time: editForm.event_time || null,
-        location: editForm.location || null,
-        event_type: editForm.event_type,
-        status: editForm.status,
-        project_id: editForm.project_id || null,
-        contact_id: editForm.contact_id || null,
-      })
-      .eq("id", eventId);
-
-    if (error) {
-      setEditError(error.message);
+    try {
+      await updateEventFull(
+        eventId,
+        {
+          title: editForm.title,
+          description: editForm.description || null,
+          event_date: editForm.event_date || null,
+          event_time: editForm.event_time || null,
+          location: editForm.location || null,
+          event_type: editForm.event_type,
+          status: editForm.status,
+          project_id: editForm.project_id || null,
+          contact_id: editForm.contact_id || null,
+        },
+        editSelectedEmployees
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "An error occurred";
+      setEditError(message);
       setSavingEdit(false);
       return;
-    }
-
-    // Update attendees: delete existing, insert new
-    const { error: deleteAttendeesError } = await supabase
-      .from("event_attendees")
-      .delete()
-      .eq("event_id", eventId);
-
-    if (deleteAttendeesError) {
-      setEditError("Failed to update attendees: " + deleteAttendeesError.message);
-      setSavingEdit(false);
-      return;
-    }
-
-    if (editSelectedEmployees.length > 0) {
-      const { error: insertAttendeesError } = await supabase
-        .from("event_attendees")
-        .insert(
-          editSelectedEmployees.map((empId) => ({
-            event_id: eventId,
-            employee_id: empId,
-            attendance_status: "invited",
-          }))
-        );
-
-      if (insertAttendeesError) {
-        setEditError("Failed to assign attendees: " + insertAttendeesError.message);
-        setSavingEdit(false);
-        return;
-      }
     }
 
     setSavingEdit(false);
     setEditOpen(false);
-    fetchEvent();
-    fetchAttendees();
+    fetchEventData();
+    fetchAttendeesData();
   };
 
   // --- Delete handler ---
@@ -443,16 +392,11 @@ export default function EventDetailPage() {
   const handleDeleteEvent = async () => {
     setDeleting(true);
 
-    // Clean up related records
-    await Promise.all([
-      supabase.from("event_attendees").delete().eq("event_id", eventId),
-      supabase.from("notes_standalone").delete().eq("event_id", eventId),
-    ]);
-
-    const { error } = await supabase.from("events").delete().eq("id", eventId);
-
-    if (error) {
-      setEditError("Failed to delete event: " + error.message);
+    try {
+      await deleteEventFull(eventId);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete event";
+      setEditError(message);
       setDeleting(false);
       setDeleteCheckOpen(false);
       return;
@@ -467,39 +411,20 @@ export default function EventDetailPage() {
     if (!event) return;
     setConverting(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const { data: taskData, error: taskError } = await supabase
-      .from("tasks")
-      .insert({
+    try {
+      const taskId = await convertEventToTask({
         title: event.title,
-        description: event.description || null,
-        contact_id: event.contact_id || null,
-        status: "pending",
-        priority: "medium",
-        created_by: user?.id || null,
-      })
-      .select("id")
-      .single();
-
-    if (taskError || !taskData) {
-      console.error("Failed to create task:", taskError);
-      setConverting(false);
-      return;
-    }
-
-    // Link to project via project_tasks junction table if event has project_id
-    if (event.project_id) {
-      await supabase.from("project_tasks").insert({
-        task_id: taskData.id,
+        description: event.description,
+        contact_id: event.contact_id,
         project_id: event.project_id,
       });
-    }
 
-    setConverting(false);
-    router.push(`/dashboard/tasks/${taskData.id}`);
+      setConverting(false);
+      router.push(`/dashboard/tasks/${taskId}`);
+    } catch (err) {
+      console.error("Failed to create task:", err);
+      setConverting(false);
+    }
   };
 
   // --- Render ---

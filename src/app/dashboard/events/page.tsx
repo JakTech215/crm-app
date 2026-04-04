@@ -2,8 +2,18 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { formatDate as fmtDate, formatTime, nowUTC, isBeforeToday } from "@/lib/dates";
+import {
+  fetchEvents as fetchEventsAction,
+  fetchEventAttendees,
+  fetchActiveEmployees,
+  fetchProjects as fetchProjectsAction,
+  fetchContacts as fetchContactsAction,
+  updateEventStatus,
+  createEvent,
+  updateEvent,
+  deleteEvent as deleteEventAction,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -169,7 +179,6 @@ const defaultForm = {
 // ---------------------------------------------------------------------------
 
 export default function EventsPage() {
-  const supabase = createClient();
   const router = useRouter();
 
   // Data
@@ -224,75 +233,45 @@ export default function EventsPage() {
   // -----------------------------------------------------------------------
 
   const fetchEvents = async () => {
-    const { data, error: fetchError } = await supabase
-      .from("events")
-      .select("*, contacts:contact_id(id, first_name, last_name)")
-      .order("event_date", { ascending: false });
+    try {
+      const data = await fetchEventsAction();
+      const rows = (data || []) as EventRow[];
+      const eventIds = rows.map((e) => e.id);
 
-    if (fetchError) {
-      console.error("Failed to fetch events:", fetchError);
-      setLoading(false);
-      return;
+      const attendeeMap = await fetchEventAttendees(eventIds);
+
+      const eventsWithAttendees = rows.map((ev) => ({
+        ...ev,
+        attendees: (attendeeMap as Record<string, EventAttendee[]>)[ev.id] || [],
+      }));
+
+      setEvents(eventsWithAttendees);
+    } catch (err) {
+      console.error("Failed to fetch events:", err);
     }
-
-    const rows = (data || []) as EventRow[];
-    const eventIds = rows.map((e) => e.id);
-
-    // Fetch attendees separately
-    const attendeeMap: Record<string, EventAttendee[]> = {};
-    if (eventIds.length > 0) {
-      const { data: attendees } = await supabase
-        .from("event_attendees")
-        .select("event_id, employee_id, employees(id, first_name, last_name)")
-        .in("event_id", eventIds);
-
-      if (attendees) {
-        for (const a of attendees as unknown as (EventAttendee & { event_id: string })[]) {
-          if (!attendeeMap[a.event_id]) attendeeMap[a.event_id] = [];
-          attendeeMap[a.event_id].push(a);
-        }
-      }
-    }
-
-    const eventsWithAttendees = rows.map((ev) => ({
-      ...ev,
-      attendees: attendeeMap[ev.id] || [],
-    }));
-
-    setEvents(eventsWithAttendees);
     setLoading(false);
   };
 
-  const fetchEmployees = async () => {
-    const { data } = await supabase
-      .from("employees")
-      .select("id, first_name, last_name")
-      .eq("status", "active")
-      .order("first_name");
+  const fetchEmployeesData = async () => {
+    const data = await fetchActiveEmployees();
     setEmployees(data || []);
   };
 
-  const fetchProjects = async () => {
-    const { data } = await supabase
-      .from("projects")
-      .select("id, name")
-      .order("name");
+  const fetchProjectsData = async () => {
+    const data = await fetchProjectsAction();
     setProjects(data || []);
   };
 
-  const fetchContacts = async () => {
-    const { data } = await supabase
-      .from("contacts")
-      .select("id, first_name, last_name")
-      .order("first_name");
+  const fetchContactsData = async () => {
+    const data = await fetchContactsAction();
     setContacts(data || []);
   };
 
   useEffect(() => {
     fetchEvents();
-    fetchEmployees();
-    fetchProjects();
-    fetchContacts();
+    fetchEmployeesData();
+    fetchProjectsData();
+    fetchContactsData();
   }, []);
 
   // Initialize filter values from URL params once data is loaded
@@ -311,10 +290,7 @@ export default function EventsPage() {
     setSavingCell(key);
     setSavedCell(null);
 
-    await supabase
-      .from("events")
-      .update({ status: value, updated_at: nowUTC() })
-      .eq("id", eventId);
+    await updateEventStatus(eventId, value);
 
     setEvents((prev) =>
       prev.map((ev) => (ev.id === eventId ? { ...ev, status: value } : ev))
@@ -360,17 +336,6 @@ export default function EventsPage() {
     setSaving(true);
     setError(null);
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      setError(authError?.message || "You must be logged in.");
-      setSaving(false);
-      return;
-    }
-
     const payload = {
       title: form.title,
       description: form.description || null,
@@ -383,71 +348,17 @@ export default function EventsPage() {
       contact_id: form.contact_id || null,
     };
 
-    if (editingId) {
-      // ----- Update -----
-      const { error: updateError } = await supabase
-        .from("events")
-        .update({ ...payload, updated_at: nowUTC() })
-        .eq("id", editingId);
-
-      if (updateError) {
-        setError(updateError.message);
-        setSaving(false);
-        return;
+    try {
+      if (editingId) {
+        await updateEvent(editingId, payload, selectedEmployees);
+      } else {
+        await createEvent(payload, selectedEmployees);
       }
-
-      // Replace attendees: delete old, insert new
-      await supabase
-        .from("event_attendees")
-        .delete()
-        .eq("event_id", editingId);
-
-      if (selectedEmployees.length > 0) {
-        const { error: attendeeError } = await supabase
-          .from("event_attendees")
-          .insert(
-            selectedEmployees.map((empId) => ({
-              event_id: editingId,
-              employee_id: empId,
-            }))
-          );
-        if (attendeeError) {
-          setError(
-            "Event updated but failed to save attendees: " +
-              attendeeError.message
-          );
-        }
-      }
-    } else {
-      // ----- Create -----
-      const { data: newEvent, error: insertError } = await supabase
-        .from("events")
-        .insert({ ...payload, created_by: user.id })
-        .select()
-        .single();
-
-      if (insertError) {
-        setError(insertError.message);
-        setSaving(false);
-        return;
-      }
-
-      if (newEvent && selectedEmployees.length > 0) {
-        const { error: attendeeError } = await supabase
-          .from("event_attendees")
-          .insert(
-            selectedEmployees.map((empId) => ({
-              event_id: newEvent.id,
-              employee_id: empId,
-            }))
-          );
-        if (attendeeError) {
-          setError(
-            "Event created but failed to add attendees: " +
-              attendeeError.message
-          );
-        }
-      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "An error occurred";
+      setError(message);
+      setSaving(false);
+      return;
     }
 
     setForm(defaultForm);
@@ -474,8 +385,7 @@ export default function EventsPage() {
     if (!deleteEventId) return;
     setDeleteLoading(true);
 
-    await supabase.from("event_attendees").delete().eq("event_id", deleteEventId);
-    await supabase.from("events").delete().eq("id", deleteEventId);
+    await deleteEventAction(deleteEventId);
 
     setEvents((prev) => prev.filter((ev) => ev.id !== deleteEventId));
     setDeleteLoading(false);

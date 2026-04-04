@@ -1,7 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchContactStatuses,
+  saveContactStatus,
+  deleteContactStatus,
+  fetchProjectStatuses,
+  saveProjectStatus,
+  deleteProjectStatus,
+  fetchTaskTypes as fetchTaskTypesAction,
+  saveTaskType,
+  deleteTaskType,
+  fetchTaskTemplates,
+  fetchWorkflowSteps,
+  fetchActiveTaskTypes,
+  saveTaskTemplate,
+  deleteTaskTemplate,
+  checkIsAdmin,
+  fetchHolidays as fetchHolidaysAction,
+  saveHoliday,
+  deleteHoliday,
+  upsertFederalHoliday,
+  getCurrentUserId,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -108,7 +129,6 @@ function colorCls(color: string) {
 // ================================================================
 
 function ContactStatusesSection() {
-  const supabase = createClient();
   const [statuses, setStatuses] = useState<StatusItem[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -116,15 +136,12 @@ function ContactStatusesSection() {
   const [form, setForm] = useState({ name: "", color: "gray", description: "" });
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const fetch = async () => {
-    const { data } = await supabase
-      .from("contact_statuses")
-      .select("*")
-      .order("name");
+  const fetchData = async () => {
+    const data = await fetchContactStatuses();
     setStatuses(data || []);
   };
 
-  useEffect(() => { fetch(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const resetForm = () => {
     setForm({ name: "", color: "gray", description: "" });
@@ -136,21 +153,16 @@ function ContactStatusesSection() {
     e.preventDefault();
     setSaving(true);
     setSaveError(null);
-    if (editing) {
-      const { error } = await supabase
-        .from("contact_statuses")
-        .update({ name: form.name, color: form.color, description: form.description || null })
-        .eq("id", editing.id);
-      if (error) { setSaveError(error.message); setSaving(false); return; }
-    } else {
-      const { error } = await supabase
-        .from("contact_statuses")
-        .insert({ name: form.name, color: form.color, description: form.description || null });
-      if (error) { setSaveError(error.message); setSaving(false); return; }
+    try {
+      await saveContactStatus(editing?.id || null, { name: form.name, color: form.color, description: form.description || null });
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      setSaving(false);
+      return;
     }
     setSaving(false);
     resetForm();
-    fetch();
+    fetchData();
   };
 
   const handleEdit = (s: StatusItem) => {
@@ -161,9 +173,13 @@ function ContactStatusesSection() {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from("contact_statuses").delete().eq("id", id);
-    if (error) { setSaveError(error.message); return; }
-    fetch();
+    try {
+      await deleteContactStatus(id);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to delete");
+      return;
+    }
+    fetchData();
   };
 
   return (
@@ -248,7 +264,6 @@ function ContactStatusesSection() {
 // ================================================================
 
 function ProjectStatusesSection() {
-  const supabase = createClient();
   const [statuses, setStatuses] = useState<StatusItem[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -256,15 +271,12 @@ function ProjectStatusesSection() {
   const [form, setForm] = useState({ name: "", color: "blue", description: "" });
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const fetch = async () => {
-    const { data } = await supabase
-      .from("project_statuses")
-      .select("*")
-      .order("name");
+  const fetchData = async () => {
+    const data = await fetchProjectStatuses();
     setStatuses(data || []);
   };
 
-  useEffect(() => { fetch(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const resetForm = () => {
     setForm({ name: "", color: "blue", description: "" });
@@ -276,21 +288,16 @@ function ProjectStatusesSection() {
     e.preventDefault();
     setSaving(true);
     setSaveError(null);
-    if (editing) {
-      const { error } = await supabase
-        .from("project_statuses")
-        .update({ name: form.name, color: form.color, description: form.description || null })
-        .eq("id", editing.id);
-      if (error) { setSaveError(error.message); setSaving(false); return; }
-    } else {
-      const { error } = await supabase
-        .from("project_statuses")
-        .insert({ name: form.name, color: form.color, description: form.description || null });
-      if (error) { setSaveError(error.message); setSaving(false); return; }
+    try {
+      await saveProjectStatus(editing?.id || null, { name: form.name, color: form.color, description: form.description || null });
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      setSaving(false);
+      return;
     }
     setSaving(false);
     resetForm();
-    fetch();
+    fetchData();
   };
 
   const handleEdit = (s: StatusItem) => {
@@ -301,9 +308,13 @@ function ProjectStatusesSection() {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from("project_statuses").delete().eq("id", id);
-    if (error) { setSaveError(error.message); return; }
-    fetch();
+    try {
+      await deleteProjectStatus(id);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to delete");
+      return;
+    }
+    fetchData();
   };
 
   return (
@@ -388,7 +399,6 @@ function ProjectStatusesSection() {
 // ================================================================
 
 function TaskTypesSection() {
-  const supabase = createClient();
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -396,15 +406,12 @@ function TaskTypesSection() {
   const [form, setForm] = useState({ name: "", color: "gray", is_active: true });
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const fetch = async () => {
-    const { data } = await supabase
-      .from("task_types")
-      .select("*")
-      .order("name");
+  const fetchData = async () => {
+    const data = await fetchTaskTypesAction();
     setTaskTypes(data || []);
   };
 
-  useEffect(() => { fetch(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const resetForm = () => {
     setForm({ name: "", color: "gray", is_active: true });
@@ -416,21 +423,16 @@ function TaskTypesSection() {
     e.preventDefault();
     setSaving(true);
     setSaveError(null);
-    if (editing) {
-      const { error } = await supabase
-        .from("task_types")
-        .update({ name: form.name, color: form.color, is_active: form.is_active })
-        .eq("id", editing.id);
-      if (error) { setSaveError(error.message); setSaving(false); return; }
-    } else {
-      const { error } = await supabase
-        .from("task_types")
-        .insert({ name: form.name, color: form.color, is_active: form.is_active });
-      if (error) { setSaveError(error.message); setSaving(false); return; }
+    try {
+      await saveTaskType(editing?.id || null, { name: form.name, color: form.color, is_active: form.is_active });
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      setSaving(false);
+      return;
     }
     setSaving(false);
     resetForm();
-    fetch();
+    fetchData();
   };
 
   const handleEdit = (tt: TaskType) => {
@@ -441,9 +443,13 @@ function TaskTypesSection() {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from("task_types").delete().eq("id", id);
-    if (error) { setSaveError(error.message); return; }
-    fetch();
+    try {
+      await deleteTaskType(id);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to delete");
+      return;
+    }
+    fetchData();
   };
 
   return (
@@ -532,7 +538,6 @@ function TaskTypesSection() {
 // ================================================================
 
 function TaskTemplatesSection() {
-  const supabase = createClient();
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [open, setOpen] = useState(false);
@@ -561,16 +566,10 @@ function TaskTemplatesSection() {
   });
 
   const fetchData = async () => {
-    const { data } = await supabase
-      .from("task_templates")
-      .select("*")
-      .order("name");
+    const data = await fetchTaskTemplates();
     setTemplates(data || []);
 
-    const { data: steps } = await supabase
-      .from("task_workflow_steps")
-      .select("*")
-      .order("step_order");
+    const steps = await fetchWorkflowSteps();
     if (steps) {
       const map: Record<string, { step_order: number; next_template_id: string; delay_days: number; trigger_condition: string }[]> = {};
       for (const s of steps as { template_id: string; step_order: number; next_template_id: string; delay_days: number; trigger_condition?: string }[]) {
@@ -585,11 +584,7 @@ function TaskTemplatesSection() {
       setWorkflowSteps(map);
     }
 
-    const { data: types } = await supabase
-      .from("task_types")
-      .select("id, name, color, is_active")
-      .eq("is_active", true)
-      .order("name");
+    const types = await fetchActiveTaskTypes();
     if (types) setTaskTypes(types);
   };
 
@@ -623,32 +618,12 @@ function TaskTemplatesSection() {
       recurrence_count: form.is_recurring && form.recurrence_count ? parseInt(form.recurrence_count) : null,
     };
 
-    let templateId = editing?.id;
-
-    if (editing) {
-      const { error } = await supabase.from("task_templates").update(payload).eq("id", editing.id);
-      if (error) { setSaveError(error.message); setSaving(false); return; }
-    } else {
-      const { data: inserted, error } = await supabase.from("task_templates").insert(payload).select("id").single();
-      if (error) { setSaveError(error.message); setSaving(false); return; }
-      templateId = inserted.id;
-    }
-
-    // Save workflow steps
-    if (templateId) {
-      await supabase.from("task_workflow_steps").delete().eq("template_id", templateId);
-      const validSteps = formSteps.filter((s) => s.next_template_id);
-      if (validSteps.length > 0) {
-        const stepRows = validSteps.map((s, i) => ({
-          template_id: templateId as string,
-          step_order: i + 1,
-          next_template_id: s.next_template_id,
-          delay_days: s.delay_days,
-          trigger_condition: s.trigger_condition,
-        }));
-        const { error: stepError } = await supabase.from("task_workflow_steps").insert(stepRows);
-        if (stepError) { setSaveError(stepError.message); setSaving(false); return; }
-      }
+    try {
+      await saveTaskTemplate(editing?.id || null, payload, formSteps);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      setSaving(false);
+      return;
     }
 
     setSaving(false);
@@ -682,9 +657,12 @@ function TaskTemplatesSection() {
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from("task_workflow_steps").delete().eq("template_id", id);
-    const { error } = await supabase.from("task_templates").delete().eq("id", id);
-    if (error) { setSaveError(error.message); return; }
+    try {
+      await deleteTaskTemplate(id);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to delete");
+      return;
+    }
     fetchData();
   };
 
@@ -1118,7 +1096,6 @@ interface UserProfile {
 }
 
 function UserManagementSection() {
-  const supabase = createClient();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -1129,15 +1106,9 @@ function UserManagementSection() {
   const [success, setSuccess] = useState<string | null>(null);
   const [form, setForm] = useState({ email: "", full_name: "", role: "user" });
 
-  const checkAdmin = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setCheckingRole(false); return; }
-    const { data: profile } = await supabase
-      .from("user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-    setIsAdmin(profile?.role === "admin");
+  const checkAdminRole = async () => {
+    const admin = await checkIsAdmin();
+    setIsAdmin(admin);
     setCheckingRole(false);
   };
 
@@ -1155,7 +1126,7 @@ function UserManagementSection() {
   };
 
   useEffect(() => {
-    checkAdmin();
+    checkAdminRole();
   }, []);
 
   useEffect(() => {
@@ -1396,7 +1367,6 @@ const HOLIDAY_TYPE_COLORS: Record<string, string> = {
 const API_BASE = "https://date.nager.at/api/v3/publicholidays";
 
 function HolidaysSection() {
-  const supabase = createClient();
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -1414,17 +1384,14 @@ function HolidaysSection() {
     description: "",
   });
 
-  const fetchHolidays = async () => {
-    const { data } = await supabase
-      .from("holidays")
-      .select("*")
-      .order("holiday_date", { ascending: true });
+  const fetchHolidaysData = async () => {
+    const data = await fetchHolidaysAction();
     setHolidays((data as Holiday[]) || []);
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchHolidays();
+    fetchHolidaysData();
   }, []);
 
   const handleSync = async () => {
@@ -1442,30 +1409,29 @@ function HolidaysSection() {
         (h: { types: string[] }) => h.types.includes("Public")
       );
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const userId = await getCurrentUserId();
 
       let count = 0;
       for (const h of all as { date: string; localName: string; name: string }[]) {
-        const { error } = await supabase.from("holidays").upsert(
-          {
+        try {
+          await upsertFederalHoliday({
             name: h.localName || h.name,
             holiday_date: h.date,
             holiday_type: "federal",
             is_recurring: true,
-            created_by: user?.id,
-          },
-          { onConflict: "holiday_date,name" }
-        );
-        if (!error) count++;
+            created_by: userId,
+          });
+          count++;
+        } catch {
+          // skip individual failures
+        }
       }
 
       setSyncMessage({
-        text: `Imported ${count} federal holidays for ${year}–${year + 1}`,
+        text: `Imported ${count} federal holidays for ${year}\u2013${year + 1}`,
         type: "success",
       });
-      fetchHolidays();
+      fetchHolidaysData();
     } catch {
       setSyncMessage({ text: "Failed to sync holidays. Please try again.", type: "error" });
     }
@@ -1484,46 +1450,23 @@ function HolidaysSection() {
     setSaving(true);
     setSaveError(null);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (editing) {
-      const { error } = await supabase
-        .from("holidays")
-        .update({
-          name: form.name,
-          holiday_date: form.holiday_date,
-          holiday_type: form.holiday_type,
-          is_recurring: form.is_recurring,
-          description: form.description || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", editing.id);
-      if (error) {
-        setSaveError(error.message);
-        setSaving(false);
-        return;
-      }
-    } else {
-      const { error } = await supabase.from("holidays").insert({
+    try {
+      await saveHoliday(editing?.id || null, {
         name: form.name,
         holiday_date: form.holiday_date,
         holiday_type: form.holiday_type,
         is_recurring: form.is_recurring,
         description: form.description || null,
-        created_by: user?.id,
       });
-      if (error) {
-        setSaveError(error.message);
-        setSaving(false);
-        return;
-      }
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      setSaving(false);
+      return;
     }
 
     setSaving(false);
     resetForm();
-    fetchHolidays();
+    fetchHolidaysData();
   };
 
   const handleEdit = (h: Holiday) => {
@@ -1540,8 +1483,8 @@ function HolidaysSection() {
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from("holidays").delete().eq("id", id);
-    fetchHolidays();
+    await deleteHoliday(id);
+    fetchHolidaysData();
   };
 
   const filtered = holidays.filter((h) => {

@@ -2,7 +2,15 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchAllTasks,
+  fetchTaskAssignees,
+  fetchProjectTaskLinks,
+  fetchContacts as fetchContactsAction,
+  fetchActiveEmployees,
+  fetchProjects as fetchProjectsAction,
+  fetchTaskTypes as fetchTaskTypesAction,
+} from "./actions";
 import {
   Card,
   CardContent,
@@ -109,7 +117,6 @@ interface TaskType {
 }
 
 export default function TaskHistoryPage() {
-  const supabase = createClient();
   const router = useRouter();
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -138,63 +145,32 @@ export default function TaskHistoryPage() {
   ], [contacts, employees, projects]);
 
   const fetchTasks = async () => {
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*, contacts:contact_id(id, first_name, last_name)")
-      .order("created_at", { ascending: false });
+    try {
+      const data = await fetchAllTasks();
+      const rows = (data || []).map((r: Record<string, unknown>) => ({
+        ...r,
+        contacts: r.contact_id
+          ? { id: r.contact_id_ref, first_name: r.contact_first_name, last_name: r.contact_last_name }
+          : null,
+      }));
 
-    if (error) {
-      console.error("Failed to fetch tasks:", error);
-      setLoading(false);
-      return;
-    }
+      const taskIds = rows.map((t: { id: string }) => t.id);
+      const aMap = await fetchTaskAssignees(taskIds);
 
-    const taskIds = (data || []).map((t: { id: string }) => t.id);
-    const aMap: Record<string, TaskAssignee[]> = {};
+      const tasksWithAssignees = rows.map((t: Task) => ({
+        ...t,
+        task_assignees: (aMap as Record<string, TaskAssignee[]>)[t.id] || [],
+      }));
 
-    if (taskIds.length > 0) {
-      const { data: assignees } = await supabase
-        .from("task_assignees")
-        .select("task_id, employee_id, employees(id, first_name, last_name)")
-        .in("task_id", taskIds);
+      setTasks(tasksWithAssignees as Task[]);
 
-      if (assignees) {
-        for (const a of assignees as unknown as (TaskAssignee & { task_id: string })[]) {
-          if (!aMap[a.task_id]) aMap[a.task_id] = [];
-          aMap[a.task_id].push(a);
-        }
-      }
-    }
+      // Fetch project links
+      const { projectTasks, projects: projectData } = await fetchProjectTaskLinks(taskIds);
 
-    const tasksWithAssignees = (data || []).map((t: Task) => ({
-      ...t,
-      task_assignees: aMap[t.id] || [],
-    }));
-
-    setTasks(tasksWithAssignees as Task[]);
-
-    // Fetch project links from project_tasks junction table
-    if (taskIds.length > 0) {
-      const { data: projectTasks } = await supabase
-        .from("project_tasks")
-        .select("task_id, project_id")
-        .in("task_id", taskIds);
-
-      if (projectTasks && projectTasks.length > 0) {
-        const projectIds = [
-          ...new Set(projectTasks.map((pt: { project_id: string }) => pt.project_id)),
-        ];
-
-        const { data: projectData } = await supabase
-          .from("projects")
-          .select("id, name")
-          .in("id", projectIds);
-
+      if (projectTasks.length > 0) {
         const projectNameMap: Record<string, string> = {};
-        if (projectData) {
-          for (const p of projectData) {
-            projectNameMap[p.id] = p.name;
-          }
+        for (const p of projectData) {
+          projectNameMap[p.id] = p.name;
         }
 
         const taskProjectMap: Record<string, TaskProject[]> = {};
@@ -208,51 +184,39 @@ export default function TaskHistoryPage() {
 
         setProjectMap(taskProjectMap);
       }
+    } catch (err) {
+      console.error("Failed to fetch tasks:", err);
     }
 
     setLoading(false);
   };
 
-  const fetchContacts = async () => {
-    const { data } = await supabase
-      .from("contacts")
-      .select("id, first_name, last_name")
-      .order("first_name");
+  const fetchContactsData = async () => {
+    const data = await fetchContactsAction();
     setContacts(data || []);
   };
 
-  const fetchEmployees = async () => {
-    const { data } = await supabase
-      .from("employees")
-      .select("id, first_name, last_name")
-      .eq("status", "active")
-      .order("first_name");
+  const fetchEmployeesData = async () => {
+    const data = await fetchActiveEmployees();
     setEmployees(data || []);
   };
 
-  const fetchProjects = async () => {
-    const { data } = await supabase
-      .from("projects")
-      .select("id, name")
-      .order("name");
+  const fetchProjectsData = async () => {
+    const data = await fetchProjectsAction();
     setProjects(data || []);
   };
 
-  const fetchTaskTypes = async () => {
-    const { data } = await supabase
-      .from("task_types")
-      .select("id, name, color")
-      .eq("is_active", true)
-      .order("name");
+  const fetchTaskTypesData = async () => {
+    const data = await fetchTaskTypesAction();
     setTaskTypes(data || []);
   };
 
   useEffect(() => {
     fetchTasks();
-    fetchContacts();
-    fetchEmployees();
-    fetchProjects();
-    fetchTaskTypes();
+    fetchContactsData();
+    fetchEmployeesData();
+    fetchProjectsData();
+    fetchTaskTypesData();
   }, []);
 
   const filteredTasks = tasks.filter((task) => {

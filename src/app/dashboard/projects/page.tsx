@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchProjects as fetchProjectsAction,
+  fetchContacts as fetchContactsAction,
+  fetchActiveEmployees,
+  fetchProjectEmployeesMap as fetchProjectEmployeesMapAction,
+  fetchProjectStatuses as fetchProjectStatusesAction,
+  fetchProjectTasksMap as fetchProjectTasksMapAction,
+  createProject,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -109,7 +117,6 @@ interface UpcomingTask {
 }
 
 export default function ProjectsPage() {
-  const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -138,49 +145,28 @@ export default function ProjectsPage() {
   });
 
   const fetchProjects = async () => {
-    const { data } = await supabase
-      .from("projects")
-      .select("*, contacts:contact_id(id, first_name, last_name)")
-      .order("created_at", { ascending: false });
+    const data = await fetchProjectsAction();
     setProjects((data as Project[]) || []);
     setLoading(false);
   };
 
   const fetchContacts = async () => {
-    const { data } = await supabase
-      .from("contacts")
-      .select("id, first_name, last_name")
-      .order("first_name");
+    const data = await fetchContactsAction();
     setContacts(data || []);
   };
 
   const fetchEmployees = async () => {
-    const { data } = await supabase
-      .from("employees")
-      .select("id, first_name, last_name")
-      .eq("status", "active")
-      .order("first_name");
+    const data = await fetchActiveEmployees();
     setAllEmployees((data as Employee[]) || []);
   };
 
   const fetchProjectEmployees = async () => {
-    const { data: links } = await supabase
-      .from("project_employees")
-      .select("project_id, employee_id, employees(id, first_name, last_name)");
-    if (!links) return;
-    const map: Record<string, Employee[]> = {};
-    for (const link of links as unknown as { project_id: string; employees: Employee }[]) {
-      if (!map[link.project_id]) map[link.project_id] = [];
-      map[link.project_id].push(link.employees);
-    }
+    const map = await fetchProjectEmployeesMapAction();
     setProjectEmployeesMap(map);
   };
 
   const fetchStatuses = async () => {
-    const { data } = await supabase
-      .from("project_statuses")
-      .select("id, name, color")
-      .order("name");
+    const data = await fetchProjectStatusesAction();
     if (data && data.length > 0) {
       setProjectStatuses(data);
     }
@@ -188,40 +174,7 @@ export default function ProjectsPage() {
 
   const fetchProjectTasks = async () => {
     const today = todayCST();
-    const { data: links } = await supabase
-      .from("project_tasks")
-      .select("task_id, project_id");
-
-    if (!links || links.length === 0) return;
-
-    const taskIds = [...new Set(links.map((l: { task_id: string }) => l.task_id))];
-
-    const { data: tasks } = await supabase
-      .from("tasks")
-      .select("id, title, due_date")
-      .in("id", taskIds)
-      .neq("status", "completed")
-      .neq("status", "cancelled")
-      .gte("due_date", today)
-      .order("due_date", { ascending: true });
-
-    const taskById: Record<string, UpcomingTask> = {};
-    for (const t of (tasks || []) as UpcomingTask[]) taskById[t.id] = t;
-
-    const raw: Record<string, UpcomingTask[]> = {};
-    for (const l of links as { task_id: string; project_id: string }[]) {
-      const task = taskById[l.task_id];
-      if (!task) continue;
-      if (!raw[l.project_id]) raw[l.project_id] = [];
-      raw[l.project_id].push(task);
-    }
-
-    const map: Record<string, UpcomingTask[]> = {};
-    for (const [projId, projTasks] of Object.entries(raw)) {
-      map[projId] = projTasks
-        .sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""))
-        .slice(0, 3);
-    }
+    const map = await fetchProjectTasksMapAction(today);
     setProjectTasksMap(map);
   };
 
@@ -239,31 +192,12 @@ export default function ProjectsPage() {
     setSaving(true);
     setError(null);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const { data: inserted, error: insertError } = await supabase.from("projects").insert({
-      name: form.name,
-      description: form.description || null,
-      contact_id: form.contact_id || null,
-      status: form.status || "active",
-      start_date: form.start_date || null,
-      due_date: form.due_date || null,
-      created_by: user?.id,
-    }).select("id").single();
-
-    if (insertError) {
-      setError(insertError.message);
+    try {
+      await createProject(form, selectedEmployees);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create project");
       setSaving(false);
       return;
-    }
-
-    // Link employees to project
-    if (inserted && selectedEmployees.length > 0) {
-      await supabase.from("project_employees").insert(
-        selectedEmployees.map((eid) => ({ project_id: inserted.id, employee_id: eid }))
-      );
     }
 
     setForm({

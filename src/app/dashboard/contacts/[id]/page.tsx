@@ -2,7 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchContact as fetchContactAction,
+  fetchNotes as fetchNotesAction,
+  fetchContactTasks as fetchContactTasksAction,
+  fetchAllNonCompletedTasks,
+  fetchContactEvents as fetchContactEventsAction,
+  fetchStandaloneNotes as fetchStandaloneNotesAction,
+  updateEventStatus as updateEventStatusAction,
+  addStandaloneNote,
+  deleteStandaloneNote,
+  linkTaskToContact,
+  unlinkTaskFromContact,
+  updateTaskField,
+  fetchContactStatuses as fetchContactStatusesAction,
+  saveNote,
+  deleteNote,
+  updateContact,
+  checkContactDependencies,
+  deleteContact,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -176,7 +195,6 @@ const eventStatusColors: Record<string, string> = {
 };
 
 export default function ContactDetailPage() {
-  const supabase = createClient();
   const router = useRouter();
   const params = useParams();
   const contactId = params.id as string;
@@ -242,140 +260,37 @@ export default function ContactDetailPage() {
   const [deleteStandaloneNoteId, setDeleteStandaloneNoteId] = useState<string | null>(null);
 
   const fetchContact = async () => {
-    const { data } = await supabase
-      .from("contacts")
-      .select("*")
-      .eq("id", contactId)
-      .single();
+    const data = await fetchContactAction(contactId);
     setContact(data);
     setLoading(false);
   };
 
   const fetchNotes = async () => {
-    const { data } = await supabase
-      .from("notes")
-      .select("*")
-      .eq("contact_id", contactId)
-      .order("created_at", { ascending: false });
+    const data = await fetchNotesAction(contactId);
     setNotes(data || []);
   };
 
   const fetchContactTasks = async () => {
     setTasksLoading(true);
-    const { data } = await supabase
-      .from("tasks")
-      .select("id, title, status, priority, start_date, due_date")
-      .eq("contact_id", contactId)
-      .order("due_date", { ascending: true });
-
-    const tasks = data || [];
-    if (tasks.length === 0) {
-      setContactTasks([]);
-      setTasksLoading(false);
-      return;
-    }
-
-    const taskIds = tasks.map((t: { id: string }) => t.id);
-
-    // Fetch assignees for these tasks
-    const { data: assignees } = await supabase
-      .from("task_assignees")
-      .select("task_id, employee_id, employees(first_name, last_name)")
-      .in("task_id", taskIds);
-
-    const assigneeMap: Record<string, TaskAssigneeInfo[]> = {};
-    if (assignees) {
-      for (const a of assignees as unknown as (TaskAssigneeInfo & { task_id: string })[]) {
-        if (!assigneeMap[a.task_id]) assigneeMap[a.task_id] = [];
-        assigneeMap[a.task_id].push(a);
-      }
-    }
-
-    // Fetch project links
-    const { data: projectLinks } = await supabase
-      .from("project_tasks")
-      .select("task_id, project_id")
-      .in("task_id", taskIds);
-
-    const projectNameMap: Record<string, string> = {};
-    if (projectLinks && projectLinks.length > 0) {
-      const projectIds = [...new Set(projectLinks.map((pl: { project_id: string }) => pl.project_id))];
-      const { data: projects } = await supabase
-        .from("projects")
-        .select("id, name")
-        .in("id", projectIds);
-      if (projects) {
-        for (const p of projects) projectNameMap[p.id] = p.name;
-      }
-    }
-    const taskProjectMap: Record<string, TaskProject[]> = {};
-    if (projectLinks) {
-      for (const pl of projectLinks as { task_id: string; project_id: string }[]) {
-        const name = projectNameMap[pl.project_id];
-        if (name) {
-          if (!taskProjectMap[pl.task_id]) taskProjectMap[pl.task_id] = [];
-          taskProjectMap[pl.task_id].push({ id: pl.project_id, name });
-        }
-      }
-    }
-
-    const enriched: ContactTask[] = tasks.map((t: Record<string, unknown>) => ({
-      id: t.id as string,
-      title: t.title as string,
-      status: t.status as string,
-      priority: t.priority as string,
-      start_date: t.start_date as string | null,
-      due_date: t.due_date as string | null,
-      task_assignees: assigneeMap[t.id as string] || [],
-      projects: taskProjectMap[t.id as string] || [],
-    }));
-
-    setContactTasks(enriched);
+    const data = await fetchContactTasksAction(contactId);
+    setContactTasks(data as ContactTask[]);
     setTasksLoading(false);
   };
 
   const fetchAllTasks = async () => {
-    const { data } = await supabase
-      .from("tasks")
-      .select("id, title")
-      .neq("status", "completed")
-      .order("title");
+    const data = await fetchAllNonCompletedTasks();
     setAllTasks(data || []);
   };
 
   const fetchContactEvents = async () => {
-    const { data: eventsData } = await supabase
-      .from("events")
-      .select("*, projects(id, name)")
-      .eq("contact_id", contactId)
-      .order("event_date", { ascending: false });
-    setContactEvents(eventsData || []);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const eventIds = (eventsData || []).map((e: any) => e.id);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const attendeeMap: Record<string, any[]> = {};
-    if (eventIds.length > 0) {
-      const { data: attData } = await supabase
-        .from("event_attendees")
-        .select("event_id, employees(id, first_name, last_name)")
-        .in("event_id", eventIds);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (attData || []).forEach((a: any) => {
-        if (!attendeeMap[a.event_id]) attendeeMap[a.event_id] = [];
-        attendeeMap[a.event_id].push(a.employees);
-      });
-    }
-    setEventAttendeeMap(attendeeMap);
+    const result = await fetchContactEventsAction(contactId);
+    setContactEvents(result.events || []);
+    setEventAttendeeMap(result.attendeeMap);
   };
 
   const fetchStandaloneNotes = async () => {
-    const { data: sNotesData } = await supabase
-      .from("notes_standalone")
-      .select("*")
-      .eq("contact_id", contactId)
-      .order("created_at", { ascending: false });
-    setStandaloneNotes(sNotesData || []);
+    const data = await fetchStandaloneNotesAction(contactId);
+    setStandaloneNotes(data || []);
   };
 
   const handleEventStatusUpdate = async (eventId: string, newStatus: string) => {
@@ -383,14 +298,9 @@ export default function ContactDetailPage() {
     setSavingField((prev) => ({ ...prev, [key]: true }));
     setSavedField((prev) => ({ ...prev, [key]: false }));
 
-    const { error } = await supabase
-      .from("events")
-      .update({ status: newStatus })
-      .eq("id", eventId);
-
-    setSavingField((prev) => ({ ...prev, [key]: false }));
-
-    if (!error) {
+    try {
+      await updateEventStatusAction(eventId, newStatus);
+      setSavingField((prev) => ({ ...prev, [key]: false }));
       setContactEvents((prev) =>
         prev.map((e) => (e.id === eventId ? { ...e, status: newStatus } : e))
       );
@@ -398,6 +308,8 @@ export default function ContactDetailPage() {
       setTimeout(() => {
         setSavedField((prev) => ({ ...prev, [key]: false }));
       }, 2000);
+    } catch {
+      setSavingField((prev) => ({ ...prev, [key]: false }));
     }
   };
 
@@ -405,36 +317,26 @@ export default function ContactDetailPage() {
     e.preventDefault();
     if (!newStandaloneNote.trim()) return;
     setAddingStandaloneNote(true);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    await supabase.from("notes_standalone").insert({
-      contact_id: contactId,
-      content: newStandaloneNote.trim(),
-      author_id: user?.id,
-    });
-
+    await addStandaloneNote(contactId, newStandaloneNote.trim());
     setNewStandaloneNote("");
     setAddingStandaloneNote(false);
     fetchStandaloneNotes();
   };
 
   const handleDeleteStandaloneNote = async (noteId: string) => {
-    await supabase.from("notes_standalone").delete().eq("id", noteId);
+    await deleteStandaloneNote(noteId);
     setDeleteStandaloneNoteId(null);
     fetchStandaloneNotes();
   };
 
   const handleLinkTask = async (taskId: string) => {
-    await supabase.from("tasks").update({ contact_id: contactId }).eq("id", taskId);
+    await linkTaskToContact(taskId, contactId);
     fetchContactTasks();
     fetchAllTasks();
   };
 
   const handleUnlinkTask = async (taskId: string) => {
-    await supabase.from("tasks").update({ contact_id: null }).eq("id", taskId);
+    await unlinkTaskFromContact(taskId);
     setUnlinkTaskId(null);
     fetchContactTasks();
   };
@@ -445,18 +347,15 @@ export default function ContactDetailPage() {
     setSavedField((prev) => ({ ...prev, [key]: false }));
     setInlineError(null);
 
-    const { error } = await supabase
-      .from("tasks")
-      .update({ [field]: value })
-      .eq("id", taskId);
-
-    setSavingField((prev) => ({ ...prev, [key]: false }));
-
-    if (error) {
-      setInlineError(`Failed to update ${field}: ${error.message}`);
+    try {
+      await updateTaskField(taskId, field, value);
+    } catch (err: unknown) {
+      setSavingField((prev) => ({ ...prev, [key]: false }));
+      setInlineError(`Failed to update ${field}: ${err instanceof Error ? err.message : "Unknown error"}`);
       return;
     }
 
+    setSavingField((prev) => ({ ...prev, [key]: false }));
     setContactTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, [field]: value } : t))
     );
@@ -467,10 +366,7 @@ export default function ContactDetailPage() {
   };
 
   const fetchStatuses = async () => {
-    const { data } = await supabase
-      .from("contact_statuses")
-      .select("id, name, color")
-      .order("name");
+    const data = await fetchContactStatusesAction();
     if (data && data.length > 0) {
       setStatuses(data);
     }
@@ -490,37 +386,15 @@ export default function ContactDetailPage() {
     e.preventDefault();
     setSavingNote(true);
 
-    if (editingNote) {
-      const { error } = await supabase
-        .from("notes")
-        .update({
-          content: noteForm.content,
-          note_type: noteForm.note_type,
-          updated_at: nowUTC(),
-        })
-        .eq("id", editingNote.id);
-
-      if (!error) {
-        resetNoteForm();
-        fetchNotes();
-      }
-    } else {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      const { error } = await supabase.from("notes").insert({
-        contact_id: contactId,
-        content: noteForm.content,
-        note_type: noteForm.note_type,
-        author_id: user?.id,
-      });
-
-      if (!error) {
-        resetNoteForm();
-        fetchNotes();
-      }
-    }
+    await saveNote(
+      editingNote?.id || null,
+      contactId,
+      noteForm.content,
+      noteForm.note_type,
+      editingNote ? nowUTC() : undefined
+    );
+    resetNoteForm();
+    fetchNotes();
     setSavingNote(false);
   };
 
@@ -531,7 +405,7 @@ export default function ContactDetailPage() {
   };
 
   const handleDeleteNote = async (noteId: string) => {
-    await supabase.from("notes").delete().eq("id", noteId);
+    await deleteNote(noteId);
     fetchNotes();
   };
 
@@ -561,22 +435,10 @@ export default function ContactDetailPage() {
     setSavingEdit(true);
     setEditError(null);
 
-    const { error: updateError } = await supabase
-      .from("contacts")
-      .update({
-        first_name: editForm.first_name,
-        last_name: editForm.last_name || null,
-        email: editForm.email || null,
-        phone: editForm.phone || null,
-        company: editForm.company || null,
-        status: editForm.status || "active",
-        email_notifications_enabled: editForm.email_notifications_enabled,
-        sms_notifications_enabled: editForm.sms_notifications_enabled,
-      })
-      .eq("id", contactId);
-
-    if (updateError) {
-      setEditError(updateError.message);
+    try {
+      await updateContact(contactId, editForm);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : "Failed to update contact");
       setSavingEdit(false);
       return;
     }
@@ -587,10 +449,7 @@ export default function ContactDetailPage() {
   };
 
   const checkDependenciesAndDelete = async () => {
-    const [{ data: projects }, { data: tasks }] = await Promise.all([
-      supabase.from("projects").select("id, name").eq("contact_id", contactId),
-      supabase.from("tasks").select("id, title").eq("contact_id", contactId),
-    ]);
+    const { projects, tasks } = await checkContactDependencies(contactId);
     setLinkedProjects(projects || []);
     setLinkedTasks(tasks || []);
     setDeleteCheckOpen(true);
@@ -598,16 +457,8 @@ export default function ContactDetailPage() {
 
   const handleDeleteContact = async () => {
     setDeleting(true);
-    // Unlink projects and tasks, then delete notes and contact
-    await Promise.all([
-      supabase.from("projects").update({ contact_id: null }).eq("contact_id", contactId),
-      supabase.from("tasks").update({ contact_id: null }).eq("contact_id", contactId),
-      supabase.from("notes").delete().eq("contact_id", contactId),
-    ]);
-    const { error } = await supabase.from("contacts").delete().eq("id", contactId);
-    if (!error) {
-      router.push("/dashboard/contacts");
-    }
+    await deleteContact(contactId);
+    router.push("/dashboard/contacts");
     setDeleting(false);
   };
 

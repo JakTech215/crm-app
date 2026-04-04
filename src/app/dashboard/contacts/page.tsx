@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchContacts as fetchContactsAction,
+  fetchContactTasks as fetchContactTasksAction,
+  fetchContactStatuses as fetchContactStatusesAction,
+  createContact,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -91,7 +96,6 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 export default function ContactsPage() {
-  const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -116,40 +120,19 @@ export default function ContactsPage() {
   });
 
   const fetchContacts = async () => {
-    const { data } = await supabase
-      .from("contacts")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const data = await fetchContactsAction();
     setContacts(data || []);
     setLoading(false);
   };
 
   const fetchContactTasks = async () => {
     const today = todayCST();
-    const { data } = await supabase
-      .from("tasks")
-      .select("id, title, due_date, contact_id")
-      .neq("status", "completed")
-      .not("contact_id", "is", null)
-      .gte("due_date", today)
-      .order("due_date", { ascending: true });
-
-    const map: Record<string, ContactUpcomingTask[]> = {};
-    for (const t of (data || []) as { id: string; title: string; due_date: string | null; contact_id: string }[]) {
-      if (!t.contact_id) continue;
-      if (!map[t.contact_id]) map[t.contact_id] = [];
-      if (map[t.contact_id].length < 3) {
-        map[t.contact_id].push({ id: t.id, title: t.title, due_date: t.due_date });
-      }
-    }
+    const map = await fetchContactTasksAction(today);
     setContactTasksMap(map);
   };
 
   const fetchStatuses = async () => {
-    const { data } = await supabase
-      .from("contact_statuses")
-      .select("id, name, color")
-      .order("name");
+    const data = await fetchContactStatusesAction();
     if (data && data.length > 0) {
       setStatuses(data);
       const active = data.find((s) => s.name === "active");
@@ -168,22 +151,10 @@ export default function ContactsPage() {
     setSaving(true);
     setError(null);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const { error: insertError } = await supabase.from("contacts").insert({
-      first_name: form.first_name,
-      last_name: form.last_name || null,
-      email: form.email || null,
-      phone: form.phone || null,
-      company: form.company || null,
-      status: form.status || "active",
-      created_by: user?.id,
-    });
-
-    if (insertError) {
-      setError(insertError.message);
+    try {
+      await createContact(form);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create contact");
       setSaving(false);
       return;
     }

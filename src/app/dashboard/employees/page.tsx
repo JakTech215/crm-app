@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchEmployees as fetchEmployeesAction,
+  fetchEmployeeTasksMap as fetchEmployeeTasksMapAction,
+  createEmployee,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -68,7 +72,6 @@ interface UpcomingTask {
 }
 
 export default function EmployeesPage() {
-  const supabase = createClient();
   const router = useRouter();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,50 +91,14 @@ export default function EmployeesPage() {
   });
 
   const fetchEmployees = async () => {
-    const { data } = await supabase
-      .from("employees")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const data = await fetchEmployeesAction();
     setEmployees(data || []);
     setLoading(false);
   };
 
   const fetchEmployeeTasks = async () => {
     const today = todayCST();
-    const { data: assignments } = await supabase
-      .from("task_assignees")
-      .select("task_id, employee_id");
-
-    if (!assignments || assignments.length === 0) return;
-
-    const taskIds = [...new Set(assignments.map((a: { task_id: string }) => a.task_id))];
-
-    const { data: tasks } = await supabase
-      .from("tasks")
-      .select("id, title, due_date")
-      .in("id", taskIds)
-      .neq("status", "completed")
-      .neq("status", "cancelled")
-      .gte("due_date", today)
-      .order("due_date", { ascending: true });
-
-    const taskById: Record<string, UpcomingTask> = {};
-    for (const t of (tasks || []) as UpcomingTask[]) taskById[t.id] = t;
-
-    const raw: Record<string, UpcomingTask[]> = {};
-    for (const a of assignments as { task_id: string; employee_id: string }[]) {
-      const task = taskById[a.task_id];
-      if (!task) continue;
-      if (!raw[a.employee_id]) raw[a.employee_id] = [];
-      raw[a.employee_id].push(task);
-    }
-
-    const map: Record<string, UpcomingTask[]> = {};
-    for (const [empId, empTasks] of Object.entries(raw)) {
-      map[empId] = empTasks
-        .sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""))
-        .slice(0, 3);
-    }
+    const map = await fetchEmployeeTasksMapAction(today);
     setEmployeeTasksMap(map);
   };
 
@@ -145,22 +112,10 @@ export default function EmployeesPage() {
     setSaving(true);
     setError(null);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const { error: insertError } = await supabase.from("employees").insert({
-      first_name: form.first_name,
-      last_name: form.last_name,
-      email: form.email,
-      role: form.role || null,
-      department: form.department || null,
-      status: form.status,
-      created_by: user?.id,
-    });
-
-    if (insertError) {
-      setError(insertError.message);
+    try {
+      await createEmployee(form);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create employee");
       setSaving(false);
       return;
     }

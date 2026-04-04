@@ -2,7 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchEmployee as fetchEmployeeAction,
+  fetchEmployeeTasks as fetchEmployeeTasksAction,
+  fetchAllNonCompletedTasks,
+  assignTaskToEmployee,
+  removeTaskAssignment,
+  updateTaskField,
+  fetchEmployeeEvents as fetchEmployeeEventsAction,
+  updateEventStatus as updateEventStatusAction,
+  fetchEmployeeNotes as fetchEmployeeNotesAction,
+  addEmployeeNote,
+  deleteEmployeeNote,
+  updateEmployee,
+  checkEmployeeDependencies,
+  deleteEmployee,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -122,7 +137,6 @@ const eventStatusColors: Record<string, string> = {
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
 
 export default function EmployeeDetailPage() {
-  const supabase = createClient();
   const router = useRouter();
   const params = useParams();
   const employeeId = params.id as string;
@@ -174,101 +188,31 @@ export default function EmployeeDetailPage() {
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
   const fetchEmployee = async () => {
-    const { data } = await supabase
-      .from("employees")
-      .select("*")
-      .eq("id", employeeId)
-      .single();
+    const data = await fetchEmployeeAction(employeeId);
     setEmployee(data);
     setLoading(false);
   };
 
   const fetchEmployeeTasks = async () => {
     setTasksLoading(true);
-    // Get task IDs assigned to this employee
-    const { data: assignments } = await supabase
-      .from("task_assignees")
-      .select("task_id")
-      .eq("employee_id", employeeId);
-
-    if (!assignments || assignments.length === 0) {
-      setEmpTasks([]);
-      setTasksLoading(false);
-      return;
-    }
-
-    const taskIds = assignments.map((a: { task_id: string }) => a.task_id);
-
-    // Fetch full task details with contacts
-    const { data: tasks } = await supabase
-      .from("tasks")
-      .select("id, title, status, priority, start_date, due_date, contact_id, contacts:contact_id(first_name, last_name, company)")
-      .in("id", taskIds)
-      .order("due_date", { ascending: true });
-
-    // Fetch project links for these tasks
-    const { data: projectLinks } = await supabase
-      .from("project_tasks")
-      .select("task_id, project_id")
-      .in("task_id", taskIds);
-
-    const projectNameMap: Record<string, string> = {};
-    if (projectLinks && projectLinks.length > 0) {
-      const projectIds = [...new Set(projectLinks.map((pl: { project_id: string }) => pl.project_id))];
-      const { data: projects } = await supabase
-        .from("projects")
-        .select("id, name")
-        .in("id", projectIds);
-      if (projects) {
-        for (const p of projects) projectNameMap[p.id] = p.name;
-      }
-    }
-
-    const taskProjectMap: Record<string, string> = {};
-    if (projectLinks) {
-      for (const pl of projectLinks as { task_id: string; project_id: string }[]) {
-        if (projectNameMap[pl.project_id]) {
-          taskProjectMap[pl.task_id] = projectNameMap[pl.project_id];
-        }
-      }
-    }
-
-    const tasksWithProjects: TaskWithProject[] = (tasks || []).map((t: Record<string, unknown>) => ({
-      id: t.id as string,
-      title: t.title as string,
-      status: t.status as string,
-      priority: t.priority as string,
-      start_date: t.start_date as string | null,
-      due_date: t.due_date as string | null,
-      contact_id: t.contact_id as string | null,
-      contacts: t.contacts as AssignedTask["contacts"],
-      projectName: taskProjectMap[t.id as string] || null,
-    }));
-
-    setEmpTasks(tasksWithProjects);
+    const data = await fetchEmployeeTasksAction(employeeId);
+    setEmpTasks(data as TaskWithProject[]);
     setTasksLoading(false);
   };
 
   const fetchAllTasks = async () => {
-    const { data } = await supabase
-      .from("tasks")
-      .select("id, title")
-      .neq("status", "completed")
-      .order("title");
+    const data = await fetchAllNonCompletedTasks();
     setAllTasks(data || []);
   };
 
   const handleAssignTask = async (taskId: string) => {
-    await supabase.from("task_assignees").insert({
-      task_id: taskId,
-      employee_id: employeeId,
-    });
+    await assignTaskToEmployee(taskId, employeeId);
     fetchEmployeeTasks();
     fetchAllTasks();
   };
 
   const handleRemoveAssignment = async (taskId: string) => {
-    await supabase.from("task_assignees").delete().eq("task_id", taskId).eq("employee_id", employeeId);
+    await removeTaskAssignment(taskId, employeeId);
     setRemoveTaskId(null);
     fetchEmployeeTasks();
   };
@@ -279,18 +223,15 @@ export default function EmployeeDetailPage() {
     setSavedField((prev) => ({ ...prev, [key]: false }));
     setInlineError(null);
 
-    const { error } = await supabase
-      .from("tasks")
-      .update({ [field]: value })
-      .eq("id", taskId);
-
-    setSavingField((prev) => ({ ...prev, [key]: false }));
-
-    if (error) {
-      setInlineError(`Failed to update ${field}: ${error.message}`);
+    try {
+      await updateTaskField(taskId, field, value);
+    } catch (err: unknown) {
+      setSavingField((prev) => ({ ...prev, [key]: false }));
+      setInlineError(`Failed to update ${field}: ${err instanceof Error ? err.message : "Unknown error"}`);
       return;
     }
 
+    setSavingField((prev) => ({ ...prev, [key]: false }));
     setEmpTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, [field]: value } : t))
     );
@@ -301,17 +242,8 @@ export default function EmployeeDetailPage() {
   };
 
   const fetchEmployeeEvents = async () => {
-    const { data: attendeeData } = await supabase
-      .from("event_attendees")
-      .select("event_id, events(*, projects(id, name), contacts(first_name, last_name))")
-      .eq("employee_id", employeeId);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const empEvents = (attendeeData || [])
-      .map((a: Record<string, unknown>) => a.events)
-      .filter(Boolean)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .sort((a: any, b: any) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime());
-    setEmployeeEvents(empEvents);
+    const data = await fetchEmployeeEventsAction(employeeId);
+    setEmployeeEvents(data);
   };
 
   const handleEventStatusUpdate = async (eventId: string, newStatus: string) => {
@@ -320,18 +252,15 @@ export default function EmployeeDetailPage() {
     setSavedField((prev) => ({ ...prev, [key]: false }));
     setInlineError(null);
 
-    const { error } = await supabase
-      .from("events")
-      .update({ status: newStatus })
-      .eq("id", eventId);
-
-    setSavingField((prev) => ({ ...prev, [key]: false }));
-
-    if (error) {
-      setInlineError(`Failed to update event status: ${error.message}`);
+    try {
+      await updateEventStatusAction(eventId, newStatus);
+    } catch (err: unknown) {
+      setSavingField((prev) => ({ ...prev, [key]: false }));
+      setInlineError(`Failed to update event status: ${err instanceof Error ? err.message : "Unknown error"}`);
       return;
     }
 
+    setSavingField((prev) => ({ ...prev, [key]: false }));
     setEmployeeEvents((prev) =>
       prev.map((e) => (e.id === eventId ? { ...e, status: newStatus } : e))
     );
@@ -342,35 +271,22 @@ export default function EmployeeDetailPage() {
   };
 
   const fetchEmployeeNotes = async () => {
-    const { data: notesData } = await supabase
-      .from("notes_standalone")
-      .select("*")
-      .eq("employee_id", employeeId)
-      .order("created_at", { ascending: false });
-    setEmployeeNotes(notesData || []);
+    const data = await fetchEmployeeNotesAction(employeeId);
+    setEmployeeNotes(data || []);
   };
 
   const handleAddNote = async () => {
     if (!newNoteContent.trim()) return;
     setAddingNote(true);
-    const { error } = await supabase
-      .from("notes_standalone")
-      .insert({ content: newNoteContent.trim(), employee_id: employeeId });
-    if (!error) {
-      setNewNoteContent("");
-      fetchEmployeeNotes();
-    }
+    await addEmployeeNote(employeeId, newNoteContent.trim());
+    setNewNoteContent("");
+    fetchEmployeeNotes();
     setAddingNote(false);
   };
 
   const handleDeleteNote = async (noteId: string) => {
-    const { error } = await supabase
-      .from("notes_standalone")
-      .delete()
-      .eq("id", noteId);
-    if (!error) {
-      setEmployeeNotes((prev) => prev.filter((n) => n.id !== noteId));
-    }
+    await deleteEmployeeNote(noteId);
+    setEmployeeNotes((prev) => prev.filter((n) => n.id !== noteId));
     setDeletingNoteId(null);
   };
 
@@ -401,20 +317,10 @@ export default function EmployeeDetailPage() {
     setSavingEdit(true);
     setEditError(null);
 
-    const { error } = await supabase
-      .from("employees")
-      .update({
-        first_name: editForm.first_name,
-        last_name: editForm.last_name,
-        email: editForm.email,
-        role: editForm.role || null,
-        department: editForm.department || null,
-        status: editForm.status,
-      })
-      .eq("id", employeeId);
-
-    if (error) {
-      setEditError(error.message);
+    try {
+      await updateEmployee(employeeId, editForm);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : "Failed to update employee");
       setSavingEdit(false);
       return;
     }
@@ -425,31 +331,15 @@ export default function EmployeeDetailPage() {
   };
 
   const checkDependenciesAndDelete = async () => {
-    const { data: assignments } = await supabase
-      .from("task_assignees")
-      .select("task_id")
-      .eq("employee_id", employeeId);
-
-    if (assignments && assignments.length > 0) {
-      const taskIds = assignments.map((a: { task_id: string }) => a.task_id);
-      const { data: tasks } = await supabase
-        .from("tasks")
-        .select("id, title")
-        .in("id", taskIds);
-      setAssignedTasks(tasks || []);
-    } else {
-      setAssignedTasks([]);
-    }
+    const tasks = await checkEmployeeDependencies(employeeId);
+    setAssignedTasks(tasks || []);
     setDeleteCheckOpen(true);
   };
 
   const handleDeleteEmployee = async () => {
     setDeleting(true);
-    await supabase.from("task_assignees").delete().eq("employee_id", employeeId);
-    const { error } = await supabase.from("employees").delete().eq("id", employeeId);
-    if (!error) {
-      router.push("/dashboard/employees");
-    }
+    await deleteEmployee(employeeId);
+    router.push("/dashboard/employees");
     setDeleting(false);
   };
 

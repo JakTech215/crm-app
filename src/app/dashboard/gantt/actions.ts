@@ -13,7 +13,7 @@ export async function fetchGanttData() {
     sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`,
   ]);
 
-  return { taskData, depData, projData, ptLinks, assigneeData, empData };
+  return { taskData: [...taskData], depData: [...depData], projData: [...projData], ptLinks: [...ptLinks], assigneeData: [...assigneeData], empData: [...empData] };
 }
 
 export async function fetchGanttEvents() {
@@ -24,7 +24,7 @@ export async function fetchGanttEvents() {
     LEFT JOIN contacts c ON e.contact_id = c.id
     ORDER BY e.event_date
   `;
-  return eventData;
+  return [...eventData];
 }
 
 export async function fetchGanttEventAttendees(eventIds: string[]) {
@@ -41,5 +41,6 @@ export async function fetchGanttEventAttendees(eventIds: string[]) {
 }
 
 export async function fetchCustomHolidays() {
-  return await sql`SELECT holiday_date, name FROM holidays`;
+  const rows = await sql`SELECT holiday_date, name FROM holidays`;
+  return [...rows];
 }

@@ -38,15 +38,18 @@ export async function fetchEventAttendees(eventIds: string[]) {
 }
 
 export async function fetchActiveEmployees() {
-  return await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
+  const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
+  return [...rows];
 }
 
 export async function fetchProjects() {
-  return await sql`SELECT id, name FROM projects ORDER BY name`;
+  const rows = await sql`SELECT id, name FROM projects ORDER BY name`;
+  return [...rows];
 }
 
 export async function fetchContacts() {
-  return await sql`SELECT id, first_name, last_name FROM contacts ORDER BY first_name`;
+  const rows = await sql`SELECT id, first_name, last_name FROM contacts ORDER BY first_name`;
+  return [...rows];
 }
 
 export async function updateEventStatus(eventId: string, status: string) {
@@ -82,7 +85,7 @@ export async function createEvent(
     await sql`INSERT INTO event_attendees ${sql(attendeeRows)}`;
   }
 
-  return newEvent;
+  return newEvent ? { ...newEvent } : null;
 }
 
 export async function updateEvent(

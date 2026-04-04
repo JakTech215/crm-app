@@ -38,11 +38,12 @@ export async function fetchAttendees(eventId: string) {
 }
 
 export async function fetchNotes(eventId: string) {
-  return await sql`
+  const rows = await sql`
     SELECT * FROM notes_standalone
     WHERE event_id = ${eventId}
     ORDER BY created_at DESC
   `;
+  return [...rows];
 }
 
 export async function fetchProjectName(projectId: string) {
@@ -51,15 +52,18 @@ export async function fetchProjectName(projectId: string) {
 }
 
 export async function fetchActiveEmployees() {
-  return await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
+  const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
+  return [...rows];
 }
 
 export async function fetchAllProjects() {
-  return await sql`SELECT id, name FROM projects ORDER BY name`;
+  const rows = await sql`SELECT id, name FROM projects ORDER BY name`;
+  return [...rows];
 }
 
 export async function fetchAllContacts() {
-  return await sql`SELECT id, first_name, last_name FROM contacts ORDER BY first_name`;
+  const rows = await sql`SELECT id, first_name, last_name FROM contacts ORDER BY first_name`;
+  return [...rows];
 }
 
 export async function updateEventStatus(eventId: string, status: string) {

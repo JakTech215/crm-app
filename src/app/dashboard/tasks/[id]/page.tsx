@@ -2,7 +2,40 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchTaskById,
+  fetchTaskAssigneesForTask,
+  fetchDependencies as fetchDependenciesAction,
+  fetchAllTasksExcept,
+  fetchActiveEmployees,
+  fetchAllContacts,
+  fetchAllProjects,
+  fetchLinkedProjects as fetchLinkedProjectsAction,
+  fetchChildTasks as fetchChildTasksAction,
+  fetchActiveTaskTypes,
+  fetchTaskNotes,
+  fetchSeriesTasks as fetchSeriesTasksAction,
+  fetchWorkflowChain as fetchWorkflowChainAction,
+  fetchParentTask as fetchParentTaskAction,
+  fetchTemplateName as fetchTemplateNameAction,
+  addDependency,
+  deleteDependency,
+  updateTask,
+  replaceTaskAssignees,
+  replaceProjectLinks,
+  createFollowUpTask,
+  fetchFollowUpTemplate,
+  removeEmployee,
+  addEmployee,
+  changeContact,
+  removeProjectLink,
+  addProjectLink,
+  checkDependentTasks,
+  deleteTask as deleteTaskAction,
+  updateTaskFieldInline,
+  addTaskNote,
+  deleteTaskNote,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -219,7 +252,6 @@ const getTimeframeDate = (code: string): string => {
 };
 
 export default function TaskDetailPage() {
-  const supabase = createClient();
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
@@ -283,213 +315,98 @@ export default function TaskDetailPage() {
   const [dependentTasks, setDependentTasks] = useState<{ id: string; title: string }[]>([]);
 
   const fetchTask = async () => {
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*, contacts:contact_id(id, first_name, last_name, company)")
-      .eq("id", taskId)
-      .single();
+    try {
+      const data = await fetchTaskById(taskId);
+      if (!data) {
+        setFetchError("Task not found");
+        setLoading(false);
+        return;
+      }
 
-    if (error) {
-      console.error("Failed to fetch task:", error);
-      setFetchError(error.message);
+      const assignees = await fetchTaskAssigneesForTask(taskId);
+      setTask({ ...data, task_assignees: assignees } as Task);
       setLoading(false);
-      return;
+    } catch (error: unknown) {
+      console.error("Failed to fetch task:", error);
+      setFetchError(error instanceof Error ? error.message : "Failed to fetch task");
+      setLoading(false);
     }
-
-    // Fetch assignees separately
-    let assignees: TaskAssignee[] = [];
-    const { data: assigneeData } = await supabase
-      .from("task_assignees")
-      .select("employee_id, employees(id, first_name, last_name)")
-      .eq("task_id", taskId);
-
-    if (assigneeData) {
-      assignees = assigneeData as unknown as TaskAssignee[];
-    }
-
-    setTask({ ...data, task_assignees: assignees } as Task);
-    setLoading(false);
   };
 
   const fetchDependencies = async () => {
-    // Fetch dependencies without join to avoid silent failures
-    const { data, error } = await supabase
-      .from("task_dependencies")
-      .select("id, dependency_type, lag_days, depends_on_task_id")
-      .eq("task_id", taskId);
-
-    if (error) {
+    try {
+      const deps = await fetchDependenciesAction(taskId);
+      setDependencies(deps);
+    } catch (error) {
       console.error("Failed to fetch dependencies:", error);
       setDependencies([]);
-      return;
     }
-
-    const deps = data || [];
-    if (deps.length === 0) {
-      setDependencies([]);
-      return;
-    }
-
-    // Fetch task titles separately
-    const depTaskIds = deps.map((d: { depends_on_task_id: string }) => d.depends_on_task_id);
-    const { data: taskData } = await supabase
-      .from("tasks")
-      .select("id, title")
-      .in("id", depTaskIds);
-
-    const titleMap: Record<string, string> = {};
-    if (taskData) {
-      for (const t of taskData) {
-        titleMap[t.id] = t.title;
-      }
-    }
-
-    const depsWithTitles: DependencyRow[] = deps.map((d: DependencyRow) => ({
-      ...d,
-      depends_on_task_title: titleMap[d.depends_on_task_id] || undefined,
-    }));
-
-    setDependencies(depsWithTitles);
   };
 
-  const fetchAllTasks = async () => {
-    const { data } = await supabase
-      .from("tasks")
-      .select("id, title")
-      .neq("id", taskId)
-      .order("title");
-    setAllTasks(data || []);
+  const fetchAllTasksData = async () => {
+    const data = await fetchAllTasksExcept(taskId);
+    setAllTasks(data);
   };
 
-  const fetchAllEmployees = async () => {
-    const { data } = await supabase
-      .from("employees")
-      .select("id, first_name, last_name")
-      .eq("status", "active")
-      .order("first_name");
-    setAllEmployees(data || []);
+  const fetchAllEmployeesData = async () => {
+    const data = await fetchActiveEmployees();
+    setAllEmployees(data);
   };
 
-  const fetchAllContacts = async () => {
-    const { data } = await supabase
-      .from("contacts")
-      .select("id, first_name, last_name, company")
-      .order("first_name");
-    setAllContacts(data || []);
+  const fetchAllContactsData = async () => {
+    const data = await fetchAllContacts();
+    setAllContacts(data);
   };
 
-  const fetchAllProjects = async () => {
-    const { data } = await supabase
-      .from("projects")
-      .select("id, name")
-      .order("name");
-    setAllProjects(data || []);
+  const fetchAllProjectsData = async () => {
+    const data = await fetchAllProjects();
+    setAllProjects(data);
   };
 
   const fetchLinkedProjects = async () => {
-    const { data: links } = await supabase
-      .from("project_tasks")
-      .select("project_id")
-      .eq("task_id", taskId);
-    if (links && links.length > 0) {
-      const projectIds = links.map((l: { project_id: string }) => l.project_id);
-      const { data: projects } = await supabase
-        .from("projects")
-        .select("id, name")
-        .in("id", projectIds);
-      setLinkedProjects(projects || []);
-    } else {
-      setLinkedProjects([]);
-    }
+    const data = await fetchLinkedProjectsAction(taskId);
+    setLinkedProjects(data);
   };
 
-  const fetchChildTasks = async () => {
-    const { data } = await supabase
-      .from("tasks")
-      .select("id, title, status")
-      .eq("parent_task_id", taskId);
-    setChildTasks(data || []);
+  const fetchChildTasksData = async () => {
+    const data = await fetchChildTasksAction(taskId);
+    setChildTasks(data);
   };
 
-  const fetchTaskTypes = async () => {
-    const { data } = await supabase
-      .from("task_types")
-      .select("id, name, color")
-      .eq("is_active", true)
-      .order("name");
-    setTaskTypes(data || []);
+  const fetchTaskTypesData = async () => {
+    const data = await fetchActiveTaskTypes();
+    setTaskTypes(data);
   };
 
   const fetchNotes = async () => {
-    const { data: notesData } = await supabase
-      .from("notes_standalone")
-      .select("*")
-      .eq("task_id", taskId)
-      .order("created_at", { ascending: false });
-    setTaskNotes(notesData || []);
+    const data = await fetchTaskNotes(taskId);
+    setTaskNotes(data);
   };
 
-  const fetchSeriesTasks = async () => {
+  const fetchSeriesTasksData = async () => {
     if (!task) return;
     const sourceId = task.recurrence_source_task_id || (task.is_recurring ? task.id : null);
     if (!sourceId) { setSeriesTasks([]); return; }
 
-    const { data } = await supabase
-      .from("tasks")
-      .select("id, title, status, due_date")
-      .or(`recurrence_source_task_id.eq.${sourceId},id.eq.${sourceId}`)
-      .order("due_date", { ascending: true });
-    setSeriesTasks(data || []);
+    const data = await fetchSeriesTasksAction(sourceId);
+    setSeriesTasks(data);
   };
 
-  const fetchWorkflowChain = async (templateId: string) => {
-    const { data: allTemplates } = await supabase.from("task_templates").select("id, name").order("name");
-    const { data: steps } = await supabase.from("task_workflow_steps").select("template_id, next_template_id, delay_days");
-    if (!allTemplates || !steps) { setWorkflowChain([]); return; }
-
-    const tmplMap: Record<string, string> = {};
-    for (const t of allTemplates) tmplMap[t.id] = t.name;
-
-    const stepMap: Record<string, { next_template_id: string; delay_days: number }> = {};
-    for (const s of steps) stepMap[s.template_id] = { next_template_id: s.next_template_id, delay_days: s.delay_days };
-
-    // Build full chain starting from the very beginning (find root)
-    // First, find which template starts the chain that includes our template
-    const allTemplateIds = allTemplates.map((t: { id: string }) => t.id);
-    const nextIds = new Set(steps.map((s: { next_template_id: string }) => s.next_template_id));
-    // Templates that are not pointed to by any step are potential roots
-    const roots = allTemplateIds.filter((id: string) => !nextIds.has(id) && stepMap[id]);
-
-    // Find the chain that includes our templateId
-    let chain: { id: string; name: string; delayDays: number }[] = [];
-    for (const rootId of roots) {
-      const c: { id: string; name: string; delayDays: number }[] = [{ id: rootId, name: tmplMap[rootId] || rootId, delayDays: 0 }];
-      const visited = new Set<string>([rootId]);
-      let currentId = rootId;
-      let found = currentId === templateId;
-      while (currentId) {
-        const step = stepMap[currentId];
-        if (!step || !step.next_template_id || visited.has(step.next_template_id)) break;
-        visited.add(step.next_template_id);
-        c.push({ id: step.next_template_id, name: tmplMap[step.next_template_id] || step.next_template_id, delayDays: step.delay_days });
-        if (step.next_template_id === templateId) found = true;
-        currentId = step.next_template_id;
-      }
-      if (found && c.length > 1) { chain = c; break; }
-    }
+  const fetchWorkflowChainData = async (templateId: string) => {
+    const chain = await fetchWorkflowChainAction(templateId);
     setWorkflowChain(chain);
   };
 
   useEffect(() => {
     fetchTask();
     fetchDependencies();
-    fetchAllTasks();
-    fetchAllEmployees();
-    fetchAllContacts();
-    fetchAllProjects();
+    fetchAllTasksData();
+    fetchAllEmployeesData();
+    fetchAllContactsData();
+    fetchAllProjectsData();
     fetchLinkedProjects();
-    fetchChildTasks();
-    fetchTaskTypes();
+    fetchChildTasksData();
+    fetchTaskTypesData();
     fetchNotes();
   }, [taskId]);
 
@@ -502,12 +419,7 @@ export default function TaskDetailPage() {
 
   useEffect(() => {
     if (task?.parent_task_id) {
-      supabase
-        .from("tasks")
-        .select("id, title")
-        .eq("id", task.parent_task_id)
-        .single()
-        .then(({ data }) => setParentTask(data));
+      fetchParentTaskAction(task.parent_task_id).then((data) => setParentTask(data));
     } else {
       setParentTask(null);
     }
@@ -515,7 +427,7 @@ export default function TaskDetailPage() {
 
   useEffect(() => {
     if (task?.template_id) {
-      fetchWorkflowChain(task.template_id);
+      fetchWorkflowChainData(task.template_id);
     } else {
       setWorkflowChain([]);
     }
@@ -523,7 +435,7 @@ export default function TaskDetailPage() {
 
   useEffect(() => {
     if (task && (task.recurrence_source_task_id || task.is_recurring)) {
-      fetchSeriesTasks();
+      fetchSeriesTasksData();
     } else {
       setSeriesTasks([]);
     }
@@ -531,12 +443,7 @@ export default function TaskDetailPage() {
 
   useEffect(() => {
     if (task?.template_id) {
-      supabase
-        .from("task_templates")
-        .select("name")
-        .eq("id", task.template_id)
-        .single()
-        .then(({ data }) => setTemplateName(data?.name || null));
+      fetchTemplateNameAction(task.template_id).then((name) => setTemplateName(name));
     } else {
       setTemplateName(null);
     }
@@ -549,31 +456,27 @@ export default function TaskDetailPage() {
     setSavingDep(true);
     setDepError(null);
 
-    const { error } = await supabase.from("task_dependencies").insert({
-      task_id: taskId,
-      depends_on_task_id: depForm.depends_on_task_id,
-      dependency_type: depForm.dependency_type,
-      lag_days: parseInt(depForm.lag_days) || 0,
-    });
-
-    if (error) {
-      setDepError(error.message);
-      setSavingDep(false);
-      return;
+    try {
+      await addDependency(taskId, {
+        depends_on_task_id: depForm.depends_on_task_id,
+        dependency_type: depForm.dependency_type,
+        lag_days: parseInt(depForm.lag_days) || 0,
+      });
+      setDepForm({
+        depends_on_task_id: "",
+        dependency_type: "finish_to_start",
+        lag_days: "0",
+      });
+      setDepOpen(false);
+      fetchDependencies();
+    } catch (error: unknown) {
+      setDepError(error instanceof Error ? error.message : "Failed to add dependency");
     }
-
-    setDepForm({
-      depends_on_task_id: "",
-      dependency_type: "finish_to_start",
-      lag_days: "0",
-    });
-    setDepOpen(false);
-    fetchDependencies();
     setSavingDep(false);
   };
 
   const handleDeleteDependency = async (depId: string) => {
-    await supabase.from("task_dependencies").delete().eq("id", depId);
+    await deleteDependency(depId);
     fetchDependencies();
   };
 
@@ -604,9 +507,8 @@ export default function TaskDetailPage() {
     setSavingEdit(true);
     setEditError(null);
 
-    const { error } = await supabase
-      .from("tasks")
-      .update({
+    try {
+      await updateTask(taskId, {
         title: editForm.title,
         description: editForm.description || null,
         contact_id: editForm.contact_id || null,
@@ -619,114 +521,72 @@ export default function TaskDetailPage() {
         is_recurring: editForm.is_recurring,
         recurrence_frequency: editForm.is_recurring && editForm.recurrence_frequency ? parseInt(editForm.recurrence_frequency) : null,
         recurrence_unit: editForm.is_recurring && editForm.recurrence_frequency ? editForm.recurrence_unit : null,
-      })
-      .eq("id", taskId);
-
-    if (error) {
-      setEditError(error.message);
+      });
+    } catch (error: unknown) {
+      setEditError(error instanceof Error ? error.message : "Failed to update task");
       setSavingEdit(false);
       return;
     }
 
-    // Update assignees: delete existing, insert new
-    const { error: deleteAssigneesError } = await supabase.from("task_assignees").delete().eq("task_id", taskId);
-    if (deleteAssigneesError) {
-      setEditError("Failed to update assignees: " + deleteAssigneesError.message);
+    // Update assignees
+    try {
+      await replaceTaskAssignees(taskId, editSelectedEmployees);
+    } catch (error: unknown) {
+      setEditError("Failed to update assignees: " + (error instanceof Error ? error.message : String(error)));
       setSavingEdit(false);
       return;
     }
-    if (editSelectedEmployees.length > 0) {
-      const { error: insertAssigneesError } = await supabase.from("task_assignees").insert(
-        editSelectedEmployees.map((empId) => ({
-          task_id: taskId,
-          employee_id: empId,
-        }))
-      );
-      if (insertAssigneesError) {
-        setEditError("Failed to assign employees: " + insertAssigneesError.message);
-        setSavingEdit(false);
-        return;
-      }
-    }
 
-    // Update project links via junction table
-    await supabase.from("project_tasks").delete().eq("task_id", taskId);
-    if (editSelectedProjects.length > 0) {
-      const { error: projectLinkError } = await supabase.from("project_tasks").insert(
-        editSelectedProjects.map((pid) => ({
-          task_id: taskId,
-          project_id: pid,
-        }))
-      );
-      if (projectLinkError) {
-        setEditError("Failed to link projects: " + projectLinkError.message);
-        setSavingEdit(false);
-        return;
-      }
+    // Update project links
+    try {
+      await replaceProjectLinks(taskId, editSelectedProjects);
+    } catch (error: unknown) {
+      setEditError("Failed to link projects: " + (error instanceof Error ? error.message : String(error)));
+      setSavingEdit(false);
+      return;
     }
 
     // Auto-create follow-up task if task was just completed and has a template
     if (editForm.status === "completed" && task && task.status !== "completed" && task.template_id) {
       try {
-        const { data: steps } = await supabase
-          .from("task_workflow_steps")
-          .select("step_order, delay_days, next_template_id")
-          .eq("template_id", task.template_id)
-          .order("step_order", { ascending: true })
-          .limit(1);
+        const followUp = await fetchFollowUpTemplate(task.template_id);
 
-        if (steps && steps.length > 0) {
-          const step = steps[0];
-          // Fetch the next template details
-          const { data: nextTemplate } = await supabase
-            .from("task_templates")
-            .select("id, name, description, default_priority, due_amount, due_unit, default_due_days, task_type_id")
-            .eq("id", step.next_template_id)
-            .single();
-
-          if (nextTemplate) {
-            // Calculate due date
-            let dueDate: string | null = null;
-            const delayDays = step.delay_days || 0;
-            const amount = nextTemplate.due_amount || nextTemplate.default_due_days;
-            const unit = nextTemplate.due_unit || "days";
-            if (amount) {
-              const baseDateStr = addDaysToDate(todayCST(), delayDays);
-              if (unit === "hours") {
-                // hours: just use todayCST + delay as the date
-                dueDate = baseDateStr;
-              } else if (unit === "days") {
-                dueDate = addDaysToDate(baseDateStr, amount);
-              } else if (unit === "weeks") {
-                dueDate = addDaysToDate(baseDateStr, amount * 7);
-              } else if (unit === "months") {
-                const d = new Date(baseDateStr + "T12:00:00");
-                d.setMonth(d.getMonth() + amount);
-                const yyyy = d.getFullYear();
-                const mm = String(d.getMonth() + 1).padStart(2, "0");
-                const dd = String(d.getDate()).padStart(2, "0");
-                dueDate = `${yyyy}-${mm}-${dd}`;
-              }
-            }
-
-            const { data: { user } } = await supabase.auth.getUser();
-
-            const { error: followUpError } = await supabase.from("tasks").insert({
-              title: nextTemplate.name,
-              description: nextTemplate.description || null,
-              priority: nextTemplate.default_priority,
-              status: "pending",
-              due_date: dueDate,
-              contact_id: task.contact_id || null,
-              parent_task_id: taskId,
-              template_id: nextTemplate.id,
-              task_type_id: (nextTemplate as { task_type_id?: string }).task_type_id || null,
-              created_by: user?.id,
-            });
-            if (followUpError) {
-              console.error("Failed to create follow-up task:", followUpError);
+        if (followUp) {
+          const { step, template: nextTemplate } = followUp;
+          // Calculate due date
+          let dueDate: string | null = null;
+          const delayDays = step.delay_days || 0;
+          const amount = nextTemplate.due_amount || nextTemplate.default_due_days;
+          const unit = nextTemplate.due_unit || "days";
+          if (amount) {
+            const baseDateStr = addDaysToDate(todayCST(), delayDays);
+            if (unit === "hours") {
+              dueDate = baseDateStr;
+            } else if (unit === "days") {
+              dueDate = addDaysToDate(baseDateStr, amount);
+            } else if (unit === "weeks") {
+              dueDate = addDaysToDate(baseDateStr, amount * 7);
+            } else if (unit === "months") {
+              const d = new Date(baseDateStr + "T12:00:00");
+              d.setMonth(d.getMonth() + amount);
+              const yyyy = d.getFullYear();
+              const mm = String(d.getMonth() + 1).padStart(2, "0");
+              const dd = String(d.getDate()).padStart(2, "0");
+              dueDate = `${yyyy}-${mm}-${dd}`;
             }
           }
+
+          await createFollowUpTask({
+            title: nextTemplate.name,
+            description: nextTemplate.description || null,
+            priority: nextTemplate.default_priority,
+            status: "pending",
+            due_date: dueDate,
+            contact_id: task.contact_id || null,
+            parent_task_id: taskId,
+            template_id: nextTemplate.id,
+            task_type_id: nextTemplate.task_type_id || null,
+          });
         }
       } catch (e) {
         console.error("Failed to create follow-up task:", e);
@@ -744,7 +604,7 @@ export default function TaskDetailPage() {
 
     fetchTask();
     fetchLinkedProjects();
-    fetchChildTasks();
+    fetchChildTasksData();
   };
 
   const toggleEditEmployee = (empId: string) => {
@@ -765,85 +625,46 @@ export default function TaskDetailPage() {
 
   // Inline relationship handlers
   const handleInlineRemoveEmployee = async (empId: string) => {
-    await supabase.from("task_assignees").delete().eq("task_id", taskId).eq("employee_id", empId);
+    await removeEmployee(taskId, empId);
     fetchTask();
   };
 
   const handleInlineAddEmployee = async (empId: string) => {
-    await supabase.from("task_assignees").insert({ task_id: taskId, employee_id: empId });
+    await addEmployee(taskId, empId);
     fetchTask();
   };
 
   const handleInlineChangeContact = async (contactId: string | null) => {
-    await supabase.from("tasks").update({ contact_id: contactId }).eq("id", taskId);
+    await changeContact(taskId, contactId);
     fetchTask();
   };
 
   const handleInlineRemoveProject = async (projectId: string) => {
-    await supabase.from("project_tasks").delete().eq("task_id", taskId).eq("project_id", projectId);
+    await removeProjectLink(taskId, projectId);
     fetchLinkedProjects();
   };
 
   const handleInlineAddProject = async (projectId: string) => {
-    await supabase.from("project_tasks").insert({ task_id: taskId, project_id: projectId });
+    await addProjectLink(taskId, projectId);
     fetchLinkedProjects();
   };
 
   const checkDependenciesAndDelete = async () => {
-    // Check what tasks depend on this one
-    const { data: deps } = await supabase
-      .from("task_dependencies")
-      .select("task_id")
-      .eq("depends_on_task_id", taskId);
-
-    if (deps && deps.length > 0) {
-      const depTaskIds = deps.map((d: { task_id: string }) => d.task_id);
-      const { data: depTasks } = await supabase
-        .from("tasks")
-        .select("id, title")
-        .in("id", depTaskIds);
-      setDependentTasks(depTasks || []);
-    } else {
-      setDependentTasks([]);
-    }
+    const depTasks = await checkDependentTasks(taskId);
+    setDependentTasks(depTasks);
     setDeleteCheckOpen(true);
   };
 
   const handleDeleteTask = async () => {
     setDeleting(true);
-
-    // Clean up all related records before deleting the task
-    const cleanups = [
-      supabase.from("task_assignees").delete().eq("task_id", taskId),
-      supabase.from("task_dependencies").delete().eq("task_id", taskId),
-      supabase.from("task_dependencies").delete().eq("depends_on_task_id", taskId),
-      supabase.from("project_tasks").delete().eq("task_id", taskId),
-    ];
-
-    const results = await Promise.all(cleanups);
-    const cleanupError = results.find((r) => r.error);
-    if (cleanupError?.error) {
-      setEditError("Failed to clean up related records: " + cleanupError.error.message);
+    try {
+      await deleteTaskAction(taskId);
+      router.push("/dashboard/tasks");
+    } catch (error: unknown) {
+      setEditError("Failed to delete task: " + (error instanceof Error ? error.message : String(error)));
       setDeleting(false);
       setDeleteCheckOpen(false);
-      return;
     }
-
-    // Clear parent_task_id on any child/follow-up tasks
-    await supabase
-      .from("tasks")
-      .update({ parent_task_id: null })
-      .eq("parent_task_id", taskId);
-
-    const { error } = await supabase.from("tasks").delete().eq("id", taskId);
-    if (error) {
-      setEditError("Failed to delete task: " + error.message);
-      setDeleting(false);
-      setDeleteCheckOpen(false);
-      return;
-    }
-
-    router.push("/dashboard/tasks");
   };
 
   const priorityColors: Record<string, string> = {
@@ -868,11 +689,8 @@ export default function TaskDetailPage() {
     if (!task) return;
     setSavingField(field);
     setSavedField(null);
-    const updateData: Record<string, unknown> = { [field]: value };
-    if (field === "status" && value === "completed") {
-      updateData.completed_at = nowUTC();
-    }
-    await supabase.from("tasks").update(updateData).eq("id", task.id);
+    const completedAt = field === "status" && value === "completed" ? nowUTC() : undefined;
+    await updateTaskFieldInline(task.id, field, value, completedAt);
     setTask({ ...task, [field]: value });
     setSavingField(null);
     setSavedField(field);
@@ -1453,12 +1271,12 @@ export default function TaskDetailPage() {
                   size="sm"
                   className="h-7 text-xs"
                   onClick={async () => {
-                    await supabase.from("tasks").update({
+                    await updateTask(taskId, {
                       is_recurring: false,
                       recurrence_frequency: null,
                       recurrence_unit: null,
                       recurrence_source_task_id: null
-                    }).eq("id", taskId);
+                    });
                     fetchTask();
                   }}
                 >
@@ -1952,10 +1770,7 @@ export default function TaskDetailPage() {
               disabled={!newNoteContent.trim() || addingNote}
               onClick={async () => {
                 setAddingNote(true);
-                await supabase.from("notes_standalone").insert({
-                  task_id: taskId,
-                  content: newNoteContent.trim(),
-                });
+                await addTaskNote(taskId, newNoteContent.trim());
                 setNewNoteContent("");
                 setAddingNote(false);
                 fetchNotes();
@@ -1975,10 +1790,7 @@ export default function TaskDetailPage() {
                   <button
                     className="absolute top-2 right-2 rounded-full hover:bg-muted p-1"
                     onClick={async () => {
-                      await supabase
-                        .from("notes_standalone")
-                        .delete()
-                        .eq("id", note.id);
+                      await deleteTaskNote(note.id);
                       fetchNotes();
                     }}
                   >

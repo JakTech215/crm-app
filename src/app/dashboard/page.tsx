@@ -2,7 +2,19 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  getDashboardStats,
+  getOverdueTasks,
+  getUpcomingTasks,
+  enrichTasksWithProjectsAndAssignees,
+  getCalendarTasks,
+  getCalendarEvents,
+  getUpcomingEvents,
+  getRecentNotes,
+  getDbHolidays,
+  markTaskComplete,
+  updateTaskField,
+} from "./actions";
 import { todayCST, formatDate, formatDateLong, formatTime, formatMonthYear, nowUTC, nowCST, futureDateCST, formatRelativeTime as fmtRelTime, daysFromToday } from "@/lib/dates";
 import { getFederalHolidays, buildHolidayMap } from "@/lib/holidays";
 import {
@@ -166,7 +178,6 @@ function formatDateKey(d: Date) {
 }
 
 export default function DashboardPage() {
-  const supabase = createClient();
   const router = useRouter();
   const [stats, setStats] = useState<StatCard[]>([
     { title: "Total Contacts", value: 0, description: "All contacts", icon: Users, href: "/dashboard/contacts" },
@@ -214,82 +225,29 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
       const today = todayCST();
 
       // Stats
-      const [contactsRes, projectsRes, tasksRes, employeesRes] = await Promise.all([
-        supabase.from("contacts").select("id", { count: "exact", head: true }),
-        supabase.from("projects").select("id", { count: "exact", head: true }),
-        supabase.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"),
-        supabase.from("employees").select("id", { count: "exact", head: true }).eq("status", "active"),
-      ]);
-
-      const c = (r: { error: unknown; count: number | null }) => r.error ? 0 : (r.count ?? 0);
-
-      setStats([
-        { title: "Total Contacts", value: c(contactsRes), description: "All contacts", icon: Users, href: "/dashboard/contacts" },
-        { title: "Total Projects", value: c(projectsRes), description: "All projects", icon: FolderKanban, href: "/dashboard/projects" },
-        { title: "Total Tasks", value: c(tasksRes), description: "All open tasks", icon: CheckSquare, href: "/dashboard/tasks" },
-        { title: "Total Employees", value: c(employeesRes), description: "Active team members", icon: UserCog, href: "/dashboard/employees" },
-      ]);
-
-      // Helper: enrich tasks with contacts, projects, assignees
-      async function enrichTasks(tasks: Record<string, unknown>[]): Promise<{ contact: TaskContact | null; projects: TaskProject[]; assignees: TaskAssignee[] }[]> {
-        const taskIds = tasks.map((t) => t.id as string);
-        if (taskIds.length === 0) return [];
-
-        const taskProjectMap: Record<string, TaskProject[]> = {};
-        const { data: ptLinks } = await supabase.from("project_tasks").select("task_id, project_id").in("task_id", taskIds);
-        if (ptLinks && ptLinks.length > 0) {
-          const projectIds = [...new Set(ptLinks.map((pt: { project_id: string }) => pt.project_id))];
-          const { data: projData } = await supabase.from("projects").select("id, name").in("id", projectIds);
-          const projNameMap: Record<string, string> = {};
-          if (projData) for (const p of projData) projNameMap[p.id] = p.name;
-          for (const pt of ptLinks as { task_id: string; project_id: string }[]) {
-            const name = projNameMap[pt.project_id];
-            if (name) {
-              if (!taskProjectMap[pt.task_id]) taskProjectMap[pt.task_id] = [];
-              taskProjectMap[pt.task_id].push({ id: pt.project_id, name });
-            }
-          }
-        }
-
-        const taskAssigneeMap: Record<string, TaskAssignee[]> = {};
-        const { data: assignees } = await supabase.from("task_assignees").select("task_id, employee_id, employees(id, first_name, last_name)").in("task_id", taskIds);
-        if (assignees) {
-          for (const a of assignees as unknown as { task_id: string; employees: { first_name: string; last_name: string } }[]) {
-            if (!taskAssigneeMap[a.task_id]) taskAssigneeMap[a.task_id] = [];
-            taskAssigneeMap[a.task_id].push({ name: `${a.employees.first_name} ${a.employees.last_name}` });
-          }
-        }
-
-        return tasks.map((t) => {
-          const contactObj = Array.isArray(t.contacts) ? t.contacts[0] : t.contacts;
-          return {
-            contact: contactObj ? { id: (contactObj as TaskContact).id, first_name: (contactObj as TaskContact).first_name, last_name: (contactObj as TaskContact).last_name } : null,
-            projects: taskProjectMap[t.id as string] || [],
-            assignees: taskAssigneeMap[t.id as string] || [],
-          };
-        });
+      try {
+        const counts = await getDashboardStats();
+        setStats([
+          { title: "Total Contacts", value: counts.contacts, description: "All contacts", icon: Users, href: "/dashboard/contacts" },
+          { title: "Total Projects", value: counts.projects, description: "All projects", icon: FolderKanban, href: "/dashboard/projects" },
+          { title: "Total Tasks", value: counts.tasks, description: "All open tasks", icon: CheckSquare, href: "/dashboard/tasks" },
+          { title: "Total Employees", value: counts.employees, description: "Active team members", icon: UserCog, href: "/dashboard/employees" },
+        ]);
+      } catch (e) {
+        console.error("Failed to fetch stats:", e);
       }
 
       // Overdue tasks
       try {
-        const { data: overdueTasks } = await supabase
-          .from("tasks")
-          .select("id, title, due_date, priority, status, contact_id, contacts:contact_id(id, first_name, last_name)")
-          .neq("status", "completed")
-          .lt("due_date", today)
-          .order("due_date", { ascending: true })
-          .limit(10);
-
-        if (overdueTasks && overdueTasks.length > 0) {
-          const enriched = await enrichTasks(overdueTasks as Record<string, unknown>[]);
-          setOverdue(overdueTasks.map((t: Record<string, unknown>, i: number) => ({
-            id: t.id as string,
-            title: t.title as string,
-            due_date: t.due_date as string,
-            priority: t.priority as string,
-            status: (t.status as string) || "pending",
-            ...enriched[i],
-            days_overdue: daysFromToday(t.due_date as string),
+        const overdueTasks = await getOverdueTasks(today);
+        if (overdueTasks.length > 0) {
+          const taskIds = overdueTasks.map((t) => t.id);
+          const { projectMap, assigneeMap } = await enrichTasksWithProjectsAndAssignees(taskIds);
+          setOverdue(overdueTasks.map((t) => ({
+            ...t,
+            projects: projectMap[t.id] || [],
+            assignees: assigneeMap[t.id] || [],
+            days_overdue: daysFromToday(t.due_date),
           })));
         } else {
           setOverdue([]);
@@ -300,21 +258,12 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
       // Calendar tasks
       try {
-        const { data: calTasks } = await supabase
-          .from("tasks")
-          .select("id, title, due_date, priority, is_milestone, status")
-          .neq("status", "completed")
-          .gte("due_date", calendarRange.start)
-          .lte("due_date", calendarRange.end)
-          .order("due_date", { ascending: true });
-
+        const calTasks = await getCalendarTasks(calendarRange.start, calendarRange.end);
         const map: Record<string, CalendarDayData> = {};
-        if (calTasks) {
-          for (const t of calTasks as { id: string; title: string; due_date: string; priority: string; is_milestone: boolean }[]) {
-            const key = t.due_date;
-            if (!map[key]) map[key] = { date: key, tasks: [] };
-            map[key].tasks.push({ id: t.id, title: t.title, priority: t.priority, is_milestone: t.is_milestone || false });
-          }
+        for (const t of calTasks) {
+          const key = t.due_date;
+          if (!map[key]) map[key] = { date: key, tasks: [] };
+          map[key].tasks.push({ id: t.id, title: t.title, priority: t.priority, is_milestone: t.is_milestone });
         }
         setCalendarTaskMap(map);
       } catch (e) {
@@ -323,19 +272,11 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
       // Calendar events
       try {
-        const { data: calEvents } = await supabase
-          .from("events")
-          .select("id, title, event_date, event_type, event_time")
-          .gte("event_date", calendarRange.start)
-          .lte("event_date", calendarRange.end)
-          .order("event_time", { ascending: true });
-
+        const calEvents = await getCalendarEvents(calendarRange.start, calendarRange.end);
         const evtMap: Record<string, CalendarEvent[]> = {};
-        if (calEvents) {
-          for (const e of calEvents as { id: string; title: string; event_date: string; event_type: string; event_time: string | null }[]) {
-            if (!evtMap[e.event_date]) evtMap[e.event_date] = [];
-            evtMap[e.event_date].push({ id: e.id, title: e.title, event_type: e.event_type, event_time: e.event_time });
-          }
+        for (const e of calEvents) {
+          if (!evtMap[e.event_date]) evtMap[e.event_date] = [];
+          evtMap[e.event_date].push({ id: e.id, title: e.title, event_type: e.event_type, event_time: e.event_time });
         }
         setCalendarEventMap(evtMap);
 
@@ -370,24 +311,14 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
       // Upcoming tasks (filtered by date range)
       try {
-        const { data: upcomingTasks } = await supabase
-          .from("tasks")
-          .select("id, title, due_date, priority, status, contact_id, contacts:contact_id(id, first_name, last_name)")
-          .neq("status", "completed")
-          .gte("due_date", upcomingDateFrom)
-          .lte("due_date", upcomingDateTo)
-          .order("due_date", { ascending: true })
-          .limit(25);
-
-        if (upcomingTasks && upcomingTasks.length > 0) {
-          const enriched = await enrichTasks(upcomingTasks as Record<string, unknown>[]);
-          setUpcoming(upcomingTasks.map((t: Record<string, unknown>, i: number) => ({
-            id: t.id as string,
-            title: t.title as string,
-            due_date: t.due_date as string,
-            priority: t.priority as string,
-            status: (t.status as string) || "pending",
-            ...enriched[i],
+        const upcomingTasks = await getUpcomingTasks(upcomingDateFrom, upcomingDateTo);
+        if (upcomingTasks.length > 0) {
+          const taskIds = upcomingTasks.map((t) => t.id);
+          const { projectMap, assigneeMap } = await enrichTasksWithProjectsAndAssignees(taskIds);
+          setUpcoming(upcomingTasks.map((t) => ({
+            ...t,
+            projects: projectMap[t.id] || [],
+            assignees: assigneeMap[t.id] || [],
           })));
         } else {
           setUpcoming([]);
@@ -398,25 +329,16 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
       // Upcoming events
       try {
-        const { data: evts } = await supabase
-          .from("events")
-          .select("id, title, event_date, event_type")
-          .gte("event_date", today)
-          .order("event_date", { ascending: true })
-          .limit(5);
-        setDashEvents(evts || []);
+        const evts = await getUpcomingEvents(today);
+        setDashEvents(evts);
       } catch (e) {
         console.error("Failed to fetch events:", e);
       }
 
       // Recent notes
       try {
-        const { data: nts } = await supabase
-          .from("notes_standalone")
-          .select("id, content, created_at")
-          .order("created_at", { ascending: false })
-          .limit(5);
-        setDashNotes(nts || []);
+        const nts = await getRecentNotes();
+        setDashNotes(nts);
       } catch (e) {
         console.error("Failed to fetch notes:", e);
       }
@@ -424,12 +346,10 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
       // Fetch holidays
       try {
         const federalHolidays = await getFederalHolidays();
-        const { data: dbHolidays } = await supabase
-          .from("holidays")
-          .select("holiday_date, name");
+        const dbHolidays = await getDbHolidays();
         const allHolidays = [
           ...federalHolidays.map((h) => ({ date: h.date, name: h.name })),
-          ...(dbHolidays || []).map((h: { holiday_date: string; name: string }) => ({ date: h.holiday_date, name: h.name })),
+          ...dbHolidays,
         ];
         setHolidayMap(buildHolidayMap(allHolidays));
       } catch (e) {
@@ -443,20 +363,19 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
   }, [calendarRange.start, calendarRange.end, upcomingDateFrom, upcomingDateTo]);
 
   const handleMarkComplete = async (taskId: string) => {
-  const { error } = await supabase.from("tasks").update({ status: "completed", completed_at: nowUTC() }).eq("id", taskId);
-  if (!error) {
+  try {
+    await markTaskComplete(taskId, nowUTC());
     setOverdue((prev) => prev.filter((t) => t.id !== taskId));
+  } catch (e) {
+    console.error("Failed to mark task complete:", e);
   }
 };
   const handleDashboardInlineUpdate = async (taskId: string, field: string, value: string) => {
     const key = `${taskId}-${field}`;
     setSavingCell(key);
     setSavedCell(null);
-    const updateData: Record<string, unknown> = { [field]: value };
-    if (field === "status" && value === "completed") {
-      updateData.completed_at = nowUTC();
-    }
-    await supabase.from("tasks").update(updateData).eq("id", taskId);
+    const completedAt = field === "status" && value === "completed" ? nowUTC() : undefined;
+    await updateTaskField(taskId, field, value, completedAt);
     setOverdue((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } as typeof t : t));
     setUpcoming((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } : t));
     setSavingCell(null);

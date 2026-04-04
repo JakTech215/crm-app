@@ -2,7 +2,18 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchBoardTasks,
+  fetchTaskAssignees,
+  fetchActiveEmployees,
+  fetchAllContacts,
+  fetchActiveTaskTypes,
+  fetchAllProjects,
+  completeTask,
+  updateTaskStatus,
+  updateTaskPriority,
+  createTask,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -149,7 +160,6 @@ interface BoardColumn {
 }
 
 export default function TaskBoardPage() {
-  const supabase = createClient();
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
@@ -189,67 +199,30 @@ export default function TaskBoardPage() {
   };
 
   const fetchData = useCallback(async () => {
-    const [
-      { data: taskData },
-      { data: empData },
-      { data: contactData },
-      { data: typeData },
-      { data: projData },
-    ] = await Promise.all([
-      supabase
-        .from("tasks")
-        .select("*, contacts:contact_id(id, first_name, last_name, company)")
-        .order("due_date", { ascending: true, nullsFirst: false }),
-      supabase
-        .from("employees")
-        .select("id, first_name, last_name")
-        .eq("status", "active")
-        .order("first_name"),
-      supabase
-        .from("contacts")
-        .select("id, first_name, last_name, company")
-        .order("first_name"),
-      supabase
-        .from("task_types")
-        .select("id, name, color")
-        .eq("is_active", true)
-        .order("name"),
-      supabase
-        .from("projects")
-        .select("id, name")
-        .order("name"),
+    const [taskData, empData, contactData, typeData, projData] = await Promise.all([
+      fetchBoardTasks(),
+      fetchActiveEmployees(),
+      fetchAllContacts(),
+      fetchActiveTaskTypes(),
+      fetchAllProjects(),
     ]);
 
-    setEmployees(empData || []);
-    setContacts(contactData || []);
-    setTaskTypes(typeData || []);
-    setProjects(projData || []);
+    setEmployees(empData);
+    setContacts(contactData);
+    setTaskTypes(typeData);
+    setProjects(projData);
 
-    const taskIds = (taskData || []).map((t: { id: string }) => t.id);
-    const assigneeMap: Record<string, TaskAssignee[]> = {};
+    const taskIds = taskData.map((t) => t.id);
+    const assigneeMap = await fetchTaskAssignees(taskIds);
 
-    if (taskIds.length > 0) {
-      const { data: assignees } = await supabase
-        .from("task_assignees")
-        .select("task_id, employee_id, employees(id, first_name, last_name)")
-        .in("task_id", taskIds);
-
-      if (assignees) {
-        for (const a of assignees as unknown as (TaskAssignee & { task_id: string })[]) {
-          if (!assigneeMap[a.task_id]) assigneeMap[a.task_id] = [];
-          assigneeMap[a.task_id].push(a);
-        }
-      }
-    }
-
-    const tasksWithAssignees = (taskData || []).map((t: Task) => ({
+    const tasksWithAssignees = taskData.map((t) => ({
       ...t,
       task_assignees: assigneeMap[t.id] || [],
     }));
 
     setTasks(tasksWithAssignees as Task[]);
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -257,55 +230,46 @@ export default function TaskBoardPage() {
 
   const handleComplete = async (taskId: string) => {
     setCompleting(taskId);
-    const { error } = await supabase
-      .from("tasks")
-      .update({ status: "completed", completed_at: nowUTC() })
-      .eq("id", taskId);
-
-    if (!error) {
+    try {
+      await completeTask(taskId, nowUTC());
       setTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, status: "completed" } : t))
       );
       if (selectedTask?.id === taskId) {
         setSelectedTask((prev) => prev ? { ...prev, status: "completed" } : null);
       }
+    } catch (e) {
+      console.error("Failed to complete task:", e);
     }
     setCompleting(null);
   };
 
   const handleStatusChange = async (taskId: string, newStatus: string) => {
-    const updateData: Record<string, unknown> = { status: newStatus };
-    if (newStatus === "completed") {
-      updateData.completed_at = nowUTC();
-    }
-    const { error } = await supabase
-      .from("tasks")
-      .update(updateData)
-      .eq("id", taskId);
-
-    if (!error) {
+    try {
+      const completedAt = newStatus === "completed" ? nowUTC() : undefined;
+      await updateTaskStatus(taskId, newStatus, completedAt);
       setTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
       );
       if (selectedTask?.id === taskId) {
         setSelectedTask((prev) => prev ? { ...prev, status: newStatus } : null);
       }
+    } catch (e) {
+      console.error("Failed to update status:", e);
     }
   };
 
   const handlePriorityChange = async (taskId: string, newPriority: string) => {
-    const { error } = await supabase
-      .from("tasks")
-      .update({ priority: newPriority })
-      .eq("id", taskId);
-
-    if (!error) {
+    try {
+      await updateTaskPriority(taskId, newPriority);
       setTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, priority: newPriority } : t))
       );
       if (selectedTask?.id === taskId) {
         setSelectedTask((prev) => prev ? { ...prev, priority: newPriority } : null);
       }
+    } catch (e) {
+      console.error("Failed to update priority:", e);
     }
   };
 
@@ -314,64 +278,42 @@ export default function TaskBoardPage() {
     setCreateSaving(true);
     setCreateError(null);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      setCreateError(authError?.message || "You must be logged in.");
-      setCreateSaving(false);
-      return;
-    }
-
-    const { data: task, error: insertError } = await supabase
-      .from("tasks")
-      .insert({
-        title: createForm.title,
-        description: createForm.description || null,
-        contact_id: createForm.contact_id || null,
-        priority: createForm.priority,
-        status: createForm.status,
-        start_date: createForm.start_date || null,
-        due_date: createForm.due_date || null,
-        is_milestone: createForm.is_milestone,
-        created_by: user.id,
-      })
-      .select("*, contacts:contact_id(id, first_name, last_name, company)")
-      .single();
-
-    if (insertError) {
-      setCreateError(insertError.message);
-      setCreateSaving(false);
-      return;
-    }
-
-    if (task && createEmployees.length > 0) {
-      await supabase.from("task_assignees").insert(
-        createEmployees.map((empId) => ({ task_id: task.id, employee_id: empId }))
+    try {
+      await createTask(
+        {
+          title: createForm.title,
+          description: createForm.description || null,
+          contact_id: createForm.contact_id || null,
+          priority: createForm.priority,
+          status: createForm.status,
+          start_date: createForm.start_date || null,
+          due_date: createForm.due_date || null,
+          is_milestone: createForm.is_milestone,
+        },
+        createEmployees,
+        createForm.project_id || null,
       );
-    }
 
-    if (task && createForm.project_id) {
-      await supabase.from("project_tasks").insert({
-        task_id: task.id,
-        project_id: createForm.project_id,
+      // Reset form and refresh
+      setCreateForm({
+        title: "",
+        description: "",
+        project_id: "",
+        contact_id: "",
+        priority: "medium",
+        status: "pending",
+        start_date: "",
+        due_date: "",
+        is_milestone: false,
       });
+      setCreateEmployees([]);
+      setCreateOpen(false);
+      setCreateSaving(false);
+      fetchData();
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create task");
+      setCreateSaving(false);
     }
-
-    // Reset form and refresh
-    setCreateForm({
-      title: "",
-      description: "",
-      project_id: "",
-      contact_id: "",
-      priority: "medium",
-      status: "pending",
-      start_date: "",
-      due_date: "",
-      is_milestone: false,
-    });
-    setCreateEmployees([]);
-    setCreateOpen(false);
-    setCreateSaving(false);
-    fetchData();
   };
 
   // Apply filters to tasks

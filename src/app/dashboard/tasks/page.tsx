@@ -2,7 +2,25 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  fetchAllTasks,
+  fetchTaskAssignees,
+  fetchTaskProjectMap,
+  fetchActiveEmployees,
+  fetchAllProjects,
+  fetchAllContacts,
+  fetchTaskTemplates,
+  fetchActiveTaskTypes,
+  fetchWorkflowSteps,
+  createTask,
+  insertTaskAssignees,
+  insertProjectTask,
+  updateTask,
+  updateTaskField,
+  checkChildTaskCount,
+  deleteTask as deleteTaskAction,
+  bulkCreateTask,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -172,7 +190,6 @@ const computeOccurrences = (startDate: string, endDate: string, frequency: numbe
 };
 
 export default function TasksPage() {
-  const supabase = createClient();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -277,127 +294,55 @@ export default function TasksPage() {
   );
 
   const fetchTasks = async () => {
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*, contacts:contact_id(id, first_name, last_name, company)")
-      .order("created_at", { ascending: false });
+    try {
+      const data = await fetchAllTasks();
+      const taskIds = data.map((t) => t.id);
 
-    if (error) {
+      const assigneeMap = await fetchTaskAssignees(taskIds);
+
+      const tasksWithAssignees = data.map((t) => ({
+        ...t,
+        task_assignees: assigneeMap[t.id] || [],
+      }));
+
+      setTasks(tasksWithAssignees as Task[]);
+
+      const tpMap = await fetchTaskProjectMap(taskIds);
+      setTaskProjectMap(tpMap);
+    } catch (error) {
       console.error("Failed to fetch tasks:", error);
-      setLoading(false);
-      return;
     }
-
-    const taskIds = (data || []).map((t: { id: string }) => t.id);
-    const assigneeMap: Record<string, TaskAssignee[]> = {};
-
-    if (taskIds.length > 0) {
-      const { data: assignees } = await supabase
-        .from("task_assignees")
-        .select("task_id, employee_id, employees(id, first_name, last_name)")
-        .in("task_id", taskIds);
-
-      if (assignees) {
-        for (const a of assignees as unknown as (TaskAssignee & { task_id: string })[]) {
-          if (!assigneeMap[a.task_id]) assigneeMap[a.task_id] = [];
-          assigneeMap[a.task_id].push(a);
-        }
-      }
-    }
-
-    const tasksWithAssignees = (data || []).map((t: Task) => ({
-      ...t,
-      task_assignees: assigneeMap[t.id] || [],
-    }));
-
-    setTasks(tasksWithAssignees as Task[]);
-
-    if (taskIds.length > 0) {
-      const { data: projectTasks } = await supabase
-        .from("project_tasks")
-        .select("task_id, project_id")
-        .in("task_id", taskIds);
-
-      if (projectTasks && projectTasks.length > 0) {
-        const projectIds = [
-          ...new Set(projectTasks.map((pt: { project_id: string }) => pt.project_id)),
-        ];
-
-        const { data: projectData } = await supabase
-          .from("projects")
-          .select("id, name")
-          .in("id", projectIds);
-
-        const projectNameMap: Record<string, string> = {};
-        if (projectData) {
-          for (const p of projectData) {
-            projectNameMap[p.id] = p.name;
-          }
-        }
-
-        const tpMap: Record<string, TaskProject[]> = {};
-        for (const pt of projectTasks as { task_id: string; project_id: string }[]) {
-          const name = projectNameMap[pt.project_id];
-          if (name) {
-            if (!tpMap[pt.task_id]) tpMap[pt.task_id] = [];
-            tpMap[pt.task_id].push({ id: pt.project_id, name });
-          }
-        }
-
-        setTaskProjectMap(tpMap);
-      }
-    }
-
     setLoading(false);
   };
 
-  const fetchEmployees = async () => {
-    const { data } = await supabase
-      .from("employees")
-      .select("id, first_name, last_name")
-      .eq("status", "active")
-      .order("first_name");
-    setEmployees(data || []);
+  const fetchEmployeesData = async () => {
+    const data = await fetchActiveEmployees();
+    setEmployees(data);
   };
 
-  const fetchProjects = async () => {
-    const { data } = await supabase
-      .from("projects")
-      .select("id, name")
-      .order("name");
-    setProjects(data || []);
+  const fetchProjectsData = async () => {
+    const data = await fetchAllProjects();
+    setProjects(data);
   };
 
-  const fetchContacts = async () => {
-    const { data } = await supabase
-      .from("contacts")
-      .select("id, first_name, last_name, company")
-      .order("first_name");
-    setContacts(data || []);
+  const fetchContactsData = async () => {
+    const data = await fetchAllContacts();
+    setContacts(data);
   };
 
-  const fetchTemplates = async () => {
-    const { data } = await supabase
-      .from("task_templates")
-      .select("id, name, description, default_priority, default_due_days, due_amount, due_unit, task_type_id, is_recurring, recurrence_frequency, recurrence_unit, recurrence_count")
-      .order("name");
-    setTemplates(data || []);
+  const fetchTemplatesData = async () => {
+    const data = await fetchTaskTemplates();
+    setTemplates(data);
   };
 
-  const fetchTaskTypes = async () => {
-    const { data } = await supabase
-      .from("task_types")
-      .select("id, name, color")
-      .eq("is_active", true)
-      .order("name");
-    setTaskTypes(data || []);
+  const fetchTaskTypesData = async () => {
+    const data = await fetchActiveTaskTypes();
+    setTaskTypes(data);
   };
 
   const fetchChain = async (templateId: string) => {
-    const { data: steps } = await supabase
-      .from("task_workflow_steps")
-      .select("template_id, next_template_id, delay_days");
-    if (!steps) { setTemplateChain([]); return; }
+    const steps = await fetchWorkflowSteps();
+    if (!steps.length) { setTemplateChain([]); return; }
 
     const stepMap: Record<string, { next_template_id: string; delay_days: number }> = {};
     for (const s of steps) stepMap[s.template_id] = { next_template_id: s.next_template_id, delay_days: s.delay_days };
@@ -419,11 +364,11 @@ export default function TasksPage() {
 
   useEffect(() => {
     fetchTasks();
-    fetchEmployees();
-    fetchProjects();
-    fetchContacts();
-    fetchTemplates();
-    fetchTaskTypes();
+    fetchEmployeesData();
+    fetchProjectsData();
+    fetchContactsData();
+    fetchTemplatesData();
+    fetchTaskTypesData();
   }, []);
 
   useEffect(() => {
@@ -497,20 +442,8 @@ export default function TasksPage() {
     setError(null);
     setCreationResult(null);
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      setError(authError?.message || "You must be logged in to create a task.");
-      setSaving(false);
-      return;
-    }
-
-    const { data: task, error: insertError } = await supabase
-      .from("tasks")
-      .insert({
+    try {
+      const task = await createTask({
         title: form.title,
         description: form.description || null,
         contact_id: form.contact_id || null,
@@ -521,118 +454,106 @@ export default function TasksPage() {
         is_milestone: form.is_milestone,
         task_type_id: selectedTaskTypeId || null,
         template_id: selectedTemplateId || null,
-        created_by: user.id,
-      })
-      .select()
-      .single();
+      });
 
-    if (insertError) {
-      setError(insertError.message);
-      setSaving(false);
-      return;
-    }
+      let totalCreated = 1;
 
-    let totalCreated = 1;
-
-    if (task && selectedEmployees.length > 0) {
-      const { error: assignError } = await supabase
-        .from("task_assignees")
-        .insert(
-          selectedEmployees.map((empId) => ({
-            task_id: task.id,
-            employee_id: empId,
-          }))
-        );
-      if (assignError) {
-        setError("Task created but failed to assign employees: " + assignError.message);
+      if (task && selectedEmployees.length > 0) {
+        try {
+          await insertTaskAssignees(task.id, selectedEmployees);
+        } catch (assignErr: unknown) {
+          setError("Task created but failed to assign employees: " + (assignErr instanceof Error ? assignErr.message : String(assignErr)));
+        }
       }
-    }
 
-    if (task && form.project_id) {
-      const { error: projectLinkError } = await supabase
-        .from("project_tasks")
-        .insert({ task_id: task.id, project_id: form.project_id });
-      if (projectLinkError) {
-        setError("Task created but failed to link project: " + projectLinkError.message);
-        setSaving(false);
-        return;
+      if (task && form.project_id) {
+        try {
+          await insertProjectTask(task.id, form.project_id);
+        } catch (projectErr: unknown) {
+          setError("Task created but failed to link project: " + (projectErr instanceof Error ? projectErr.message : String(projectErr)));
+          setSaving(false);
+          return;
+        }
       }
-    }
 
-    if (task && selectedTemplateId) {
-      const tmpl = templates.find((t) => t.id === selectedTemplateId);
+      if (task && selectedTemplateId) {
+        const tmpl = templates.find((t) => t.id === selectedTemplateId);
 
-      if (tmpl?.is_recurring && tmpl.recurrence_frequency && tmpl.recurrence_unit && recurringDates.length > 0) {
-        await supabase.from("tasks").update({
-          is_recurring: true,
-          recurrence_frequency: tmpl.recurrence_frequency,
-          recurrence_unit: tmpl.recurrence_unit,
-          recurrence_source_task_id: task.id,
-          due_date: recurringDates[0],
-        }).eq("id", task.id);
-
-        for (let i = 1; i < recurringDates.length; i++) {
-          const { data: recurTask } = await supabase.from("tasks").insert({
-            title: form.title,
-            description: form.description || null,
-            contact_id: form.contact_id || null,
-            priority: form.priority,
-            status: "pending",
-            start_date: recurringDates[i],
-            due_date: recurringDates[i],
-            is_milestone: form.is_milestone,
-            task_type_id: selectedTaskTypeId || null,
-            template_id: selectedTemplateId,
+        if (tmpl?.is_recurring && tmpl.recurrence_frequency && tmpl.recurrence_unit && recurringDates.length > 0) {
+          await updateTask(task.id, {
             is_recurring: true,
             recurrence_frequency: tmpl.recurrence_frequency,
             recurrence_unit: tmpl.recurrence_unit,
             recurrence_source_task_id: task.id,
-            parent_task_id: task.id,
-            created_by: user.id,
-          }).select().single();
+            due_date: recurringDates[0],
+          });
 
-          if (recurTask) {
-            totalCreated++;
-            if (selectedEmployees.length > 0) {
-              await supabase.from("task_assignees").insert(
-                selectedEmployees.map((empId) => ({ task_id: recurTask.id, employee_id: empId }))
-              );
-            }
-            if (form.project_id) {
-              await supabase.from("project_tasks").insert({ task_id: recurTask.id, project_id: form.project_id });
+          for (let i = 1; i < recurringDates.length; i++) {
+            try {
+              const recurTask = await createTask({
+                title: form.title,
+                description: form.description || null,
+                contact_id: form.contact_id || null,
+                priority: form.priority,
+                status: "pending",
+                start_date: recurringDates[i],
+                due_date: recurringDates[i],
+                is_milestone: form.is_milestone,
+                task_type_id: selectedTaskTypeId || null,
+                template_id: selectedTemplateId,
+                is_recurring: true,
+                recurrence_frequency: tmpl.recurrence_frequency,
+                recurrence_unit: tmpl.recurrence_unit,
+                recurrence_source_task_id: task.id,
+                parent_task_id: task.id,
+              });
+
+              if (recurTask) {
+                totalCreated++;
+                if (selectedEmployees.length > 0) {
+                  await insertTaskAssignees(recurTask.id, selectedEmployees);
+                }
+                if (form.project_id) {
+                  await insertProjectTask(recurTask.id, form.project_id);
+                }
+              }
+            } catch {
+              // continue creating remaining recurring tasks
             }
           }
         }
+
+        if (templateChain.length > 0) {
+          setCreationResult(
+            `Created ${totalCreated} task${totalCreated > 1 ? "s" : ""} from template` +
+            `. ${templateChain.length} follow-up task${templateChain.length > 1 ? "s" : ""} will be created on completion.`
+          );
+        } else {
+          setCreationResult(`Created ${totalCreated} task${totalCreated > 1 ? "s" : ""} from template`);
+        }
       }
 
-      if (templateChain.length > 0) {
-        setCreationResult(
-          `Created ${totalCreated} task${totalCreated > 1 ? "s" : ""} from template` +
-          `. ${templateChain.length} follow-up task${templateChain.length > 1 ? "s" : ""} will be created on completion.`
-        );
-      } else {
-        setCreationResult(`Created ${totalCreated} task${totalCreated > 1 ? "s" : ""} from template`);
-      }
+      setForm({
+        title: "",
+        description: "",
+        project_id: "",
+        contact_id: "",
+        priority: "medium",
+        status: "pending",
+        start_date: "",
+        due_date: "",
+        is_milestone: false,
+      });
+      setSelectedTemplateId("");
+      setSelectedEmployees([]);
+      setSelectedTaskTypeId("");
+      setTemplateChain([]);
+      setRecurringDates([]);
+      setOpen(false);
+      fetchTasks();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create task");
     }
-
-    setForm({
-      title: "",
-      description: "",
-      project_id: "",
-      contact_id: "",
-      priority: "medium",
-      status: "pending",
-      start_date: "",
-      due_date: "",
-      is_milestone: false,
-    });
-    setSelectedTemplateId("");
-    setSelectedEmployees([]);
-    setSelectedTaskTypeId("");
-    setTemplateChain([]);
-    setRecurringDates([]);
-    setOpen(false);
-    fetchTasks();
     setSaving(false);
   };
 
@@ -707,8 +628,6 @@ export default function TasksPage() {
     if (bulkRows.length === 0) return;
     setBulkUploading(true);
     setBulkResult(null);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setBulkErrors(["Not authenticated"]); setBulkUploading(false); return; }
 
     let success = 0;
     let failed = 0;
@@ -754,37 +673,17 @@ export default function TasksPage() {
           }
         }
 
-        const { data: task, error: taskErr } = await supabase
-          .from("tasks")
-          .insert({
-            title: row.title.trim(),
-            description: row.description?.trim() || null,
-            priority: row.priority?.trim().toLowerCase() || "medium",
-            status: row.status?.trim().toLowerCase() || "pending",
-            start_date: row.start_date?.trim() || null,
-            due_date: row.due_date?.trim() || null,
-            is_milestone: row.is_milestone?.trim().toLowerCase() === "true",
-            contact_id: contactId,
-            task_type_id: taskTypeId,
-            created_by: user.id,
-          })
-          .select()
-          .single();
-
-        if (taskErr || !task) {
-          failed++;
-          continue;
-        }
-
-        if (empIds.length > 0) {
-          await supabase.from("task_assignees").insert(
-            empIds.map((empId) => ({ task_id: task.id, employee_id: empId }))
-          );
-        }
-
-        if (projectId) {
-          await supabase.from("project_tasks").insert({ task_id: task.id, project_id: projectId });
-        }
+        await bulkCreateTask({
+          title: row.title.trim(),
+          description: row.description?.trim() || null,
+          priority: row.priority?.trim().toLowerCase() || "medium",
+          status: row.status?.trim().toLowerCase() || "pending",
+          start_date: row.start_date?.trim() || null,
+          due_date: row.due_date?.trim() || null,
+          is_milestone: row.is_milestone?.trim().toLowerCase() === "true",
+          contact_id: contactId,
+          task_type_id: taskTypeId,
+        }, empIds, projectId);
 
         success++;
       } catch {
@@ -825,13 +724,12 @@ export default function TasksPage() {
     const key = `${taskId}-${field}`;
     setSavingCell(key);
     setSavedCell(null);
-    const updateData: Record<string, unknown> = { [field]: value };
-    if (field === "status" && value === "completed") {
-      updateData.completed_at = nowUTC();
-    }
-    const { error } = await supabase.from("tasks").update(updateData).eq("id", taskId);
-    if (!error) {
+    const completedAt = field === "status" && value === "completed" ? nowUTC() : undefined;
+    try {
+      await updateTaskField(taskId, field, value, completedAt);
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, [field]: value } : t));
+    } catch (err) {
+      console.error("Failed to update task:", err);
     }
     setSavingCell(null);
     setSavedCell(key);
@@ -845,11 +743,8 @@ export default function TasksPage() {
 
   const checkAndDelete = async (taskId: string) => {
     setDeleteTaskId(taskId);
-    const { count } = await supabase
-      .from("tasks")
-      .select("id", { count: "exact", head: true })
-      .eq("parent_task_id", taskId);
-    setDeleteDeps(count || 0);
+    const count = await checkChildTaskCount(taskId);
+    setDeleteDeps(count);
   };
 
   const confirmDelete = async () => {
@@ -857,72 +752,18 @@ export default function TasksPage() {
     setDeleteLoading(true);
     setDeleteMessage(null);
 
-    // ensure user is authenticated
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setDeleteMessage('You must be signed in to delete tasks');
+    try {
+      await deleteTaskAction(deleteTaskId);
+      await fetchTasks();
       setDeleteLoading(false);
-      return;
-    }
-
-    // Request deleted rows back from the server so we can detect no-op deletes
-    // (e.g. when RLS/policies prevent deletion but no error is returned).
-    const results = await Promise.all([
-      supabase.from("task_assignees").delete().select().eq("task_id", deleteTaskId),
-      supabase.from("project_tasks").delete().select().eq("task_id", deleteTaskId),
-      supabase.from("tasks").delete().select().eq("id", deleteTaskId),
-    ]);
-
-    const err = results.find((r) => (r as any).error);
-    if (err && (err as any).error) {
-      console.error('Delete error:', (err as any).error, results);
-      setDeleteMessage('Failed to delete task: ' + (err as any).error.message);
+      setDeleteTaskId(null);
+      setDeleteMessage("Task deleted");
+      setTimeout(() => setDeleteMessage(null), 3000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to delete task";
+      setDeleteMessage(msg);
       setDeleteLoading(false);
-      return;
     }
-
-    // results[2] is the task deletion result. If no rows were returned
-    // that means zero rows were deleted — often due to RLS preventing the
-    // operation even though the client call didn't return a hard error.
-    const taskDeleteResult = results[2] as any;
-    if (!taskDeleteResult || !taskDeleteResult.data || (Array.isArray(taskDeleteResult.data) && taskDeleteResult.data.length === 0)) {
-      console.warn('Delete reported success but removed 0 rows:', { results });
-      setDeleteMessage('Failed to delete task.');
-      setDeleteLoading(false);
-      return;
-    }
-
-    // Verify the task was actually removed from the DB. Some RLS/policy
-    // configurations can cause deletes to appear successful client-side
-    // but still leave the row intact.
-    const { data: checkData, error: checkError } = await supabase
-      .from('tasks')
-      .select('id')
-      .eq('id', deleteTaskId)
-      .maybeSingle();
-
-    if (checkError) {
-      console.error('Post-delete check error:', checkError);
-      setDeleteMessage('Deleted but verification failed: ' + checkError.message);
-      setDeleteLoading(false);
-      return;
-    }
-
-    if (checkData) {
-      // Row still exists
-      console.warn('Task still present after delete attempts:', deleteTaskId);
-      setDeleteMessage('Failed to delete task.');
-      setDeleteLoading(false);
-      return;
-    }
-
-    // Refresh tasks from server to ensure UI matches DB
-    await fetchTasks();
-
-    setDeleteLoading(false);
-    setDeleteTaskId(null);
-    setDeleteMessage("Task deleted");
-    setTimeout(() => setDeleteMessage(null), 3000);
   };
 
   const dueDateRelative = (dateStr: string) => {

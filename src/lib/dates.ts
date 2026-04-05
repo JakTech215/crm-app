@@ -32,8 +32,9 @@ export function nowUTC(): string {
 // Parse a date string safely into a Date for CST display.
 // Handles both DATE (YYYY-MM-DD) and TIMESTAMPTZ (ISO) values.
 // ---------------------------------------------------------------------------
-function parseForDisplay(dateStr: string): Date {
+function parseForDisplay(dateStr: string | Date): Date {
   if (!dateStr) return new Date();
+  if (dateStr instanceof Date) return toZonedTime(dateStr, TIMEZONE);
   // TIMESTAMPTZ — already has timezone info, convert to CST
   if (dateStr.includes("T") || dateStr.includes("Z") || dateStr.includes("+")) {
     return toZonedTime(new Date(dateStr), TIMEZONE);
@@ -45,7 +46,7 @@ function parseForDisplay(dateStr: string): Date {
 // ---------------------------------------------------------------------------
 // Format: MM/DD/YYYY  (standard display for all dates)
 // ---------------------------------------------------------------------------
-export function formatDate(dateStr: string): string {
+export function formatDate(dateStr: string | Date): string {
   if (!dateStr) return "";
   return fnsFormat(parseForDisplay(dateStr), "MM/dd/yyyy");
 }
@@ -53,7 +54,7 @@ export function formatDate(dateStr: string): string {
 // ---------------------------------------------------------------------------
 // Format: MM/DD/YYYY h:mm a  (for timestamps like created_at)
 // ---------------------------------------------------------------------------
-export function formatDateTime(dateStr: string): string {
+export function formatDateTime(dateStr: string | Date): string {
   if (!dateStr) return "";
   return fnsFormat(parseForDisplay(dateStr), "MM/dd/yyyy h:mm a");
 }
@@ -61,7 +62,7 @@ export function formatDateTime(dateStr: string): string {
 // ---------------------------------------------------------------------------
 // Format: Mon, Feb 14  (compact, for calendar / gantt headers)
 // ---------------------------------------------------------------------------
-export function formatDateCompact(dateStr: string): string {
+export function formatDateCompact(dateStr: string | Date): string {
   if (!dateStr) return "";
   return fnsFormat(parseForDisplay(dateStr), "EEE, MMM d");
 }
@@ -69,7 +70,7 @@ export function formatDateCompact(dateStr: string): string {
 // ---------------------------------------------------------------------------
 // Format: Feb 14  (short, for badges / stat labels)
 // ---------------------------------------------------------------------------
-export function formatDateShort(dateStr: string): string {
+export function formatDateShort(dateStr: string | Date): string {
   if (!dateStr) return "";
   return fnsFormat(parseForDisplay(dateStr), "MMM d");
 }
@@ -77,7 +78,7 @@ export function formatDateShort(dateStr: string): string {
 // ---------------------------------------------------------------------------
 // Format: Feb 14, 2026  (medium length)
 // ---------------------------------------------------------------------------
-export function formatDateMedium(dateStr: string): string {
+export function formatDateMedium(dateStr: string | Date): string {
   if (!dateStr) return "";
   return fnsFormat(parseForDisplay(dateStr), "MMM d, yyyy");
 }
@@ -85,7 +86,7 @@ export function formatDateMedium(dateStr: string): string {
 // ---------------------------------------------------------------------------
 // Format: Sat, Feb 14, 2026  (long, for popovers / titles)
 // ---------------------------------------------------------------------------
-export function formatDateLong(dateStr: string): string {
+export function formatDateLong(dateStr: string | Date): string {
   if (!dateStr) return "";
   return fnsFormat(parseForDisplay(dateStr), "EEE, MMM d, yyyy");
 }
@@ -100,7 +101,7 @@ export function formatMonthYear(date: Date): string {
 // ---------------------------------------------------------------------------
 // Relative time: "just now", "5m ago", "3h ago", "7d ago", or MM/DD/YYYY
 // ---------------------------------------------------------------------------
-export function formatRelativeTime(dateStr: string): string {
+export function formatRelativeTime(dateStr: string | Date): string {
   const now = nowCST();
   const date = parseForDisplay(dateStr);
   const diffMs = now.getTime() - date.getTime();
@@ -117,30 +118,32 @@ export function formatRelativeTime(dateStr: string): string {
 // ---------------------------------------------------------------------------
 // Check if a date is before today in CST
 // ---------------------------------------------------------------------------
-export function isBeforeToday(dateStr: string): boolean {
+export function isBeforeToday(dateStr: string | Date): boolean {
   if (!dateStr) return false;
   const today = todayCST();
-  // Compare YYYY-MM-DD strings (works because they sort lexicographically)
-  const dateOnly = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
+  const s = dateStr instanceof Date ? dateStr.toISOString() : dateStr;
+  const dateOnly = s.includes("T") ? s.split("T")[0] : s;
   return dateOnly < today;
 }
 
 // ---------------------------------------------------------------------------
 // Check if a date is today or in the future in CST
 // ---------------------------------------------------------------------------
-export function isTodayOrFuture(dateStr: string): boolean {
+export function isTodayOrFuture(dateStr: string | Date): boolean {
   if (!dateStr) return false;
   const today = todayCST();
-  const dateOnly = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
+  const s = dateStr instanceof Date ? dateStr.toISOString() : dateStr;
+  const dateOnly = s.includes("T") ? s.split("T")[0] : s;
   return dateOnly >= today;
 }
 
 // ---------------------------------------------------------------------------
 // Days overdue (positive = overdue, negative = days remaining)
 // ---------------------------------------------------------------------------
-export function daysFromToday(dateStr: string): number {
+export function daysFromToday(dateStr: string | Date): number {
   const today = todayCST();
-  const dateOnly = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
+  const s = dateStr instanceof Date ? dateStr.toISOString() : dateStr;
+  const dateOnly = s.includes("T") ? s.split("T")[0] : s;
   const diff = new Date(today).getTime() - new Date(dateOnly).getTime();
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }

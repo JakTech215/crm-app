@@ -6,9 +6,10 @@ export function middleware(request: NextRequest) {
     request.cookies.get("authjs.session-token")?.value;
 
   const isAuthRoute = request.nextUrl.pathname.startsWith("/auth");
+  const isApiAuthRoute = request.nextUrl.pathname.startsWith("/api/auth");
   const isRootRoute = request.nextUrl.pathname === "/";
 
-  if (!sessionToken && !isAuthRoute && !isRootRoute) {
+  if (!sessionToken && !isAuthRoute && !isApiAuthRoute && !isRootRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
     return NextResponse.redirect(url);

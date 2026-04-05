@@ -1,0 +1,34 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          command_timeout: 20m
+          script: |
+            export NODE_OPTIONS="--max-old-space-size=3072"
+            cd /var/www/crm-app
+            git checkout -- .
+            git pull origin master
+            pm2 stop crm-app || true
+            npm ci
+            npm run build
+            cp -r .next/static .next/standalone/crm-app/.next/
+            cp -r public .next/standalone/crm-app/
+            mkdir -p .next/standalone/crm-app/node_modules
+            cp -r node_modules/postgres .next/standalone/crm-app/node_modules/
+            cp -r node_modules/bcryptjs .next/standalone/crm-app/node_modules/
+            pm2 delete crm-app || true
+            set -a; source /var/www/crm-app/.env.local; set +a
+            PORT=3001 pm2 start .next/standalone/crm-app/server.js --name crm-app
+            pm2 save

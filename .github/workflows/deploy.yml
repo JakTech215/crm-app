@@ -30,5 +30,5 @@ jobs:
             cp -r node_modules/bcryptjs .next/standalone/crm-app/node_modules/
             pm2 delete crm-app || true
             set -a; source /var/www/crm-app/.env.local; set +a
-            PORT=3001 pm2 start .next/standalone/crm-app/server.js --name crm-app
+            PORT=3004 pm2 start .next/standalone/crm-app/server.js --name crm-app
             pm2 save

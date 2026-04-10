@@ -497,6 +497,19 @@ export default function GanttPage() {
     return totalWidth + 1;
   };
 
+  // Due dates are inclusive — treat bar end as the start of the following day
+  // so a task ending on Fri 04/23 visually covers all of Friday.
+  const dueDateToX = (dateStr: string | Date) => {
+    const d =
+      dateStr instanceof Date
+        ? new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate())
+        : typeof dateStr === "string" && dateStr.length >= 10 && !dateStr.includes("T")
+          ? new Date(dateStr + "T12:00:00")
+          : new Date(dateStr);
+    d.setDate(d.getDate() + 1);
+    return dateToX(d);
+  };
+
   const todayX = dateToX(nowCST().toISOString());
 
   const grouped: { project: string | null; projectId: string | null; tasks: GanttTask[] }[] = [];
@@ -540,7 +553,7 @@ export default function GanttPage() {
       taskRowMap[row.task.id] = rowIndex;
       if (row.task.start_date && row.task.due_date) {
         const x1 = dateToX(row.task.start_date);
-        const x2 = dateToX(row.task.due_date);
+        const x2 = dueDateToX(row.task.due_date);
         taskXMap[row.task.id] = { x: Math.max(x1, 0), w: Math.max(x2 - x1, 8) };
       }
     }
@@ -1265,7 +1278,7 @@ export default function GanttPage() {
                       if (row.type !== "task" || !row.task || !row.task.start_date || !row.task.due_date) return null;
                       const task = row.task;
                       const x1 = dateToX(task.start_date!);
-                      const x2 = dateToX(task.due_date!);
+                      const x2 = dueDateToX(task.due_date!);
                       const barX = Math.max(x1, 0);
                       const barW = Math.max(x2 - x1, 8);
                       const barY = i * ROW_HEIGHT + 10;

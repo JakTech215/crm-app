@@ -464,11 +464,37 @@ export default function GanttPage() {
   else if (zoom === "quarter") rangeEnd.setMonth(rangeEnd.getMonth() + 3);
   else rangeEnd.setMonth(rangeEnd.getMonth() + 1);
 
-  const dateToX = (dateStr: string) => {
-    const d = new Date(dateStr);
-    const totalMs = rangeEnd.getTime() - rangeStart.getTime();
-    const elapsedMs = d.getTime() - rangeStart.getTime();
-    return (elapsedMs / totalMs) * totalWidth;
+  const dateToX = (dateStr: string | Date) => {
+    const d =
+      dateStr instanceof Date
+        ? new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate())
+        : typeof dateStr === "string" && dateStr.length >= 10 && !dateStr.includes("T")
+          ? new Date(dateStr + "T12:00:00")
+          : new Date(dateStr);
+    if (zoom === "day" || zoom === "week") {
+      const totalMs = rangeEnd.getTime() - rangeStart.getTime();
+      const elapsedMs = d.getTime() - rangeStart.getTime();
+      return (elapsedMs / totalMs) * totalWidth;
+    }
+    // month / quarter: columns are equal width but months vary in length —
+    // find the containing column and interpolate proportionally within it.
+    for (let i = 0; i < dates.length; i++) {
+      const colStart = dates[i];
+      const colEnd = new Date(colStart);
+      if (zoom === "month") colEnd.setMonth(colEnd.getMonth() + 1);
+      else colEnd.setMonth(colEnd.getMonth() + 3);
+      if (d.getTime() >= colStart.getTime() && d.getTime() < colEnd.getTime()) {
+        const frac =
+          (d.getTime() - colStart.getTime()) /
+          (colEnd.getTime() - colStart.getTime());
+        return i * colWidth + frac * colWidth;
+      }
+    }
+    if (d.getTime() < rangeStart.getTime()) {
+      const daysBefore = (rangeStart.getTime() - d.getTime()) / 86400000;
+      return -daysBefore * (colWidth / 30);
+    }
+    return totalWidth + 1;
   };
 
   const todayX = dateToX(nowCST().toISOString());
@@ -1025,7 +1051,7 @@ export default function GanttPage() {
                         <Popover>
                           <PopoverTrigger asChild>
                             <div
-                              className="flex items-center gap-2 truncate w-full"
+                              className="flex items-center gap-2 w-full min-w-0"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div
@@ -1035,9 +1061,25 @@ export default function GanttPage() {
                                     : `rounded-full ${STATUS_COLORS[row.task?.status || ""] || "bg-gray-400"}`
                                 }`}
                               />
-                              <span className="truncate">{row.label}</span>
+                              <span className="truncate shrink-0 max-w-[45%]">{row.label}</span>
                               {(row.task?.occurrences?.length ?? 0) > 1 && (
                                 <RefreshCw className="h-3 w-3 shrink-0 text-blue-500" />
+                              )}
+                              {row.task?.contact_name && (
+                                <span
+                                  className="truncate text-xs text-muted-foreground shrink min-w-0"
+                                  title={`Contact: ${row.task.contact_name}`}
+                                >
+                                  · {row.task.contact_name}
+                                </span>
+                              )}
+                              {row.task && row.task.assignee_names.length > 0 && (
+                                <span
+                                  className="truncate text-xs text-blue-600/80 shrink min-w-0"
+                                  title={`Employees: ${row.task.assignee_names.join(", ")}`}
+                                >
+                                  · {row.task.assignee_names.join(", ")}
+                                </span>
                               )}
                             </div>
                           </PopoverTrigger>
@@ -1255,7 +1297,7 @@ export default function GanttPage() {
                             <div
                               className="absolute rounded bg-blue-50 border border-blue-300 border-dashed"
                               style={{ left: barX, width: barW, top: barY, height: barH }}
-                              title={`${task.title} — Recurring series (${task.occurrences.length} occurrences)${task.recurrence_frequency && task.recurrence_unit ? `\nEvery ${task.recurrence_frequency} ${task.recurrence_unit}` : ""}`}
+                              title={`${task.title} — Recurring series (${task.occurrences.length} occurrences)\nStart: ${formatDateLong(task.start_date!)}\nEnd: ${formatDateLong(task.due_date!)}${task.recurrence_frequency && task.recurrence_unit ? `\nEvery ${task.recurrence_frequency} ${task.recurrence_unit}` : ""}`}
                             />
                             <div
                               className="absolute bg-blue-200"
@@ -1290,7 +1332,7 @@ export default function GanttPage() {
                             STATUS_COLORS[task.status] || "bg-gray-400"
                           } ${PRIORITY_BORDER[task.priority] || "border-slate-300"}`}
                           style={{ left: barX, width: barW, top: barY, height: barH }}
-                          title={`${task.title} (${task.status})${task.contact_name ? `\nContact: ${task.contact_name}` : ""}${task.assignee_names.length > 0 ? `\nEmployees: ${task.assignee_names.join(", ")}` : ""}${task.project_names.length > 0 ? `\nProjects: ${task.project_names.join(", ")}` : ""}`}
+                          title={`${task.title} (${task.status})\nStart: ${formatDateLong(task.start_date!)}\nEnd: ${formatDateLong(task.due_date!)}${task.contact_name ? `\nContact: ${task.contact_name}` : ""}${task.assignee_names.length > 0 ? `\nEmployees: ${task.assignee_names.join(", ")}` : ""}${task.project_names.length > 0 ? `\nProjects: ${task.project_names.join(", ")}` : ""}`}
                           onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
                         />
                       );

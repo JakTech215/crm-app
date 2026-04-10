@@ -482,14 +482,24 @@ export default function TaskDetailPage() {
 
   const openEditDialog = () => {
     if (!task) return;
+    const toDateInput = (v: string | Date | null | undefined): string => {
+      if (!v) return "";
+      if (v instanceof Date) {
+        const y = v.getFullYear();
+        const m = String(v.getMonth() + 1).padStart(2, "0");
+        const d = String(v.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      }
+      return v.includes("T") ? v.split("T")[0] : v;
+    };
     setEditForm({
       title: task.title,
       description: task.description || "",
       contact_id: task.contact_id || "",
       priority: task.priority,
       status: task.status,
-      start_date: "",
-      due_date: "",
+      start_date: toDateInput(task.start_date as string | Date | null),
+      due_date: toDateInput(task.due_date as string | Date | null),
       is_milestone: task.is_milestone,
       task_type_id: task.task_type_id || "",
       is_recurring: task.is_recurring || false,
@@ -884,7 +894,10 @@ export default function TaskDetailPage() {
                         No active employees found.
                       </p>
                     ) : (
-                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                      <div
+                        className="space-y-1 max-h-72 overflow-y-auto overscroll-contain"
+                        onWheel={(e) => e.stopPropagation()}
+                      >
                         {allEmployees.map((emp) => (
                           <label
                             key={emp.id}

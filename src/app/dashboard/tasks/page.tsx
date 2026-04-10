@@ -1400,7 +1400,10 @@ export default function TasksPage() {
                       {employees.length === 0 ? (
                         <p className="text-sm text-muted-foreground p-2">No active employees found.</p>
                       ) : (
-                        <div className="space-y-1 max-h-48 overflow-y-auto">
+                        <div
+                          className="space-y-1 max-h-72 overflow-y-auto overscroll-contain"
+                          onWheel={(e) => e.stopPropagation()}
+                        >
                           {employees.map((emp) => (
                             <label key={emp.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer">
                               <Checkbox

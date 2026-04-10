@@ -103,7 +103,7 @@ const PRIORITY_BORDER: Record<string, string> = {
   low: "border-slate-300",
 };
 
-type ZoomLevel = "day" | "week" | "month" | "quarter";
+type ZoomLevel = "day" | "5day" | "week" | "month" | "quarter";
 
 export default function GanttPage() {
   const router = useRouter();
@@ -368,6 +368,7 @@ export default function GanttPage() {
       const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
       let scrollTarget = 0;
       if (zoom === "day") scrollTarget = diffDays * colWidth;
+      else if (zoom === "5day") scrollTarget = (diffDays / 5) * colWidth;
       else if (zoom === "week") scrollTarget = (diffDays / 7) * colWidth;
       else if (zoom === "month") scrollTarget = (diffDays / 30) * colWidth;
       else scrollTarget = (diffDays / 90) * colWidth;
@@ -432,6 +433,7 @@ export default function GanttPage() {
 
   const getColumnWidth = () => {
     if (zoom === "day") return 80;
+    if (zoom === "5day") return 110;
     if (zoom === "week") return 120;
     if (zoom === "month") return 160;
     return 200;
@@ -439,13 +441,25 @@ export default function GanttPage() {
 
   const getDateRange = () => {
     const colWidth = getColumnWidth();
-    const numCols = zoom === "day" ? 180 : zoom === "week" ? 52 : zoom === "month" ? 24 : 16;
+    const numCols =
+      zoom === "day" ? 180
+      : zoom === "5day" ? 60
+      : zoom === "week" ? 52
+      : zoom === "month" ? 24
+      : 16;
     const dates: Date[] = [];
     const start = new Date(startDate);
+    // For 5-day view, snap the first column to the Monday of startDate's week
+    if (zoom === "5day") {
+      const day = start.getDay(); // 0=Sun..6=Sat
+      const offset = day === 0 ? -6 : 1 - day;
+      start.setDate(start.getDate() + offset);
+    }
 
     for (let i = 0; i < numCols; i++) {
       const d = new Date(start);
       if (zoom === "day") d.setDate(start.getDate() + i);
+      else if (zoom === "5day") d.setDate(start.getDate() + i * 5);
       else if (zoom === "week") d.setDate(start.getDate() + i * 7);
       else if (zoom === "month") d.setMonth(start.getMonth() + i);
       else d.setMonth(start.getMonth() + i * 3);
@@ -460,6 +474,7 @@ export default function GanttPage() {
   const rangeStart = dates[0];
   const rangeEnd = new Date(dates[dates.length - 1]);
   if (zoom === "day") rangeEnd.setDate(rangeEnd.getDate() + 1);
+  else if (zoom === "5day") rangeEnd.setDate(rangeEnd.getDate() + 5);
   else if (zoom === "week") rangeEnd.setDate(rangeEnd.getDate() + 7);
   else if (zoom === "quarter") rangeEnd.setMonth(rangeEnd.getMonth() + 3);
   else rangeEnd.setMonth(rangeEnd.getMonth() + 1);
@@ -471,7 +486,7 @@ export default function GanttPage() {
         : typeof dateStr === "string" && dateStr.length >= 10 && !dateStr.includes("T")
           ? new Date(dateStr + "T12:00:00")
           : new Date(dateStr);
-    if (zoom === "day" || zoom === "week") {
+    if (zoom === "day" || zoom === "week" || zoom === "5day") {
       const totalMs = rangeEnd.getTime() - rangeStart.getTime();
       const elapsedMs = d.getTime() - rangeStart.getTime();
       return (elapsedMs / totalMs) * totalWidth;
@@ -563,6 +578,7 @@ export default function GanttPage() {
   const navigate = (dir: number) => {
     const d = new Date(startDate);
     if (zoom === "day") d.setDate(d.getDate() + dir * 14);
+    else if (zoom === "5day") d.setDate(d.getDate() + dir * 20);
     else if (zoom === "week") d.setDate(d.getDate() + dir * 28);
     else if (zoom === "quarter") d.setMonth(d.getMonth() + dir * 6);
     else d.setMonth(d.getMonth() + dir * 3);
@@ -572,6 +588,11 @@ export default function GanttPage() {
   const formatHeader = (d: Date) => {
     const toStr = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
     if (zoom === "day") return formatDateShort(toStr(d));
+    if (zoom === "5day") {
+      const end = new Date(d);
+      end.setDate(end.getDate() + 4);
+      return `${formatDateShort(toStr(d))} - ${formatDateShort(toStr(end))}`;
+    }
     if (zoom === "week") {
       const end = new Date(d);
       end.setDate(end.getDate() + 6);
@@ -684,7 +705,8 @@ export default function GanttPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="day">Day</SelectItem>
-              <SelectItem value="week">Week</SelectItem>
+              <SelectItem value="5day">5-Day (Mon–Fri)</SelectItem>
+              <SelectItem value="week">Week (7-Day)</SelectItem>
               <SelectItem value="month">Month</SelectItem>
               <SelectItem value="quarter">Quarter</SelectItem>
             </SelectContent>
@@ -1239,7 +1261,7 @@ export default function GanttPage() {
                     {showHolidays && Object.entries(holidayMap).map(([dateStr, names]) => {
                       const hx = dateToX(dateStr);
                       if (hx < -20 || hx > totalWidth + 20) return null;
-                      const bandWidth = zoom === "day" ? colWidth : zoom === "week" ? Math.max(colWidth / 7, 4) : Math.max(colWidth / 30, 4);
+                      const bandWidth = zoom === "day" ? colWidth : zoom === "5day" ? Math.max(colWidth / 5, 4) : zoom === "week" ? Math.max(colWidth / 7, 4) : Math.max(colWidth / 30, 4);
                       return (
                         <div key={`holiday-${dateStr}`}>
                           <div

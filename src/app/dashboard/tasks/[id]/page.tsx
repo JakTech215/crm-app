@@ -1224,7 +1224,10 @@ export default function TaskDetailPage() {
                     <p>{formatDate(task.due_date)}</p>
                     {task.status !== "completed" && (() => {
                       const overdue = isBeforeToday(task.due_date);
-                      const due = new Date(task.due_date + "T12:00:00");
+                      const dueStr = task.due_date as string;
+                      const due = new Date(
+                        dueStr.includes("T") ? dueStr : `${dueStr}T12:00:00`
+                      );
                       const now = new Date();
                       const absDiffMs = Math.abs(due.getTime() - now.getTime());
                       const hours = Math.floor(absDiffMs / (1000 * 60 * 60));
@@ -1426,7 +1429,7 @@ export default function TaskDetailPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Dependencies</CardTitle>
+            <CardTitle>Task Dependencies</CardTitle>
             <Dialog open={depOpen} onOpenChange={setDepOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline">

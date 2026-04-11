@@ -1,5 +1,5 @@
 import { format as fnsFormat } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 
 // ---------------------------------------------------------------------------
 // Timezone constant — Central Time (CST/CDT)
@@ -167,6 +167,15 @@ export function addDaysToDate(dateStr: string, days: number): string {
   const d = new Date(dateStr + "T12:00:00");
   d.setDate(d.getDate() + days);
   return fnsFormat(d, "yyyy-MM-dd");
+}
+
+// ---------------------------------------------------------------------------
+// End of day in CST for a YYYY-MM-DD string, returned as a UTC ISO string.
+// Use when persisting a calendar date into a TIMESTAMPTZ column so it round-trips
+// to the same CST calendar day instead of slipping back to the prior day.
+// ---------------------------------------------------------------------------
+export function endOfDayCST(dateStr: string): string {
+  return fromZonedTime(`${dateStr}T23:59:59.999`, TIMEZONE).toISOString();
 }
 
 // ---------------------------------------------------------------------------

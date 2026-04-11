@@ -40,18 +40,9 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -90,7 +81,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, X, FolderKanban, RefreshCw, Loader2, Check, StickyNote } from "lucide-react";
-import { todayCST, formatDate, formatDateTime, nowUTC, isBeforeToday, addDaysToDate } from "@/lib/dates";
+import { todayCST, formatDate, formatDateTime, nowUTC, isBeforeToday, addDaysToDate, endOfDayCST } from "@/lib/dates";
 
 interface Employee {
   id: string;
@@ -525,7 +516,7 @@ export default function TaskDetailPage() {
         priority: editForm.priority,
         status: editForm.status,
         start_date: editForm.start_date || null,
-        due_date: editForm.due_date || null,
+        due_date: editForm.due_date ? endOfDayCST(editForm.due_date) : null,
         is_milestone: editForm.is_milestone,
         task_type_id: editForm.task_type_id || null,
         is_recurring: editForm.is_recurring,
@@ -1162,8 +1153,8 @@ export default function TaskDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="md:col-span-2 lg:col-span-4">
           <CardHeader>
             <CardTitle>Details</CardTitle>
           </CardHeader>
@@ -1177,7 +1168,7 @@ export default function TaskDetailPage() {
               </div>
             )}
             <Separator />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
                   Priority
@@ -1433,213 +1424,181 @@ export default function TaskDetailPage() {
             )}
           </CardContent>
         </Card>
-      </div>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Dependencies</CardTitle>
-            <CardDescription>
-              Tasks that must be completed or started relative to this task.
-            </CardDescription>
-          </div>
-          <Dialog open={depOpen} onOpenChange={setDepOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Dependency
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <form onSubmit={handleAddDependency}>
-                <DialogHeader>
-                  <DialogTitle>Add Dependency</DialogTitle>
-                  <DialogDescription>
-                    Select a task this task depends on and configure the
-                    relationship.
-                  </DialogDescription>
-                  {depError && (
-                    <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive mt-2">
-                      {depError}
-                    </div>
-                  )}
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label>Depends On Task *</Label>
-                    <Select
-                      value={depForm.depends_on_task_id}
-                      onValueChange={(value) =>
-                        setDepForm({ ...depForm, depends_on_task_id: value })
-                      }
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a task..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allTasks.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Dependency Type *</Label>
-                    <Select
-                      value={depForm.dependency_type}
-                      onValueChange={(value) =>
-                        setDepForm({ ...depForm, dependency_type: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DEPENDENCY_TYPES.map((dt) => (
-                          <SelectItem key={dt.value} value={dt.value}>
-                            {dt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="lag_days">
-                      Lag Days{" "}
-                      <span className="text-muted-foreground font-normal">
-                        (negative for lead time)
-                      </span>
-                    </Label>
-                    <Input
-                      id="lag_days"
-                      type="number"
-                      value={depForm.lag_days}
-                      onChange={(e) =>
-                        setDepForm({ ...depForm, lag_days: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    type="submit"
-                    disabled={savingDep || !depForm.depends_on_task_id}
-                  >
-                    {savingDep ? "Saving..." : "Add Dependency"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Depends On</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Lag (days)</TableHead>
-                <TableHead className="w-16"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {dependencies.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className="text-center text-muted-foreground py-8"
-                  >
-                    No dependencies. Click &quot;Add Dependency&quot; to create
-                    one.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                dependencies.map((dep) => (
-                  <TableRow key={dep.id}>
-                    <TableCell
-                      className="font-medium cursor-pointer hover:underline"
-                      onClick={() =>
-                        router.push(
-                          `/dashboard/tasks/${dep.depends_on_task_id}`
-                        )
-                      }
-                    >
-                      {dep.depends_on_task_title || dep.depends_on_task_id}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {depTypeLabel(dep.dependency_type)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {dep.lag_days > 0
-                        ? `+${dep.lag_days}`
-                        : dep.lag_days === 0
-                          ? "0"
-                          : dep.lag_days}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteDependency(dep.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Linkages</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-muted-foreground">Projects</p>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button size="sm" variant="ghost" className="h-7 text-xs">
-                    <Plus className="mr-1 h-3 w-3" />
-                    Add Project
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-2" align="end">
-                  {(() => {
-                    const linkedIds = linkedProjects.map((p) => p.id);
-                    const available = allProjects.filter((p) => !linkedIds.includes(p.id));
-                    if (available.length === 0) {
-                      return <p className="text-sm text-muted-foreground p-2">No more projects to add.</p>;
-                    }
-                    return (
-                      <div className="space-y-1 max-h-48 overflow-y-auto">
-                        {available.map((p) => (
-                          <button
-                            key={p.id}
-                            className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
-                            onClick={() => handleInlineAddProject(p.id)}
-                          >
-                            <Plus className="h-3 w-3 text-muted-foreground" />
-                            {p.name}
-                          </button>
-                        ))}
+            <Dialog open={depOpen} onOpenChange={setDepOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <form onSubmit={handleAddDependency}>
+                  <DialogHeader>
+                    <DialogTitle>Add Dependency</DialogTitle>
+                    <DialogDescription>
+                      Select a task this task depends on and configure the
+                      relationship.
+                    </DialogDescription>
+                    {depError && (
+                      <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive mt-2">
+                        {depError}
                       </div>
-                    );
-                  })()}
-                </PopoverContent>
-              </Popover>
-            </div>
+                    )}
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label>Depends On Task *</Label>
+                      <Select
+                        value={depForm.depends_on_task_id}
+                        onValueChange={(value) =>
+                          setDepForm({ ...depForm, depends_on_task_id: value })
+                        }
+                        required
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a task..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allTasks.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Dependency Type *</Label>
+                      <Select
+                        value={depForm.dependency_type}
+                        onValueChange={(value) =>
+                          setDepForm({ ...depForm, dependency_type: value })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DEPENDENCY_TYPES.map((dt) => (
+                            <SelectItem key={dt.value} value={dt.value}>
+                              {dt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="lag_days">
+                        Lag Days{" "}
+                        <span className="text-muted-foreground font-normal">
+                          (negative for lead time)
+                        </span>
+                      </Label>
+                      <Input
+                        id="lag_days"
+                        type="number"
+                        value={depForm.lag_days}
+                        onChange={(e) =>
+                          setDepForm({ ...depForm, lag_days: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="submit"
+                      disabled={savingDep || !depForm.depends_on_task_id}
+                    >
+                      {savingDep ? "Saving..." : "Add Dependency"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </CardHeader>
+          <CardContent>
+            {dependencies.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No dependencies</p>
+            ) : (
+              <div className="space-y-2">
+                {dependencies.map((dep) => (
+                  <div key={dep.id} className="flex items-start justify-between gap-2 rounded-md border p-2">
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className="text-sm font-medium cursor-pointer hover:underline truncate"
+                        onClick={() => router.push(`/dashboard/tasks/${dep.depends_on_task_id}`)}
+                      >
+                        {dep.depends_on_task_title || dep.depends_on_task_id}
+                      </p>
+                      <div className="flex items-center gap-1 mt-1 flex-wrap">
+                        <Badge variant="secondary" className="text-xs">
+                          {depTypeLabel(dep.dependency_type)}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {dep.lag_days > 0
+                            ? `+${dep.lag_days}d`
+                            : dep.lag_days === 0
+                              ? "0d"
+                              : `${dep.lag_days}d`}
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 flex-shrink-0"
+                      onClick={() => handleDeleteDependency(dep.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Projects</CardTitle>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Project
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2" align="end">
+                {(() => {
+                  const linkedIds = linkedProjects.map((p) => p.id);
+                  const available = allProjects.filter((p) => !linkedIds.includes(p.id));
+                  if (available.length === 0) {
+                    return <p className="text-sm text-muted-foreground p-2">No more projects to add.</p>;
+                  }
+                  return (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {available.map((p) => (
+                        <button
+                          key={p.id}
+                          className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
+                          onClick={() => handleInlineAddProject(p.id)}
+                        >
+                          <Plus className="h-3 w-3 text-muted-foreground" />
+                          {p.name}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </PopoverContent>
+            </Popover>
+          </CardHeader>
+          <CardContent>
             {linkedProjects.length > 0 ? (
-              <div className="flex flex-wrap gap-2 mt-1">
+              <div className="flex flex-wrap gap-2">
                 {linkedProjects.map((p) => (
                   <Badge
                     key={p.id}
@@ -1662,12 +1621,19 @@ export default function TaskDetailPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground mt-1">No linked projects</p>
+              <p className="text-sm text-muted-foreground">No linked projects</p>
             )}
-          </div>
-          {workflowChain.length > 1 && (
-            <>
-              <Separator />
+          </CardContent>
+        </Card>
+      </div>
+
+      {(workflowChain.length > 1 || parentTask || childTasks.length > 0 || seriesTasks.length > 1) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Related</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {workflowChain.length > 1 && (
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Workflow Chain</p>
                 <div className="flex items-center gap-1 mt-2 flex-wrap">
@@ -1684,84 +1650,84 @@ export default function TaskDetailPage() {
                   ))}
                 </div>
               </div>
-            </>
-          )}
-          {parentTask && (
-            <>
-              <Separator />
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Parent Task</p>
-                <p
-                  className="mt-1 cursor-pointer text-primary hover:underline"
-                  onClick={() => router.push(`/dashboard/tasks/${parentTask.id}`)}
-                >
-                  {parentTask.title}
-                </p>
-              </div>
-            </>
-          )}
-          {childTasks.length > 0 && (
-            <>
-              <Separator />
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Follow-up Tasks</p>
-                <div className="space-y-2 mt-1">
-                  {childTasks.map((ct) => (
-                    <div
-                      key={ct.id}
-                      className="flex items-center justify-between rounded-lg border p-2 cursor-pointer hover:bg-muted/50"
-                      onClick={() => router.push(`/dashboard/tasks/${ct.id}`)}
-                    >
-                      <span className="text-sm">{ct.title}</span>
-                      <Badge variant="secondary" className={`capitalize ${statusColors[ct.status] || ""}`}>
-                        {ct.status.replace("_", " ")}
-                      </Badge>
-                    </div>
-                  ))}
+            )}
+            {parentTask && (
+              <>
+                {workflowChain.length > 1 && <Separator />}
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Parent Task</p>
+                  <p
+                    className="mt-1 cursor-pointer text-primary hover:underline"
+                    onClick={() => router.push(`/dashboard/tasks/${parentTask.id}`)}
+                  >
+                    {parentTask.title}
+                  </p>
                 </div>
-              </div>
-            </>
-          )}
-          {seriesTasks.length > 1 && (
-            <>
-              <Separator />
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-muted-foreground">Recurring Series</p>
-                  <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700">
-                    <RefreshCw className="mr-1 h-3 w-3" />
-                    Occurrence {seriesTasks.findIndex((t) => t.id === taskId) + 1} of {seriesTasks.length}
-                  </Badge>
-                </div>
-                <div className="space-y-1 mt-2 max-h-48 overflow-y-auto">
-                  {seriesTasks.map((st) => (
-                    <div
-                      key={st.id}
-                      className={`flex items-center justify-between rounded-lg border p-2 cursor-pointer hover:bg-muted/50 ${st.id === taskId ? "border-primary bg-muted/30" : ""}`}
-                      onClick={() => { if (st.id !== taskId) router.push(`/dashboard/tasks/${st.id}`); }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">{st.title}</span>
-                        {st.id === taskId && <Badge variant="outline" className="text-xs">Current</Badge>}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {st.due_date && (
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(st.due_date)}
-                          </span>
-                        )}
-                        <Badge variant="secondary" className={`capitalize text-xs ${statusColors[st.status] || ""}`}>
-                          {st.status.replace("_", " ")}
+              </>
+            )}
+            {childTasks.length > 0 && (
+              <>
+                {(workflowChain.length > 1 || parentTask) && <Separator />}
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Follow-up Tasks</p>
+                  <div className="space-y-2 mt-1">
+                    {childTasks.map((ct) => (
+                      <div
+                        key={ct.id}
+                        className="flex items-center justify-between rounded-lg border p-2 cursor-pointer hover:bg-muted/50"
+                        onClick={() => router.push(`/dashboard/tasks/${ct.id}`)}
+                      >
+                        <span className="text-sm">{ct.title}</span>
+                        <Badge variant="secondary" className={`capitalize ${statusColors[ct.status] || ""}`}>
+                          {ct.status.replace("_", " ")}
                         </Badge>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+              </>
+            )}
+            {seriesTasks.length > 1 && (
+              <>
+                {(workflowChain.length > 1 || parentTask || childTasks.length > 0) && <Separator />}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-muted-foreground">Recurring Series</p>
+                    <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700">
+                      <RefreshCw className="mr-1 h-3 w-3" />
+                      Occurrence {seriesTasks.findIndex((t) => t.id === taskId) + 1} of {seriesTasks.length}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1 mt-2 max-h-48 overflow-y-auto">
+                    {seriesTasks.map((st) => (
+                      <div
+                        key={st.id}
+                        className={`flex items-center justify-between rounded-lg border p-2 cursor-pointer hover:bg-muted/50 ${st.id === taskId ? "border-primary bg-muted/30" : ""}`}
+                        onClick={() => { if (st.id !== taskId) router.push(`/dashboard/tasks/${st.id}`); }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{st.title}</span>
+                          {st.id === taskId && <Badge variant="outline" className="text-xs">Current</Badge>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {st.due_date && (
+                            <span className="text-xs text-muted-foreground">
+                              {formatDate(st.due_date)}
+                            </span>
+                          )}
+                          <Badge variant="secondary" className={`capitalize text-xs ${statusColors[st.status] || ""}`}>
+                            {st.status.replace("_", " ")}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

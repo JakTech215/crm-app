@@ -1296,12 +1296,12 @@ export default function TaskDetailPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Employees</CardTitle>
+            <CardTitle>Assigned Employees</CardTitle>
             <Popover>
               <PopoverTrigger asChild>
                 <Button size="sm" variant="outline">
                   <Plus className="mr-2 h-4 w-4" />
-                  Add Employee
+                  Add
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-2" align="end">
@@ -1353,77 +1353,50 @@ export default function TaskDetailPage() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Contact</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Linked Contact</CardTitle>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2" align="end">
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {allContacts.filter((c) => c.id !== task.contact_id).map((c) => (
+                    <button
+                      key={c.id}
+                      className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
+                      onClick={() => handleInlineChangeContact(c.id)}
+                    >
+                      {contactDisplay(c)}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
           </CardHeader>
           <CardContent>
             {task.contacts ? (
-              <div className="space-y-3">
-                <div>
-                  <p
-                    className="font-medium cursor-pointer text-primary hover:underline"
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline" className="flex items-center gap-1 pr-1">
+                  <span
+                    className="cursor-pointer hover:underline"
                     onClick={() => router.push(`/dashboard/contacts/${task.contact_id}`)}
                   >
                     {contactDisplay(task.contacts)}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button size="sm" variant="outline" className="h-7 text-xs">
-                        Change Contact
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-64 p-2" align="start">
-                      <div className="space-y-1 max-h-48 overflow-y-auto">
-                        {allContacts.filter((c) => c.id !== task.contact_id).map((c) => (
-                          <button
-                            key={c.id}
-                            className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
-                            onClick={() => handleInlineChangeContact(c.id)}
-                          >
-                            {contactDisplay(c)}
-                          </button>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs text-destructive hover:text-destructive"
+                  </span>
+                  <button
+                    className="ml-1 rounded-full hover:bg-muted p-0.5"
                     onClick={() => handleInlineChangeContact(null)}
                   >
-                    <X className="mr-1 h-3 w-3" />
-                    Remove
-                  </Button>
-                </div>
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
               </div>
             ) : (
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">No contact linked</p>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      <Plus className="mr-2 h-4 w-4" />
-                      Link Contact
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2" align="start">
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
-                      {allContacts.map((c) => (
-                        <button
-                          key={c.id}
-                          className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
-                          onClick={() => handleInlineChangeContact(c.id)}
-                        >
-                          {contactDisplay(c)}
-                        </button>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
+              <p className="text-sm text-muted-foreground">No contact linked</p>
             )}
           </CardContent>
         </Card>
@@ -1566,12 +1539,12 @@ export default function TaskDetailPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Projects</CardTitle>
+            <CardTitle>Linked Projects</CardTitle>
             <Popover>
               <PopoverTrigger asChild>
                 <Button size="sm" variant="outline">
                   <Plus className="mr-2 h-4 w-4" />
-                  Add Project
+                  Add
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-2" align="end">

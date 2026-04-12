@@ -7,7 +7,12 @@ import {
   fetchGanttEvents,
   fetchGanttEventAttendees,
   fetchCustomHolidays,
+  fetchFilterPresets,
+  saveFilterPreset,
+  updateFilterPreset,
+  deleteFilterPreset,
 } from "./actions";
+import type { GanttFilterPreset } from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -40,7 +45,17 @@ import {
   Filter,
   X,
   RefreshCw,
+  Save,
+  Trash2,
+  Bookmark,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatDate, formatDateLong, formatDateShort, nowCST } from "@/lib/dates";
 import { getFederalHolidays, buildHolidayMap } from "@/lib/holidays";
 
@@ -151,6 +166,11 @@ export default function GanttPage() {
     return raw ? raw.split(",") : [];
   });
   const [showEvents, setShowEvents] = useState(true);
+  const [presets, setPresets] = useState<GanttFilterPreset[]>([]);
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
+  const [savePresetOpen, setSavePresetOpen] = useState(false);
+  const [savePresetName, setSavePresetName] = useState("");
+  const [savingPreset, setSavingPreset] = useState(false);
   const [nameColWidth, setNameColWidth] = useState(224);
   const resizingRef = useRef(false);
   const resizeStartXRef = useRef(0);
@@ -354,7 +374,56 @@ export default function GanttPage() {
 
   useEffect(() => {
     fetchData();
+    fetchFilterPresets().then(setPresets);
   }, []);
+
+  const getCurrentFilters = useCallback(() => ({
+    projects: filterProjects,
+    status: filterStatus,
+    priority: filterPriority,
+    milestoneOnly: filterMilestoneOnly,
+    dateFrom: filterDateFrom,
+    dateTo: filterDateTo,
+    employee: filterEmployee,
+    showEvents,
+    showHolidays,
+  }), [filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterDateFrom, filterDateTo, filterEmployee, showEvents, showHolidays]);
+
+  const applyPreset = (preset: GanttFilterPreset) => {
+    const f = preset.filters as Record<string, any>;
+    setFilterProjects(f.projects || []);
+    setFilterStatus(f.status || ["pending", "in_progress", "blocked"]);
+    setFilterPriority(f.priority || []);
+    setFilterMilestoneOnly(f.milestoneOnly || false);
+    setFilterDateFrom(f.dateFrom || "");
+    setFilterDateTo(f.dateTo || "");
+    setFilterEmployee(f.employee || []);
+    setShowEvents(f.showEvents !== undefined ? f.showEvents : true);
+    setShowHolidays(f.showHolidays !== undefined ? f.showHolidays : true);
+    setActivePresetId(preset.id);
+  };
+
+  const handleSavePreset = async () => {
+    if (!savePresetName.trim()) return;
+    setSavingPreset(true);
+    const preset = await saveFilterPreset(savePresetName.trim(), getCurrentFilters());
+    setPresets((prev) => [...prev, preset].sort((a, b) => a.name.localeCompare(b.name)));
+    setActivePresetId(preset.id);
+    setSavePresetName("");
+    setSavePresetOpen(false);
+    setSavingPreset(false);
+  };
+
+  const handleUpdatePreset = async (id: string) => {
+    await updateFilterPreset(id, getCurrentFilters());
+    setPresets((prev) => prev.map((p) => p.id === id ? { ...p, filters: getCurrentFilters() } : p));
+  };
+
+  const handleDeletePreset = async (id: string) => {
+    await deleteFilterPreset(id);
+    setPresets((prev) => prev.filter((p) => p.id !== id));
+    if (activePresetId === id) setActivePresetId(null);
+  };
 
   // Auto-scroll to today's position on initial load
   const hasScrolledToToday = useRef(false);
@@ -918,9 +987,93 @@ export default function GanttPage() {
                 </Button>
               )}
             </div>
+
+            <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+              <Bookmark className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Saved Views</span>
+              <div className="flex items-center gap-1 flex-1 flex-wrap">
+                {presets.map((preset) => (
+                  <div key={preset.id} className="flex items-center">
+                    <Button
+                      variant={activePresetId === preset.id ? "default" : "outline"}
+                      size="sm"
+                      className="h-7 text-xs rounded-r-none"
+                      onClick={() => applyPreset(preset)}
+                    >
+                      {preset.name}
+                    </Button>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={activePresetId === preset.id ? "default" : "outline"}
+                          size="sm"
+                          className="h-7 px-1 rounded-l-none border-l-0"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-36 p-1" align="start">
+                        <button
+                          className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
+                          onClick={() => handleUpdatePreset(preset.id)}
+                        >
+                          <Save className="h-3 w-3" />
+                          Update
+                        </button>
+                        <button
+                          className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm text-destructive"
+                          onClick={() => handleDeletePreset(preset.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Delete
+                        </button>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    setSavePresetName("");
+                    setSavePresetOpen(true);
+                  }}
+                >
+                  <Save className="mr-1 h-3 w-3" />
+                  Save Current View
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={savePresetOpen} onOpenChange={setSavePresetOpen}>
+        <DialogContent>
+          <form onSubmit={(e) => { e.preventDefault(); handleSavePreset(); }}>
+            <DialogHeader>
+              <DialogTitle>Save Filter View</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="preset_name">View Name</Label>
+              <Input
+                id="preset_name"
+                className="mt-2"
+                placeholder="e.g. Active Sprint, My Tasks..."
+                value={savePresetName}
+                onChange={(e) => setSavePresetName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={savingPreset || !savePresetName.trim()}>
+                {savingPreset ? "Saving..." : "Save View"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {filterBadges.length > 0 && !filtersOpen && (
         <div className="flex flex-wrap items-center gap-2">

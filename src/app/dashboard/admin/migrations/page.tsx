@@ -90,6 +90,25 @@ export default function MigrationsPage() {
     }
   };
 
+  const markApplied = async (target: string | "all") => {
+    setRunning(true);
+    setResults([]);
+    try {
+      const res = await fetch("/api/admin/migrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markApplied: target }),
+      });
+      const data = await res.json();
+      setResults(data.results || []);
+      await fetchStatus();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setRunning(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -127,14 +146,19 @@ export default function MigrationsPage() {
           </p>
         </div>
         {status && status.pending.length > 0 && (
-          <Button onClick={runAll} disabled={running}>
-            {running ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="mr-2 h-4 w-4" />
-            )}
-            Run All Pending ({status.pending.length})
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => markApplied("all")} disabled={running}>
+              Mark All as Applied
+            </Button>
+            <Button onClick={runAll} disabled={running}>
+              {running ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-2 h-4 w-4" />
+              )}
+              Run All Pending ({status.pending.length})
+            </Button>
+          </div>
         )}
       </div>
 
@@ -176,19 +200,30 @@ export default function MigrationsPage() {
               {status.pending.map((file) => (
                 <div key={file} className="flex items-center justify-between rounded-md border p-3">
                   <span className="font-mono text-sm">{file}</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={runningFile === file}
-                    onClick={() => runOne(file)}
-                  >
-                    {runningFile === file ? (
-                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                    ) : (
-                      <Play className="mr-1 h-3 w-3" />
-                    )}
-                    Run
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={running}
+                      onClick={() => markApplied(file)}
+                    >
+                      <CheckCircle2 className="mr-1 h-3 w-3" />
+                      Mark Applied
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={runningFile === file}
+                      onClick={() => runOne(file)}
+                    >
+                      {runningFile === file ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : (
+                        <Play className="mr-1 h-3 w-3" />
+                      )}
+                      Run
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>

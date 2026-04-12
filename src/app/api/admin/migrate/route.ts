@@ -58,6 +58,23 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();
 
+    // Mark files as applied without running them
+    if (body.markApplied) {
+      const toMark: string[] = body.markApplied === "all"
+        ? files.filter((f) => !appliedSet.has(f))
+        : Array.isArray(body.markApplied) ? body.markApplied : [body.markApplied];
+      const results: { file: string; status: string }[] = [];
+      for (const file of toMark) {
+        if (appliedSet.has(file)) {
+          results.push({ file, status: "already applied" });
+        } else {
+          await sql`INSERT INTO _migrations (name) VALUES (${file})`;
+          results.push({ file, status: "marked as applied" });
+        }
+      }
+      return NextResponse.json({ results });
+    }
+
     let target: string[];
     if (body.file) {
       if (!files.includes(body.file)) {

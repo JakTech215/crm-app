@@ -1224,10 +1224,10 @@ export default function TaskDetailPage() {
                     <p>{formatDate(task.due_date)}</p>
                     {task.status !== "completed" && (() => {
                       const overdue = isBeforeToday(task.due_date);
-                      const dueStr = task.due_date as string;
-                      const due = new Date(
-                        dueStr.includes("T") ? dueStr : `${dueStr}T12:00:00`
-                      );
+                      const dueRaw = task.due_date as string | Date;
+                      const due = dueRaw instanceof Date
+                        ? dueRaw
+                        : new Date(dueRaw.includes("T") ? dueRaw : `${dueRaw}T12:00:00`);
                       const now = new Date();
                       const absDiffMs = Math.abs(due.getTime() - now.getTime());
                       const hours = Math.floor(absDiffMs / (1000 * 60 * 60));

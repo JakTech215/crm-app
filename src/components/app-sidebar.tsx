@@ -14,6 +14,7 @@ import {
   StickyNote,
   BarChart3,
   Columns3,
+  Database,
 } from "lucide-react";
 import {
   Sidebar,
@@ -40,6 +41,7 @@ const navItems = [
   { title: "Notes", href: "/dashboard/notes", icon: StickyNote },
   { title: "Employees", href: "/dashboard/employees", icon: UserCog },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
+  { title: "Migrations", href: "/dashboard/admin/migrations", icon: Database },
 ];
 
 export function AppSidebar() {

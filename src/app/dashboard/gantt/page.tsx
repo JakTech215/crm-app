@@ -115,7 +115,7 @@ export default function GanttPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
-  const [zoom, setZoom] = useState<ZoomLevel>("week");
+  const [zoom, setZoom] = useState<ZoomLevel>("5day");
   const [startDate, setStartDate] = useState(() => {
     const d = nowCST();
     d.setDate(d.getDate() - 90);

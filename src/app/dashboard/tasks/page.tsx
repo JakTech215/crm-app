@@ -1164,37 +1164,36 @@ export default function TasksPage() {
                   />
                 </div>
 
-                {/* Template & Schedule Section */}
-                <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
-                  <p className="text-sm font-medium">Template & Schedule</p>
+                {/* Template selector — moved outside the Schedule box */}
+                <div className="grid gap-2">
+                  <Label>Start from Template <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Select
+                    value={selectedTemplateId || "none"}
+                    onValueChange={(value) => applyTemplate(value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="None - Create blank task" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None - Create blank task</SelectItem>
+                      {templates.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          <span className="flex items-center gap-2">
+                            {t.name}
+                            {(() => {
+                              const tt = taskTypes.find((x) => x.id === t.task_type_id);
+                              return tt ? <Badge variant="secondary" className={`text-xs ${COLOR_MAP[tt.color] || ""}`}>{tt.name}</Badge> : null;
+                            })()}
+                            {t.is_recurring && <RefreshCw className="h-3 w-3 text-muted-foreground" />}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                  <div className="grid gap-2">
-                    <Label>Start from Template <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                    <Select
-                      value={selectedTemplateId || "none"}
-                      onValueChange={(value) => applyTemplate(value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="None - Create blank task" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None - Create blank task</SelectItem>
-                        {templates.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            <span className="flex items-center gap-2">
-                              {t.name}
-                              {(() => {
-                                const tt = taskTypes.find((x) => x.id === t.task_type_id);
-                                return tt ? <Badge variant="secondary" className={`text-xs ${COLOR_MAP[tt.color] || ""}`}>{tt.name}</Badge> : null;
-                              })()}
-                              {t.is_recurring && <RefreshCw className="h-3 w-3 text-muted-foreground" />}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
+                {/* Schedule Section */}
+                <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
                       <Label htmlFor="start_date">

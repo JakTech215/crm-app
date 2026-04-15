@@ -54,6 +54,18 @@ export interface GanttFilterPreset {
   filters: Record<string, unknown>;
 }
 
+function coerceFilters(raw: unknown): Record<string, unknown> {
+  if (raw == null) return {};
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  return raw as Record<string, unknown>;
+}
+
 export async function fetchFilterPresets(): Promise<GanttFilterPreset[]> {
   const user = await getSessionUser();
   if (!user) return [];
@@ -61,25 +73,27 @@ export async function fetchFilterPresets(): Promise<GanttFilterPreset[]> {
     SELECT id, name, filters FROM gantt_filter_presets
     WHERE user_id = ${user.id} ORDER BY name
   `;
-  return rows.map((r) => ({ id: r.id, name: r.name, filters: r.filters as Record<string, unknown> }));
+  return rows.map((r) => ({ id: r.id, name: r.name, filters: coerceFilters(r.filters) }));
 }
 
 export async function saveFilterPreset(name: string, filters: Record<string, unknown>): Promise<GanttFilterPreset> {
   const user = await getSessionUser();
   if (!user) throw new Error("Not authenticated");
+  const payload = JSON.stringify(filters);
   const rows = await sql`
     INSERT INTO gantt_filter_presets (user_id, name, filters)
-    VALUES (${user.id}, ${name}, ${JSON.stringify(filters)})
+    VALUES (${user.id}, ${name}, ${payload}::jsonb)
     RETURNING id, name, filters
   `;
-  return { id: rows[0].id, name: rows[0].name, filters: rows[0].filters as Record<string, unknown> };
+  return { id: rows[0].id, name: rows[0].name, filters: coerceFilters(rows[0].filters) };
 }
 
 export async function updateFilterPreset(id: string, filters: Record<string, unknown>): Promise<void> {
   const user = await getSessionUser();
   if (!user) throw new Error("Not authenticated");
+  const payload = JSON.stringify(filters);
   await sql`
-    UPDATE gantt_filter_presets SET filters = ${JSON.stringify(filters)}, updated_at = now()
+    UPDATE gantt_filter_presets SET filters = ${payload}::jsonb, updated_at = now()
     WHERE id = ${id} AND user_id = ${user.id}
   `;
 }

@@ -387,19 +387,29 @@ export default function GanttPage() {
     employee: filterEmployee,
     showEvents,
     showHolidays,
-  }), [filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterDateFrom, filterDateTo, filterEmployee, showEvents, showHolidays]);
+    zoom,
+  }), [filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterDateFrom, filterDateTo, filterEmployee, showEvents, showHolidays, zoom]);
 
   const applyPreset = (preset: GanttFilterPreset) => {
-    const f = preset.filters as Record<string, any>;
-    setFilterProjects(f.projects || []);
-    setFilterStatus(f.status || ["pending", "in_progress", "blocked"]);
-    setFilterPriority(f.priority || []);
-    setFilterMilestoneOnly(f.milestoneOnly || false);
-    setFilterDateFrom(f.dateFrom || "");
-    setFilterDateTo(f.dateTo || "");
-    setFilterEmployee(f.employee || []);
-    setShowEvents(f.showEvents !== undefined ? f.showEvents : true);
-    setShowHolidays(f.showHolidays !== undefined ? f.showHolidays : true);
+    const raw = preset.filters;
+    const f: Record<string, any> =
+      typeof raw === "string"
+        ? (() => { try { return JSON.parse(raw); } catch { return {}; } })()
+        : (raw || {}) as Record<string, any>;
+    const asArray = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+    setFilterProjects(asArray(f.projects));
+    setFilterStatus(Array.isArray(f.status) ? asArray(f.status) : ["pending", "in_progress", "blocked"]);
+    setFilterPriority(asArray(f.priority));
+    setFilterMilestoneOnly(!!f.milestoneOnly);
+    setFilterDateFrom(typeof f.dateFrom === "string" ? f.dateFrom : "");
+    setFilterDateTo(typeof f.dateTo === "string" ? f.dateTo : "");
+    setFilterEmployee(asArray(f.employee));
+    setShowEvents(f.showEvents !== undefined ? !!f.showEvents : true);
+    setShowHolidays(f.showHolidays !== undefined ? !!f.showHolidays : true);
+    if (typeof f.zoom === "string" && ["day", "5day", "week", "month", "quarter"].includes(f.zoom)) {
+      setZoom(f.zoom as ZoomLevel);
+    }
     setActivePresetId(preset.id);
   };
 

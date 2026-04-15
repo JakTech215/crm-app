@@ -74,7 +74,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Users, Diamond, Search, RefreshCw, Loader2, Check, Trash2, Upload, Download } from "lucide-react";
+import { Plus, Users, Diamond, Search, RefreshCw, Loader2, Check, Trash2, Upload, Download, ChevronRight, ChevronDown } from "lucide-react";
 import Papa from "papaparse";
 import { todayCST, formatDate, formatDateLong, formatRelativeTime as formatRelativeTimeUtil, nowUTC, isBeforeToday } from "@/lib/dates";
 import { FilterPanel, FilterDef, FilterValues, defaultFilterValues } from "@/components/filter-panel";
@@ -210,6 +210,15 @@ export default function TasksPage() {
   const [templateChain, setTemplateChain] = useState<{ name: string; delayDays: number }[]>([]);
   const [creationResult, setCreationResult] = useState<string | null>(null);
   const [recurringDates, setRecurringDates] = useState<string[]>([]);
+  const [expandedSeries, setExpandedSeries] = useState<Set<string>>(new Set());
+  const toggleSeries = (sourceId: string) => {
+    setExpandedSeries((prev) => {
+      const next = new Set(prev);
+      if (next.has(sourceId)) next.delete(sourceId);
+      else next.add(sourceId);
+      return next;
+    });
+  };
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -833,7 +842,212 @@ export default function TasksPage() {
     return filtered;
   };
 
-  const renderTable = (filteredTasks: Task[]) => (
+  const renderTable = (filteredTasks: Task[]) => {
+    const filteredIds = new Set(filteredTasks.map((t) => t.id));
+    const childrenBySource = new Map<string, Task[]>();
+    for (const t of filteredTasks) {
+      const rst = t.recurrence_source_task_id;
+      if (rst && rst !== t.id && filteredIds.has(rst)) {
+        const arr = childrenBySource.get(rst) ?? [];
+        arr.push(t);
+        childrenBySource.set(rst, arr);
+      }
+    }
+    const topLevel = filteredTasks.filter((t) => {
+      const rst = t.recurrence_source_task_id;
+      if (!rst || rst === t.id) return true;
+      return !filteredIds.has(rst);
+    });
+
+    const renderRow = (task: Task, isChild: boolean) => {
+      const children = childrenBySource.get(task.id);
+      const isSource = !!children && children.length > 0;
+      const expanded = expandedSeries.has(task.id);
+      return (
+        <TableRow
+          key={task.id}
+          className={`cursor-pointer hover:bg-muted/50 ${isChild ? "bg-muted/20" : ""}`}
+          onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
+        >
+          <TableCell>
+            <div className="flex items-center gap-2" style={isChild ? { paddingLeft: 28 } : undefined}>
+              {isSource ? (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleSeries(task.id); }}
+                  className="rounded p-0.5 hover:bg-muted shrink-0"
+                  title={expanded ? "Collapse series" : "Expand series"}
+                >
+                  {expanded ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </button>
+              ) : null}
+              {task.is_milestone && <Diamond className="h-4 w-4 text-amber-500 shrink-0" />}
+              {(task.is_recurring || task.recurrence_source_task_id) && (
+                <span title={isSource ? "Recurring series" : "Occurrence in recurring series"}>
+                  <RefreshCw className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                </span>
+              )}
+              <div>
+                <div className="font-medium">
+                  {task.title}
+                  {task.is_milestone && (
+                    <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 text-xs">Milestone</Badge>
+                  )}
+                  {isSource && (
+                    <Badge variant="outline" className="ml-2 text-xs border-blue-300 text-blue-700">
+                      {children!.length + 1} occurrences
+                    </Badge>
+                  )}
+                </div>
+                {task.description && (
+                  <div className="text-sm text-muted-foreground truncate max-w-xs">{task.description}</div>
+                )}
+              </div>
+            </div>
+          </TableCell>
+          <TableCell>
+            {(() => {
+              const tt = taskTypes.find((x) => x.id === task.task_type_id);
+              return tt ? (
+                <Badge variant="secondary" className={COLOR_MAP[tt.color] || ""}>{tt.name}</Badge>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              );
+            })()}
+          </TableCell>
+          <TableCell>
+            {task.contacts ? (
+              <span
+                className="text-blue-600 hover:underline cursor-pointer"
+                onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/contacts/${task.contacts!.id}`); }}
+              >
+                {contactName(task.contacts)}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </TableCell>
+          <TableCell>
+            {(() => {
+              const taskProjects = taskProjectMap[task.id];
+              if (!taskProjects || taskProjects.length === 0) return <span className="text-muted-foreground">—</span>;
+              if (taskProjects.length <= 2) {
+                return (
+                  <div className="flex flex-wrap gap-1">
+                    {taskProjects.map((p) => (
+                      <span
+                        key={p.id}
+                        className="text-blue-600 hover:underline cursor-pointer text-sm"
+                        onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/projects/${p.id}`); }}
+                      >
+                        {p.name}
+                      </span>
+                    ))}
+                  </div>
+                );
+              }
+              return (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <span className="text-blue-600 hover:underline cursor-pointer text-sm" onClick={(e) => e.stopPropagation()}>
+                      {taskProjects.length} Projects
+                    </span>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-2" align="start" onClick={(e) => e.stopPropagation()}>
+                    <div className="space-y-1">
+                      {taskProjects.map((p) => (
+                        <div
+                          key={p.id}
+                          className="text-sm text-blue-600 hover:underline cursor-pointer px-2 py-1 rounded hover:bg-muted"
+                          onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/projects/${p.id}`); }}
+                        >
+                          {p.name}
+                        </div>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              );
+            })()}
+          </TableCell>
+          <TableCell>
+            {task.task_assignees?.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {task.task_assignees.map((a) => (
+                  <Badge key={a.employee_id} variant="outline" className="text-xs">
+                    {a.employees ? employeeName(a.employees) : ""}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </TableCell>
+          <TableCell onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1">
+              <Select value={task.priority} onValueChange={(v) => handleInlineUpdate(task.id, "priority", v)}>
+                <SelectTrigger className={`h-7 w-[100px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${priorityColors[task.priority] || ""}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+              {savingCell === `${task.id}-priority` && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              {savedCell === `${task.id}-priority` && <Check className="h-3 w-3 text-green-600" />}
+            </div>
+          </TableCell>
+          <TableCell onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1">
+              <Select value={task.status} onValueChange={(v) => handleInlineUpdate(task.id, "status", v)}>
+                <SelectTrigger className={`h-7 w-[130px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${statusColors[task.status] || ""}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="blocked">Blocked</SelectItem>
+                </SelectContent>
+              </Select>
+              {savingCell === `${task.id}-status` && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              {savedCell === `${task.id}-status` && <Check className="h-3 w-3 text-green-600" />}
+            </div>
+          </TableCell>
+          <TableCell>
+            {task.due_date ? (
+              <div>
+                <div className="text-sm">{formatDate(task.due_date)}</div>
+                {task.status !== "completed" && (() => {
+                  const rel = dueDateRelative(task.due_date);
+                  return <div className={`text-xs ${rel.className}`}>{rel.text}</div>;
+                })()}
+              </div>
+            ) : "—"}
+          </TableCell>
+          <TableCell onClick={(e) => e.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-red-600"
+              onClick={() => checkAndDelete(task.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </TableCell>
+        </TableRow>
+      );
+    };
+
+    return (
     <Table>
       <TableHeader>
         <TableRow>
@@ -860,173 +1074,22 @@ export default function TasksPage() {
             </TableCell>
           </TableRow>
         ) : (
-          filteredTasks.map((task) => (
-            <TableRow
-              key={task.id}
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => router.push(`/dashboard/tasks/${task.id}`)}
-            >
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  {task.is_milestone && <Diamond className="h-4 w-4 text-amber-500 shrink-0" />}
-                  {(task.is_recurring || task.recurrence_source_task_id) && (
-                    <span title="Part of recurring series">
-                      <RefreshCw className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                    </span>
-                  )}
-                  <div>
-                    <div className="font-medium">
-                      {task.title}
-                      {task.is_milestone && (
-                        <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 text-xs">Milestone</Badge>
-                      )}
-                    </div>
-                    {task.description && (
-                      <div className="text-sm text-muted-foreground truncate max-w-xs">{task.description}</div>
-                    )}
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell>
-                {(() => {
-                  const tt = taskTypes.find((x) => x.id === task.task_type_id);
-                  return tt ? (
-                    <Badge variant="secondary" className={COLOR_MAP[tt.color] || ""}>{tt.name}</Badge>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  );
-                })()}
-              </TableCell>
-              <TableCell>
-                {task.contacts ? (
-                  <span
-                    className="text-blue-600 hover:underline cursor-pointer"
-                    onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/contacts/${task.contacts!.id}`); }}
-                  >
-                    {contactName(task.contacts)}
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {(() => {
-                  const taskProjects = taskProjectMap[task.id];
-                  if (!taskProjects || taskProjects.length === 0) return <span className="text-muted-foreground">—</span>;
-                  if (taskProjects.length <= 2) {
-                    return (
-                      <div className="flex flex-wrap gap-1">
-                        {taskProjects.map((p) => (
-                          <span
-                            key={p.id}
-                            className="text-blue-600 hover:underline cursor-pointer text-sm"
-                            onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/projects/${p.id}`); }}
-                          >
-                            {p.name}
-                          </span>
-                        ))}
-                      </div>
-                    );
-                  }
-                  return (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <span className="text-blue-600 hover:underline cursor-pointer text-sm" onClick={(e) => e.stopPropagation()}>
-                          {taskProjects.length} Projects
-                        </span>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-48 p-2" align="start" onClick={(e) => e.stopPropagation()}>
-                        <div className="space-y-1">
-                          {taskProjects.map((p) => (
-                            <div
-                              key={p.id}
-                              className="text-sm text-blue-600 hover:underline cursor-pointer px-2 py-1 rounded hover:bg-muted"
-                              onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/projects/${p.id}`); }}
-                            >
-                              {p.name}
-                            </div>
-                          ))}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  );
-                })()}
-              </TableCell>
-              <TableCell>
-                {task.task_assignees?.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {task.task_assignees.map((a) => (
-                      <Badge key={a.employee_id} variant="outline" className="text-xs">
-                        {a.employees ? employeeName(a.employees) : ""}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center gap-1">
-                  <Select value={task.priority} onValueChange={(v) => handleInlineUpdate(task.id, "priority", v)}>
-                    <SelectTrigger className={`h-7 w-[100px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${priorityColors[task.priority] || ""}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="urgent">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {savingCell === `${task.id}-priority` && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-                  {savedCell === `${task.id}-priority` && <Check className="h-3 w-3 text-green-600" />}
-                </div>
-              </TableCell>
-              <TableCell onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center gap-1">
-                  <Select value={task.status} onValueChange={(v) => handleInlineUpdate(task.id, "status", v)}>
-                    <SelectTrigger className={`h-7 w-[130px] rounded-full border-0 text-xs font-semibold shadow-none capitalize ${statusColors[task.status] || ""}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="in_progress">In Progress</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="cancelled">Cancelled</SelectItem>
-                      <SelectItem value="blocked">Blocked</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {savingCell === `${task.id}-status` && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-                  {savedCell === `${task.id}-status` && <Check className="h-3 w-3 text-green-600" />}
-                </div>
-              </TableCell>
-              <TableCell>
-                {task.due_date ? (
-                  <div>
-                    <div className="text-sm">{formatDate(task.due_date)}</div>
-                    {task.status !== "completed" && (() => {
-                      const rel = dueDateRelative(task.due_date);
-                      return <div className={`text-xs ${rel.className}`}>{rel.text}</div>;
-                    })()}
-                  </div>
-                ) : "—"}
-              </TableCell>
-              <TableCell onClick={(e) => e.stopPropagation()}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-red-600"
-                  onClick={() => checkAndDelete(task.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))
+          topLevel.flatMap((task) => {
+            const rows = [renderRow(task, false)];
+            if (expandedSeries.has(task.id)) {
+              const kids = childrenBySource.get(task.id) ?? [];
+              const sortedKids = [...kids].sort((a, b) =>
+                (a.due_date || "").localeCompare(b.due_date || "")
+              );
+              for (const child of sortedKids) rows.push(renderRow(child, true));
+            }
+            return rows;
+          })
         )}
       </TableBody>
     </Table>
-  );
+    );
+  };
 
   return (
     <div className="space-y-6">

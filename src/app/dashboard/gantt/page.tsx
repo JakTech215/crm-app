@@ -48,6 +48,7 @@ import {
   Save,
   Trash2,
   Bookmark,
+  Loader2,
 } from "lucide-react";
 import {
   Dialog,
@@ -424,9 +425,19 @@ export default function GanttPage() {
     setSavingPreset(false);
   };
 
+  const [updatingPresetId, setUpdatingPresetId] = useState<string | null>(null);
+  const [openPresetMenuId, setOpenPresetMenuId] = useState<string | null>(null);
+
   const handleUpdatePreset = async (id: string) => {
-    await updateFilterPreset(id, getCurrentFilters());
-    setPresets((prev) => prev.map((p) => p.id === id ? { ...p, filters: getCurrentFilters() } : p));
+    setUpdatingPresetId(id);
+    try {
+      const current = getCurrentFilters();
+      await updateFilterPreset(id, current);
+      setPresets((prev) => prev.map((p) => p.id === id ? { ...p, filters: current } : p));
+      setOpenPresetMenuId(null);
+    } finally {
+      setUpdatingPresetId(null);
+    }
   };
 
   const handleDeletePreset = async (id: string) => {
@@ -1012,23 +1023,35 @@ export default function GanttPage() {
                     >
                       {preset.name}
                     </Button>
-                    <Popover>
+                    <Popover
+                      open={openPresetMenuId === preset.id}
+                      onOpenChange={(open) => setOpenPresetMenuId(open ? preset.id : null)}
+                    >
                       <PopoverTrigger asChild>
                         <Button
                           variant={activePresetId === preset.id ? "default" : "outline"}
                           size="sm"
                           className="h-7 px-1 rounded-l-none border-l-0"
                         >
-                          <ChevronDown className="h-3 w-3" />
+                          {updatingPresetId === preset.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3" />
+                          )}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-36 p-1" align="start">
                         <button
-                          className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
+                          className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm disabled:opacity-50"
+                          disabled={updatingPresetId === preset.id}
                           onClick={() => handleUpdatePreset(preset.id)}
                         >
-                          <Save className="h-3 w-3" />
-                          Update
+                          {updatingPresetId === preset.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Save className="h-3 w-3" />
+                          )}
+                          {updatingPresetId === preset.id ? "Updating..." : "Update"}
                         </button>
                         <button
                           className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm text-destructive"

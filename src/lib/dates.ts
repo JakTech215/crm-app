@@ -34,7 +34,27 @@ export function nowUTC(): string {
 // ---------------------------------------------------------------------------
 function parseForDisplay(dateStr: string | Date): Date {
   if (!dateStr) return new Date();
-  if (dateStr instanceof Date) return toZonedTime(dateStr, TIMEZONE);
+  if (dateStr instanceof Date) {
+    // PG DATE columns come back as midnight-UTC Date objects — treat them
+    // as calendar dates so they don't shift to the previous day in CST.
+    if (
+      dateStr.getUTCHours() === 0 &&
+      dateStr.getUTCMinutes() === 0 &&
+      dateStr.getUTCSeconds() === 0 &&
+      dateStr.getUTCMilliseconds() === 0
+    ) {
+      const y = dateStr.getUTCFullYear();
+      const m = String(dateStr.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(dateStr.getUTCDate()).padStart(2, "0");
+      return new Date(`${y}-${m}-${d}T12:00:00`);
+    }
+    return toZonedTime(dateStr, TIMEZONE);
+  }
+  // ISO string at exact midnight UTC — same PG DATE case after serialization
+  const midnightUtc = dateStr.match(/^(\d{4}-\d{2}-\d{2})T00:00:00(?:\.000)?Z$/);
+  if (midnightUtc) {
+    return new Date(midnightUtc[1] + "T12:00:00");
+  }
   // TIMESTAMPTZ — already has timezone info, convert to CST
   if (dateStr.includes("T") || dateStr.includes("Z") || dateStr.includes("+")) {
     return toZonedTime(new Date(dateStr), TIMEZONE);

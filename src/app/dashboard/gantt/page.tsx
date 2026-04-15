@@ -131,6 +131,7 @@ export default function GanttPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [zoom, setZoom] = useState<ZoomLevel>("5day");
   const [startDate, setStartDate] = useState(() => {
     const d = nowCST();
@@ -219,6 +220,7 @@ export default function GanttPage() {
   }, [nameColWidth]);
 
   const fetchData = async () => {
+    try {
     const { taskData: rawTaskData, depData, projData, ptLinks, assigneeData, empData } = await fetchGanttData();
 
     // Map task rows to include contacts in expected format
@@ -370,7 +372,13 @@ export default function GanttPage() {
     setDependencies((depData || []) as Dependency[]);
     setProjects(projData || []);
     setEmployees(empData || []);
-    setLoading(false);
+    setLoadError(null);
+    } catch (err) {
+      console.error("Gantt fetchData failed:", err);
+      setLoadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -746,6 +754,26 @@ export default function GanttPage() {
 
   if (loading) {
     return <div className="p-6">Loading...</div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="p-6 space-y-3">
+        <h1 className="text-2xl font-bold text-red-600">Failed to load Gantt chart</h1>
+        <pre className="whitespace-pre-wrap rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          {loadError}
+        </pre>
+        <Button
+          onClick={() => {
+            setLoadError(null);
+            setLoading(true);
+            fetchData();
+          }}
+        >
+          Retry
+        </Button>
+      </div>
+    );
   }
 
   return (

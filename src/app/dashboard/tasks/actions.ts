@@ -201,6 +201,40 @@ export async function checkChildTaskCount(taskId: string) {
   return Number(rows[0]?.count ?? 0);
 }
 
+export async function checkTaskDeleteInfo(taskId: string) {
+  const [trueDepRows, seriesRows] = await Promise.all([
+    sql`SELECT COUNT(*) as count FROM tasks
+        WHERE parent_task_id = ${taskId}
+          AND (recurrence_source_task_id IS NULL OR recurrence_source_task_id <> ${taskId})`,
+    sql`SELECT COUNT(*) as count FROM tasks
+        WHERE recurrence_source_task_id = ${taskId}
+          AND id <> ${taskId}`,
+  ]);
+  return {
+    trueDependents: Number(trueDepRows[0]?.count ?? 0),
+    recurrenceMembers: Number(seriesRows[0]?.count ?? 0),
+  };
+}
+
+export async function deleteRecurringSeries(sourceId: string) {
+  const user = await getSessionUser();
+  if (!user) throw new Error("You must be signed in to delete tasks");
+
+  const rows = await sql`
+    SELECT id FROM tasks
+    WHERE id = ${sourceId} OR recurrence_source_task_id = ${sourceId}
+  `;
+  const ids = rows.map((r) => r.id as string);
+  if (ids.length === 0) return 0;
+
+  await Promise.all([
+    sql`DELETE FROM task_assignees WHERE task_id = ANY(${ids})`,
+    sql`DELETE FROM project_tasks WHERE task_id = ANY(${ids})`,
+  ]);
+  const deleted = await sql`DELETE FROM tasks WHERE id = ANY(${ids}) RETURNING id`;
+  return deleted.length;
+}
+
 export async function deleteTask(taskId: string) {
   const user = await getSessionUser();
   if (!user) throw new Error("You must be signed in to delete tasks");

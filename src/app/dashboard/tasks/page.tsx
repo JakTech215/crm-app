@@ -17,8 +17,9 @@ import {
   insertProjectTask,
   updateTask,
   updateTaskField,
-  checkChildTaskCount,
+  checkTaskDeleteInfo,
   deleteTask as deleteTaskAction,
+  deleteRecurringSeries,
   bulkCreateTask,
 } from "./actions";
 import { Button } from "@/components/ui/button";
@@ -514,7 +515,6 @@ export default function TasksPage() {
                 recurrence_frequency: tmpl.recurrence_frequency,
                 recurrence_unit: tmpl.recurrence_unit,
                 recurrence_source_task_id: task.id,
-                parent_task_id: task.id,
               });
 
               if (recurTask) {
@@ -748,12 +748,14 @@ export default function TasksPage() {
   const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteDeps, setDeleteDeps] = useState<number>(0);
+  const [deleteSeriesCount, setDeleteSeriesCount] = useState<number>(0);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
 
   const checkAndDelete = async (taskId: string) => {
     setDeleteTaskId(taskId);
-    const count = await checkChildTaskCount(taskId);
-    setDeleteDeps(count);
+    const info = await checkTaskDeleteInfo(taskId);
+    setDeleteDeps(info.trueDependents);
+    setDeleteSeriesCount(info.recurrenceMembers);
   };
 
   const confirmDelete = async () => {
@@ -762,11 +764,16 @@ export default function TasksPage() {
     setDeleteMessage(null);
 
     try {
-      await deleteTaskAction(deleteTaskId);
+      if (deleteSeriesCount > 0) {
+        await deleteRecurringSeries(deleteTaskId);
+      } else {
+        await deleteTaskAction(deleteTaskId);
+      }
       await fetchTasks();
       setDeleteLoading(false);
       setDeleteTaskId(null);
-      setDeleteMessage("Task deleted");
+      setDeleteSeriesCount(0);
+      setDeleteMessage(deleteSeriesCount > 0 ? "Series deleted" : "Task deleted");
       setTimeout(() => setDeleteMessage(null), 3000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to delete task";
@@ -1518,13 +1525,17 @@ export default function TasksPage() {
         </div>
       )}
 
-      <AlertDialog open={!!deleteTaskId} onOpenChange={(open) => { if (!open) setDeleteTaskId(null); }}>
+      <AlertDialog open={!!deleteTaskId} onOpenChange={(open) => { if (!open) { setDeleteTaskId(null); setDeleteDeps(0); setDeleteSeriesCount(0); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this task?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {deleteSeriesCount > 0 ? "Delete entire series?" : "Delete this task?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {deleteDeps > 0
                 ? `Cannot delete — ${deleteDeps} task${deleteDeps > 1 ? "s" : ""} depend${deleteDeps === 1 ? "s" : ""} on this task.`
+                : deleteSeriesCount > 0
+                ? `This will delete the source task and all ${deleteSeriesCount} occurrence${deleteSeriesCount > 1 ? "s" : ""}. This cannot be undone.`
                 : "Are you sure? This cannot be undone."}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1532,7 +1543,11 @@ export default function TasksPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             {deleteDeps === 0 && (
               <AlertDialogAction onClick={confirmDelete} disabled={deleteLoading} className="bg-red-600 hover:bg-red-700">
-                {deleteLoading ? "Deleting..." : "Delete"}
+                {deleteLoading
+                  ? "Deleting..."
+                  : deleteSeriesCount > 0
+                  ? `Delete series (${deleteSeriesCount + 1})`
+                  : "Delete"}
               </AlertDialogAction>
             )}
           </AlertDialogFooter>

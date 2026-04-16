@@ -1078,9 +1078,11 @@ export default function TasksPage() {
             const rows = [renderRow(task, false)];
             if (expandedSeries.has(task.id)) {
               const kids = childrenBySource.get(task.id) ?? [];
-              const sortedKids = [...kids].sort((a, b) =>
-                (a.due_date || "").localeCompare(b.due_date || "")
-              );
+              const sortedKids = [...kids].sort((a, b) => {
+                const at = a.due_date ? new Date(a.due_date as unknown as string | Date).getTime() : Number.POSITIVE_INFINITY;
+                const bt = b.due_date ? new Date(b.due_date as unknown as string | Date).getTime() : Number.POSITIVE_INFINITY;
+                return at - bt;
+              });
               for (const child of sortedKids) rows.push(renderRow(child, true));
             }
             return rows;

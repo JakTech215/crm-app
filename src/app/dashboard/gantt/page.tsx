@@ -294,7 +294,11 @@ export default function GanttPage() {
     for (const [sourceId, indices] of Object.entries(seriesGroups)) {
       if (indices.length <= 1) continue;
       const seriesTasks = indices.map((idx) => enriched[idx]);
-      seriesTasks.sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""));
+      seriesTasks.sort((a, b) => {
+        const at = a.due_date ? new Date(a.due_date as unknown as string | Date).getTime() : Number.POSITIVE_INFINITY;
+        const bt = b.due_date ? new Date(b.due_date as unknown as string | Date).getTime() : Number.POSITIVE_INFINITY;
+        return at - bt;
+      });
       const occurrences = seriesTasks
         .filter((t) => t.due_date)
         .map((t) => ({ id: t.id, date: t.due_date!, status: t.status }));

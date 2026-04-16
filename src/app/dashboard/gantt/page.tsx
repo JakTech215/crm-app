@@ -57,7 +57,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatDate, formatDateLong, formatDateShort, nowCST } from "@/lib/dates";
+import { formatDate, formatDateLong, formatDateShort, nowCST, parseForDisplay } from "@/lib/dates";
 import { getFederalHolidays, buildHolidayMap } from "@/lib/holidays";
 
 interface GanttTask {
@@ -582,12 +582,8 @@ export default function GanttPage() {
   else rangeEnd.setMonth(rangeEnd.getMonth() + 1);
 
   const dateToX = (dateStr: string | Date) => {
-    const d =
-      dateStr instanceof Date
-        ? new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate())
-        : typeof dateStr === "string" && dateStr.length >= 10 && !dateStr.includes("T")
-          ? new Date(dateStr + "T12:00:00")
-          : new Date(dateStr);
+    const parsed = parseForDisplay(dateStr);
+    const d = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
     if (zoom === "day" || zoom === "week" || zoom === "5day") {
       const totalMs = rangeEnd.getTime() - rangeStart.getTime();
       const elapsedMs = d.getTime() - rangeStart.getTime();
@@ -617,12 +613,8 @@ export default function GanttPage() {
   // Due dates are inclusive — treat bar end as the start of the following day
   // so a task ending on Fri 04/23 visually covers all of Friday.
   const dueDateToX = (dateStr: string | Date) => {
-    const d =
-      dateStr instanceof Date
-        ? new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate())
-        : typeof dateStr === "string" && dateStr.length >= 10 && !dateStr.includes("T")
-          ? new Date(dateStr + "T12:00:00")
-          : new Date(dateStr);
+    const parsed = parseForDisplay(dateStr);
+    const d = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
     d.setDate(d.getDate() + 1);
     return dateToX(d);
   };

@@ -32,7 +32,7 @@ export function nowUTC(): string {
 // Parse a date string safely into a Date for CST display.
 // Handles both DATE (YYYY-MM-DD) and TIMESTAMPTZ (ISO) values.
 // ---------------------------------------------------------------------------
-function parseForDisplay(dateStr: string | Date): Date {
+export function parseForDisplay(dateStr: string | Date): Date {
   if (!dateStr) return new Date();
   if (dateStr instanceof Date) {
     // PG DATE columns come back as midnight-UTC Date objects — treat them

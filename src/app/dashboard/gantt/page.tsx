@@ -57,7 +57,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatDate, formatDateLong, formatDateShort, nowCST, parseForDisplay } from "@/lib/dates";
+import { formatDate, formatDateLong, formatDateShort, nowCST, parseForDisplay, todayCST } from "@/lib/dates";
 import { getFederalHolidays, buildHolidayMap } from "@/lib/holidays";
 
 interface GanttTask {
@@ -551,6 +551,9 @@ export default function GanttPage() {
       : 16;
     const dates: Date[] = [];
     const start = new Date(startDate);
+    // Anchor columns to local midnight so task bars and the today line,
+    // which are positioned at midnight, align with column boundaries.
+    start.setHours(0, 0, 0, 0);
     // For 5-day view, snap the first column to the Monday of startDate's week
     if (zoom === "5day") {
       const day = start.getDay(); // 0=Sun..6=Sat
@@ -619,7 +622,9 @@ export default function GanttPage() {
     return dateToX(d);
   };
 
-  const todayX = dateToX(nowCST().toISOString());
+  // Use the YYYY-MM-DD CST date directly — routing nowCST() through
+  // toISOString + parseForDisplay double-applies the zone shift.
+  const todayX = dateToX(todayCST());
 
   const grouped: { project: string | null; projectId: string | null; tasks: GanttTask[] }[] = [];
   const projectGroups = new Map<string, GanttTask[]>();

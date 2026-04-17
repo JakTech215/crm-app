@@ -183,6 +183,50 @@ export function formatTime(timeStr: string | null): string {
 // ---------------------------------------------------------------------------
 // Add days to a YYYY-MM-DD string, return YYYY-MM-DD
 // ---------------------------------------------------------------------------
+export function getTimeframeDate(code: string): string {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+
+  const fmt = (d: Date) => fnsFormat(d, "yyyy-MM-dd");
+  const addDays = (d: Date, days: number) => {
+    const r = new Date(d);
+    r.setDate(r.getDate() + days);
+    return r;
+  };
+  const isWeekday = (d: Date) => d.getDay() !== 0 && d.getDay() !== 6;
+
+  switch (code) {
+    case "1d": return fmt(addDays(today, 1));
+    case "3d": return fmt(addDays(today, 3));
+    case "1w": return fmt(addDays(today, 7));
+    case "1m": return fmt(addDays(today, 30));
+    case "eow-w": {
+      let d = 5 - today.getDay();
+      if (d < 0) d += 7;
+      return fmt(addDays(today, d));
+    }
+    case "eom-w": {
+      const last = new Date(year, month + 1, 0);
+      while (!isWeekday(last)) last.setDate(last.getDate() - 1);
+      return fmt(last);
+    }
+    case "eom-c": return fmt(new Date(year, month + 1, 0));
+    case "bow-w": {
+      let d = (8 - today.getDay()) % 7;
+      if (d === 0) d = 7;
+      return fmt(addDays(today, d));
+    }
+    case "bom-w": {
+      const first = new Date(year, month + 1, 1);
+      while (!isWeekday(first)) first.setDate(first.getDate() + 1);
+      return fmt(first);
+    }
+    case "bom-c": return fmt(new Date(year, month + 1, 1));
+    default: return fmt(today);
+  }
+}
+
 export function addDaysToDate(dateStr: string, days: number): string {
   const d = new Date(dateStr + "T12:00:00");
   d.setDate(d.getDate() + days);

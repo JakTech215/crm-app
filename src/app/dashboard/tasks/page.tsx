@@ -1274,54 +1274,47 @@ export default function TasksPage() {
                           return tmpl?.is_recurring ? "First Occurrence *" : "Start Date";
                         })()}
                       </Label>
-                      <Input
-                        id="start_date"
-                        type="date"
-                        value={form.start_date}
-                        required={(() => {
-                          const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
-                          return !!tmpl?.is_recurring;
-                        })()}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
-                          if (tmpl?.is_recurring && tmpl.recurrence_frequency && tmpl.recurrence_unit && tmpl.recurrence_count && val) {
-                            const d = new Date(val + "T12:00:00");
-                            const totalOffset = tmpl.recurrence_frequency * (tmpl.recurrence_count - 1);
-                            if (tmpl.recurrence_unit === "days") d.setDate(d.getDate() + totalOffset);
-                            else if (tmpl.recurrence_unit === "weeks") d.setDate(d.getDate() + totalOffset * 7);
-                            else if (tmpl.recurrence_unit === "months") d.setMonth(d.getMonth() + totalOffset);
-                            setForm((prev) => ({ ...prev, start_date: val, due_date: toDateStr(d) }));
-                          } else {
-                            setForm((prev) => ({ ...prev, start_date: val, due_date: val }));
-                          }
-                        }}
-                        onBlur={(e) => {
-                          const val = e.target.value;
-                          if (!val) return;
-                          const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
-                          if (tmpl?.is_recurring) return;
-                          setForm((prev) =>
-                            prev.due_date ? prev : { ...prev, due_date: val }
-                          );
-                        }}
-                      />
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          id="start_date"
+                          type="date"
+                          value={form.start_date}
+                          required={(() => {
+                            const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
+                            return !!tmpl?.is_recurring;
+                          })()}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
+                            if (tmpl?.is_recurring && tmpl.recurrence_frequency && tmpl.recurrence_unit && tmpl.recurrence_count && val) {
+                              const d = new Date(val + "T12:00:00");
+                              const totalOffset = tmpl.recurrence_frequency * (tmpl.recurrence_count - 1);
+                              if (tmpl.recurrence_unit === "days") d.setDate(d.getDate() + totalOffset);
+                              else if (tmpl.recurrence_unit === "weeks") d.setDate(d.getDate() + totalOffset * 7);
+                              else if (tmpl.recurrence_unit === "months") d.setMonth(d.getMonth() + totalOffset);
+                              setForm((prev) => ({ ...prev, start_date: val, due_date: toDateStr(d) }));
+                            } else {
+                              setForm((prev) => ({ ...prev, start_date: val, due_date: val }));
+                            }
+                          }}
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            if (!val) return;
+                            const tmpl = selectedTemplateId ? templates.find((t) => t.id === selectedTemplateId) : null;
+                            if (tmpl?.is_recurring) return;
+                            setForm((prev) =>
+                              prev.due_date ? prev : { ...prev, due_date: val }
+                            );
+                          }}
+                        />
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-6 text-xs px-2"
-                          title="Today"
-                          onClick={() => {
-                            setForm((prev) => ({
-                              ...prev,
-                              start_date: todayCST(),
-                              due_date: prev.due_date || todayCST(),
-                            }));
-                          }}
+                          className="h-9 text-xs px-2 shrink-0"
+                          onClick={() => setForm((prev) => ({ ...prev, start_date: todayCST(), due_date: prev.due_date || todayCST() }))}
                         >
-                          today
+                          Today
                         </Button>
                       </div>
                       {form.start_date && (
@@ -1341,64 +1334,6 @@ export default function TasksPage() {
                         value={form.due_date}
                         onChange={(e) => setForm({ ...form, due_date: e.target.value })}
                       />
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap gap-1">
-                          {[
-                            { label: "1d", tooltip: "1 day" },
-                            { label: "3d", tooltip: "3 days" },
-                            { label: "1w", tooltip: "1 week" },
-                            { label: "1m", tooltip: "1 month" },
-                            { label: "eow-w", tooltip: "End of week (Fri)" },
-                          ].map((q) => (
-                            <Button
-                              key={q.label}
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-6 text-xs px-2"
-                              title={q.tooltip}
-                              onClick={() => {
-                                const dueDate = getTimeframeDate(q.label);
-                                setForm((prev) => ({
-                                  ...prev,
-                                  start_date: prev.start_date || todayCST(),
-                                  due_date: dueDate,
-                                }));
-                              }}
-                            >
-                              {q.label}
-                            </Button>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {[
-                            { label: "eom-w", tooltip: "End of month (work day)" },
-                            { label: "eom-c", tooltip: "End of month (calendar)" },
-                            { label: "bow-w", tooltip: "Begin next week (Mon)" },
-                            { label: "bom-w", tooltip: "Begin next month (work day)" },
-                            { label: "bom-c", tooltip: "Begin next month (calendar)" },
-                          ].map((q) => (
-                            <Button
-                              key={q.label}
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-6 text-xs px-2"
-                              title={q.tooltip}
-                              onClick={() => {
-                                const dueDate = getTimeframeDate(q.label);
-                                setForm((prev) => ({
-                                  ...prev,
-                                  start_date: prev.start_date || todayCST(),
-                                  due_date: dueDate,
-                                }));
-                              }}
-                            >
-                              {q.label}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
                       {form.due_date && (
                         <span className="text-xs text-muted-foreground">{formatDate(form.due_date)}</span>
                       )}

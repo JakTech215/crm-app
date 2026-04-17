@@ -912,26 +912,25 @@ export default function TaskDetailPage() {
               <div className="grid grid-cols-2 gap-4 items-start">
                 <div className="grid gap-2">
                   <Label htmlFor="edit_start_date">Start Date</Label>
-                  <Input
-                    id="edit_start_date"
-                    type="date"
-                    value={editForm.start_date}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setEditForm((prev) => ({
-                        ...prev,
-                        start_date: val,
-                        due_date: prev.due_date || val,
-                      }));
-                    }}
-                  />
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      id="edit_start_date"
+                      type="date"
+                      value={editForm.start_date}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditForm((prev) => ({
+                          ...prev,
+                          start_date: val,
+                          due_date: prev.due_date || val,
+                        }));
+                      }}
+                    />
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-6 text-xs px-2"
-                      title="Today"
+                      className="h-9 text-xs px-2 shrink-0"
                       onClick={() => {
                         setEditForm((prev) => ({
                           ...prev,
@@ -940,7 +939,7 @@ export default function TaskDetailPage() {
                         }));
                       }}
                     >
-                      today
+                      Today
                     </Button>
                   </div>
                 </div>
@@ -954,64 +953,6 @@ export default function TaskDetailPage() {
                       setEditForm({ ...editForm, due_date: e.target.value })
                     }
                   />
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1">
-                      {[
-                        { label: "1d", tooltip: "1 day" },
-                        { label: "3d", tooltip: "3 days" },
-                        { label: "1w", tooltip: "1 week" },
-                        { label: "1m", tooltip: "1 month" },
-                        { label: "eow-w", tooltip: "End of week (Fri)" },
-                      ].map((q) => (
-                        <Button
-                          key={q.label}
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 text-xs px-2"
-                          title={q.tooltip}
-                          onClick={() => {
-                            const dueDate = getTimeframeDate(q.label);
-                            setEditForm((prev) => ({
-                              ...prev,
-                              start_date: prev.start_date || todayCST(),
-                              due_date: dueDate,
-                            }));
-                          }}
-                        >
-                          {q.label}
-                        </Button>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {[
-                        { label: "eom-w", tooltip: "End of month (work day)" },
-                        { label: "eom-c", tooltip: "End of month (calendar)" },
-                        { label: "bow-w", tooltip: "Begin next week (Mon)" },
-                        { label: "bom-w", tooltip: "Begin next month (work day)" },
-                        { label: "bom-c", tooltip: "Begin next month (calendar)" },
-                      ].map((q) => (
-                        <Button
-                          key={q.label}
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 text-xs px-2"
-                          title={q.tooltip}
-                          onClick={() => {
-                            const dueDate = getTimeframeDate(q.label);
-                            setEditForm((prev) => ({
-                              ...prev,
-                              start_date: prev.start_date || todayCST(),
-                              due_date: dueDate,
-                            }));
-                          }}
-                        >
-                          {q.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">

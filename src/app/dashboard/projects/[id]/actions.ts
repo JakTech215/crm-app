@@ -3,23 +3,29 @@
 import sql from "@/lib/db";
 
 export async function fetchProject(projectId: string) {
-  const rows = await sql`
-    SELECT p.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
-    FROM projects p
-    LEFT JOIN contacts c ON p.contact_id = c.id
-    WHERE p.id = ${projectId}
-  `;
-  if (rows.length === 0) return null;
-  const r = rows[0];
-  return {
-    ...r,
-    contacts: r.contact_id
-      ? { id: r.contact_id_ref, first_name: r.contact_first_name, last_name: r.contact_last_name }
-      : null,
-  };
+  try {
+    const rows = await sql`
+      SELECT p.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
+      FROM projects p
+      LEFT JOIN contacts c ON p.contact_id = c.id
+      WHERE p.id = ${projectId}
+    `;
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      ...r,
+      contacts: r.contact_id
+        ? { id: r.contact_id_ref, first_name: r.contact_first_name, last_name: r.contact_last_name }
+        : null,
+    };
+  } catch (err) {
+    console.error("[fetchProject] failed", { projectId, err });
+    throw err;
+  }
 }
 
 export async function fetchProjectTasks(projectId: string) {
+  try {
   const links = await sql`SELECT task_id FROM project_tasks WHERE project_id = ${projectId}`;
   if (links.length === 0) return { tasks: [], taskProjectMap: {} };
 
@@ -88,6 +94,10 @@ export async function fetchProjectTasks(projectId: string) {
   }
 
   return { tasks: enriched, taskProjectMap };
+  } catch (err) {
+    console.error("[fetchProjectTasks] failed", { projectId, err });
+    throw err;
+  }
 }
 
 export async function fetchAllNonCompletedTasks(): Promise<{ id: string; title: string }[]> {

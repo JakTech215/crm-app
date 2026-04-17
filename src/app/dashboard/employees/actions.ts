@@ -38,7 +38,11 @@ export async function fetchEmployeeTasksMap(today: string) {
   const map: Record<string, { id: string; title: string; due_date: string | null }[]> = {};
   for (const [empId, empTasks] of Object.entries(raw)) {
     map[empId] = empTasks
-      .sort((a, b) => (a.due_date || "").localeCompare(b.due_date || ""))
+      .sort((a, b) => {
+        const at = a.due_date ? new Date(a.due_date as unknown as string | Date).getTime() : Number.POSITIVE_INFINITY;
+        const bt = b.due_date ? new Date(b.due_date as unknown as string | Date).getTime() : Number.POSITIVE_INFINITY;
+        return at - bt;
+      })
       .slice(0, 3);
   }
   return map;

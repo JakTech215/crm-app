@@ -507,10 +507,9 @@ export default function ContactDetailPage() {
     })
     .sort((a, b) => {
       if (taskSortBy === "due_date") {
-        if (!a.due_date && !b.due_date) return 0;
-        if (!a.due_date) return 1;
-        if (!b.due_date) return -1;
-        return a.due_date.localeCompare(b.due_date);
+        const at = a.due_date ? new Date(a.due_date as unknown as string | Date).getTime() : Number.POSITIVE_INFINITY;
+        const bt = b.due_date ? new Date(b.due_date as unknown as string | Date).getTime() : Number.POSITIVE_INFINITY;
+        return at - bt;
       }
       if (taskSortBy === "priority") {
         return (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9);

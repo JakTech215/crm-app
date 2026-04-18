@@ -38,7 +38,7 @@ export async function fetchGanttEvents() {
     ? sql`(e.is_private = false OR e.created_by = ${userId})`
     : sql`e.is_private = false`;
   const eventData = await sql`
-    SELECT e.id, e.title, e.event_date, e.event_type, e.status, e.project_id, e.contact_id,
+    SELECT e.id, e.title, e.event_date, e.event_type, e.status, e.project_id, e.contact_id, e.is_private,
            c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM events e
     LEFT JOIN contacts c ON e.contact_id = c.id

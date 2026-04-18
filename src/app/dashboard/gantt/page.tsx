@@ -68,6 +68,7 @@ interface GanttTask {
   start_date: string | null;
   due_date: string | null;
   is_milestone: boolean;
+  is_private: boolean;
   project_ids: string[];
   project_names: string[];
   assignee_ids: string[];
@@ -157,6 +158,9 @@ export default function GanttPage() {
   const [filterMilestoneOnly, setFilterMilestoneOnly] = useState(
     searchParams.get("milestone") === "true"
   );
+  const [filterPrivacy, setFilterPrivacy] = useState<string>(
+    () => searchParams.get("privacy") || "all"
+  );
   const [filterDateFrom, setFilterDateFrom] = useState(
     searchParams.get("dateFrom") || ""
   );
@@ -187,13 +191,14 @@ export default function GanttPage() {
     if (filterStatus.length > 0) params.set("status", filterStatus.join(","));
     if (filterPriority.length > 0) params.set("priority", filterPriority.join(","));
     if (filterMilestoneOnly) params.set("milestone", "true");
+    if (filterPrivacy !== "all") params.set("privacy", filterPrivacy);
     if (filterDateFrom) params.set("dateFrom", filterDateFrom);
     if (filterDateTo) params.set("dateTo", filterDateTo);
     if (filterEmployee.length > 0) params.set("employee", filterEmployee.join(","));
     const qs = params.toString();
     const newUrl = qs ? `?${qs}` : window.location.pathname;
     window.history.replaceState(null, "", newUrl);
-  }, [filtersOpen, filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterDateFrom, filterDateTo, filterEmployee]);
+  }, [filtersOpen, filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterPrivacy, filterDateFrom, filterDateTo, filterEmployee]);
 
   useEffect(() => {
     syncFiltersToUrl();
@@ -267,6 +272,7 @@ export default function GanttPage() {
           start_date: t.start_date as string | null,
           due_date: t.due_date as string | null,
           is_milestone: t.is_milestone as boolean,
+          is_private: (t.is_private as boolean) || false,
           is_recurring: (t.is_recurring as boolean) || false,
           recurrence_source_task_id: t.recurrence_source_task_id as string | null,
           recurrence_frequency: t.recurrence_frequency as number | null,
@@ -336,6 +342,7 @@ export default function GanttPage() {
           start_date: e.event_date as string,
           due_date: e.event_date as string,
           is_milestone: true,
+          is_private: (e.is_private as boolean) || false,
           project_ids: projId ? [projId] : [],
           project_names: projName ? [projName] : [],
           assignee_ids: attIds,
@@ -395,13 +402,14 @@ export default function GanttPage() {
     status: filterStatus,
     priority: filterPriority,
     milestoneOnly: filterMilestoneOnly,
+    privacy: filterPrivacy,
     dateFrom: filterDateFrom,
     dateTo: filterDateTo,
     employee: filterEmployee,
     showEvents,
     showHolidays,
     zoom,
-  }), [filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterDateFrom, filterDateTo, filterEmployee, showEvents, showHolidays, zoom]);
+  }), [filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterPrivacy, filterDateFrom, filterDateTo, filterEmployee, showEvents, showHolidays, zoom]);
 
   const applyPreset = (preset: GanttFilterPreset) => {
     const raw = preset.filters;
@@ -415,6 +423,11 @@ export default function GanttPage() {
     setFilterStatus(Array.isArray(f.status) ? asArray(f.status) : ["pending", "in_progress", "blocked"]);
     setFilterPriority(asArray(f.priority));
     setFilterMilestoneOnly(!!f.milestoneOnly);
+    setFilterPrivacy(
+      typeof f.privacy === "string" && ["private", "public"].includes(f.privacy)
+        ? f.privacy
+        : "all"
+    );
     setFilterDateFrom(typeof f.dateFrom === "string" ? f.dateFrom : "");
     setFilterDateTo(typeof f.dateTo === "string" ? f.dateTo : "");
     setFilterEmployee(asArray(f.employee));
@@ -485,16 +498,18 @@ export default function GanttPage() {
     if (filterStatus.length > 0) count++;
     if (filterPriority.length > 0) count++;
     if (filterMilestoneOnly) count++;
+    if (filterPrivacy !== "all") count++;
     if (filterDateFrom || filterDateTo) count++;
     if (filterEmployee.length > 0) count++;
     return count;
-  }, [filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterDateFrom, filterDateTo, filterEmployee]);
+  }, [filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterPrivacy, filterDateFrom, filterDateTo, filterEmployee]);
 
   const clearAllFilters = () => {
     setFilterProjects([]);
     setFilterStatus(["pending", "in_progress", "blocked"]);
     setFilterPriority([]);
     setFilterMilestoneOnly(false);
+    setFilterPrivacy("all");
     setFilterDateFrom("");
     setFilterDateTo("");
     setFilterEmployee([]);
@@ -516,6 +531,8 @@ export default function GanttPage() {
       if (filterStatus.length > 0 && !filterStatus.includes(t.status)) return false;
       if (filterPriority.length > 0 && !filterPriority.includes(t.priority)) return false;
       if (filterMilestoneOnly && !t.is_milestone) return false;
+      if (filterPrivacy === "private" && !t.is_private) return false;
+      if (filterPrivacy === "public" && t.is_private) return false;
       if (filterDateFrom && t.due_date && t.due_date < filterDateFrom) return false;
       if (filterDateTo && t.start_date && t.start_date > filterDateTo) return false;
       if (filterEmployee.length > 0 && !t.assignee_ids.some((aid) => filterEmployee.includes(aid))) return false;
@@ -523,7 +540,7 @@ export default function GanttPage() {
 
       return true;
     });
-  }, [tasks, filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterDateFrom, filterDateTo, filterEmployee, showEvents]);
+  }, [tasks, filterProjects, filterStatus, filterPriority, filterMilestoneOnly, filterPrivacy, filterDateFrom, filterDateTo, filterEmployee, showEvents]);
 
   const toggleProjectFilter = (projectId: string) => {
     setFilterProjects((prev) =>
@@ -744,6 +761,12 @@ export default function GanttPage() {
     filterBadges.push({
       label: "Milestones only",
       onRemove: () => setFilterMilestoneOnly(false),
+    });
+  }
+  if (filterPrivacy !== "all") {
+    filterBadges.push({
+      label: filterPrivacy === "private" ? "Private only" : "Non-private only",
+      onRemove: () => setFilterPrivacy("all"),
     });
   }
   if (filterDateFrom || filterDateTo) {
@@ -1016,6 +1039,19 @@ export default function GanttPage() {
                 {filterDateTo && (
                   <span className="text-xs text-muted-foreground">{formatDate(filterDateTo)}</span>
                 )}
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Privacy</Label>
+                <Select value={filterPrivacy} onValueChange={setFilterPrivacy}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="private">Private only</SelectItem>
+                    <SelectItem value="public">Non-private only</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

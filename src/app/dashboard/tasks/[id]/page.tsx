@@ -81,7 +81,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, X, FolderKanban, RefreshCw, Loader2, Check, StickyNote } from "lucide-react";
-import { todayCST, formatDate, formatDateTime, nowUTC, isBeforeToday, addDaysToDate, endOfDayCST, getTimeframeDate } from "@/lib/dates";
+import { todayCST, formatDate, formatDateTime, nowUTC, isBeforeToday, addDaysToDate, getTimeframeDate } from "@/lib/dates";
 
 interface Employee {
   id: string;
@@ -445,7 +445,7 @@ export default function TaskDetailPage() {
         priority: editForm.priority,
         status: editForm.status,
         start_date: editForm.start_date || null,
-        due_date: editForm.due_date ? endOfDayCST(editForm.due_date) : null,
+        due_date: editForm.due_date || null,
         is_milestone: editForm.is_milestone,
         task_type_id: editForm.task_type_id || null,
         is_recurring: editForm.is_recurring,

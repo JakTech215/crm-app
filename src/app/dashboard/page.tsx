@@ -205,6 +205,8 @@ export default function DashboardPage() {
 const [upcomingDateFrom, setUpcomingDateFrom] = useState<string>(() => todayCST());
 const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
+  const [filterPrivacy, setFilterPrivacy] = useState<"all" | "private" | "public">("all");
+
   const todayStr = useMemo(() => todayCST(), []);
 
   // Compute the 3-month range for calendar fetch
@@ -226,7 +228,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
       // Stats
       try {
-        const counts = await getDashboardStats();
+        const counts = await getDashboardStats(filterPrivacy);
         setStats([
           { title: "Total Contacts", value: counts.contacts, description: "All contacts", icon: Users, href: "/dashboard/contacts" },
           { title: "Total Projects", value: counts.projects, description: "All projects", icon: FolderKanban, href: "/dashboard/projects" },
@@ -239,7 +241,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
       // Overdue tasks
       try {
-        const overdueTasks = await getOverdueTasks(today);
+        const overdueTasks = await getOverdueTasks(today, filterPrivacy);
         if (overdueTasks.length > 0) {
           const taskIds = overdueTasks.map((t) => t.id);
           const { projectMap, assigneeMap } = await enrichTasksWithProjectsAndAssignees(taskIds);
@@ -258,7 +260,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
       // Calendar tasks
       try {
-        const calTasks = await getCalendarTasks(calendarRange.start, calendarRange.end);
+        const calTasks = await getCalendarTasks(calendarRange.start, calendarRange.end, filterPrivacy);
         const map: Record<string, CalendarDayData> = {};
         for (const t of calTasks) {
           const key = t.due_date;
@@ -272,7 +274,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
       // Calendar events
       try {
-        const calEvents = await getCalendarEvents(calendarRange.start, calendarRange.end);
+        const calEvents = await getCalendarEvents(calendarRange.start, calendarRange.end, filterPrivacy);
         const evtMap: Record<string, CalendarEvent[]> = {};
         for (const e of calEvents) {
           if (!evtMap[e.event_date]) evtMap[e.event_date] = [];
@@ -311,7 +313,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
       // Upcoming tasks (filtered by date range)
       try {
-        const upcomingTasks = await getUpcomingTasks(upcomingDateFrom, upcomingDateTo);
+        const upcomingTasks = await getUpcomingTasks(upcomingDateFrom, upcomingDateTo, filterPrivacy);
         if (upcomingTasks.length > 0) {
           const taskIds = upcomingTasks.map((t) => t.id);
           const { projectMap, assigneeMap } = await enrichTasksWithProjectsAndAssignees(taskIds);
@@ -329,7 +331,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
       // Upcoming events
       try {
-        const evts = await getUpcomingEvents(today);
+        const evts = await getUpcomingEvents(today, filterPrivacy);
         setDashEvents(evts);
       } catch (e) {
         console.error("Failed to fetch events:", e);
@@ -337,7 +339,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
       // Recent notes
       try {
-        const nts = await getRecentNotes();
+        const nts = await getRecentNotes(filterPrivacy);
         setDashNotes(nts);
       } catch (e) {
         console.error("Failed to fetch notes:", e);
@@ -360,7 +362,7 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
     };
 
     fetchData();
-  }, [calendarRange.start, calendarRange.end, upcomingDateFrom, upcomingDateTo]);
+  }, [calendarRange.start, calendarRange.end, upcomingDateFrom, upcomingDateTo, filterPrivacy]);
 
   const handleMarkComplete = async (taskId: string) => {
   try {
@@ -627,7 +629,19 @@ const [upcomingDateTo, setUpcomingDateTo] = useState<string>(() => todayCST());
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold mb-4">Dashboard</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold">Dashboard</h2>
+        <Select value={filterPrivacy} onValueChange={(v) => setFilterPrivacy(v as "all" | "private" | "public")}>
+          <SelectTrigger className="h-8 w-[130px] text-xs" title="Privacy filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="private">Private only</SelectItem>
+            <SelectItem value="public">Non-private</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

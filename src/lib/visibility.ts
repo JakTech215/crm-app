@@ -20,3 +20,5 @@ export async function currentUserId(): Promise<string | null> {
   const user = await getSessionUser();
   return user?.id ?? null;
 }
+
+export type PrivacyFilter = "all" | "private" | "public";

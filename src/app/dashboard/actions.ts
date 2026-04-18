@@ -1,21 +1,56 @@
 "use server";
 
 import sql from "@/lib/db";
-import { getSessionUser } from "@/lib/auth";
-import { currentUserId } from "@/lib/visibility";
+import { currentUserId, type PrivacyFilter } from "@/lib/visibility";
 
-export async function getDashboardStats() {
-  const userId = await currentUserId();
-  const taskVis = userId
-    ? sql`(t.is_private = false OR t.created_by = ${userId})`
-    : sql`t.is_private = false`;
-  const projVis = userId
+function projVisFrag(userId: string | null, filter: PrivacyFilter) {
+  if (filter === "public") return sql`p.is_private = false`;
+  if (filter === "private") {
+    return userId ? sql`(p.is_private = true AND p.created_by = ${userId})` : sql`false`;
+  }
+  return userId
     ? sql`(p.is_private = false OR p.created_by = ${userId})`
     : sql`p.is_private = false`;
+}
+
+function taskVisFrag(userId: string | null, filter: PrivacyFilter) {
+  if (filter === "public") return sql`t.is_private = false`;
+  if (filter === "private") {
+    return userId ? sql`(t.is_private = true AND t.created_by = ${userId})` : sql`false`;
+  }
+  return userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
+}
+
+function eventVisFrag(userId: string | null, filter: PrivacyFilter) {
+  if (filter === "public") return sql`e.is_private = false`;
+  if (filter === "private") {
+    return userId ? sql`(e.is_private = true AND e.created_by = ${userId})` : sql`false`;
+  }
+  return userId
+    ? sql`(e.is_private = false OR e.created_by = ${userId})`
+    : sql`e.is_private = false`;
+}
+
+function noteVisFrag(userId: string | null, filter: PrivacyFilter) {
+  if (filter === "public") return sql`n.is_private = false`;
+  if (filter === "private") {
+    return userId ? sql`(n.is_private = true AND n.created_by = ${userId})` : sql`false`;
+  }
+  return userId
+    ? sql`(n.is_private = false OR n.created_by = ${userId})`
+    : sql`n.is_private = false`;
+}
+
+export async function getDashboardStats(filterPrivacy: PrivacyFilter = "all") {
+  const userId = await currentUserId();
+  const taskV = taskVisFrag(userId, filterPrivacy);
+  const projV = projVisFrag(userId, filterPrivacy);
   const [contactsRes, projectsRes, tasksRes, employeesRes] = await Promise.all([
     sql`SELECT COUNT(*) as count FROM contacts`,
-    sql`SELECT COUNT(*) as count FROM projects p WHERE ${projVis}`,
-    sql`SELECT COUNT(*) as count FROM tasks t WHERE t.status != 'completed' AND ${taskVis}`,
+    sql`SELECT COUNT(*) as count FROM projects p WHERE ${projV}`,
+    sql`SELECT COUNT(*) as count FROM tasks t WHERE t.status != 'completed' AND ${taskV}`,
     sql`SELECT COUNT(*) as count FROM employees WHERE status = 'active'`,
   ]);
   return {
@@ -26,11 +61,9 @@ export async function getDashboardStats() {
   };
 }
 
-export async function getOverdueTasks(today: string) {
+export async function getOverdueTasks(today: string, filterPrivacy: PrivacyFilter = "all") {
   const userId = await currentUserId();
-  const vis = userId
-    ? sql`(t.is_private = false OR t.created_by = ${userId})`
-    : sql`t.is_private = false`;
+  const vis = taskVisFrag(userId, filterPrivacy);
   const rows = await sql`
     SELECT t.id, t.title, t.due_date, t.priority, t.status, t.contact_id,
            c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
@@ -51,11 +84,9 @@ export async function getOverdueTasks(today: string) {
   }));
 }
 
-export async function getUpcomingTasks(dateFrom: string, dateTo: string) {
+export async function getUpcomingTasks(dateFrom: string, dateTo: string, filterPrivacy: PrivacyFilter = "all") {
   const userId = await currentUserId();
-  const vis = userId
-    ? sql`(t.is_private = false OR t.created_by = ${userId})`
-    : sql`t.is_private = false`;
+  const vis = taskVisFrag(userId, filterPrivacy);
   const rows = await sql`
     SELECT t.id, t.title, t.due_date, t.priority, t.status, t.contact_id,
            c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
@@ -114,11 +145,9 @@ export async function enrichTasksWithProjectsAndAssignees(taskIds: string[]) {
   return { projectMap, assigneeMap };
 }
 
-export async function getCalendarTasks(start: string, end: string) {
+export async function getCalendarTasks(start: string, end: string, filterPrivacy: PrivacyFilter = "all") {
   const userId = await currentUserId();
-  const vis = userId
-    ? sql`(t.is_private = false OR t.created_by = ${userId})`
-    : sql`t.is_private = false`;
+  const vis = taskVisFrag(userId, filterPrivacy);
   const rows = await sql`
     SELECT t.id, t.title, t.due_date, t.priority, t.is_milestone, t.status
     FROM tasks t
@@ -134,11 +163,9 @@ export async function getCalendarTasks(start: string, end: string) {
   }));
 }
 
-export async function getCalendarEvents(start: string, end: string) {
+export async function getCalendarEvents(start: string, end: string, filterPrivacy: PrivacyFilter = "all") {
   const userId = await currentUserId();
-  const vis = userId
-    ? sql`(e.is_private = false OR e.created_by = ${userId})`
-    : sql`e.is_private = false`;
+  const vis = eventVisFrag(userId, filterPrivacy);
   const rows = await sql`
     SELECT e.id, e.title, e.event_date, e.event_type, e.event_time
     FROM events e
@@ -154,11 +181,9 @@ export async function getCalendarEvents(start: string, end: string) {
   }));
 }
 
-export async function getUpcomingEvents(today: string) {
+export async function getUpcomingEvents(today: string, filterPrivacy: PrivacyFilter = "all") {
   const userId = await currentUserId();
-  const vis = userId
-    ? sql`(e.is_private = false OR e.created_by = ${userId})`
-    : sql`e.is_private = false`;
+  const vis = eventVisFrag(userId, filterPrivacy);
   const rows = await sql`
     SELECT e.id, e.title, e.event_date, e.event_type
     FROM events e
@@ -174,11 +199,9 @@ export async function getUpcomingEvents(today: string) {
   }));
 }
 
-export async function getRecentNotes() {
+export async function getRecentNotes(filterPrivacy: PrivacyFilter = "all") {
   const userId = await currentUserId();
-  const vis = userId
-    ? sql`(n.is_private = false OR n.created_by = ${userId})`
-    : sql`n.is_private = false`;
+  const vis = noteVisFrag(userId, filterPrivacy);
   const rows = await sql`
     SELECT n.id, n.content, n.created_at
     FROM notes_standalone n

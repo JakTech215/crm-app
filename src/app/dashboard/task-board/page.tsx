@@ -63,6 +63,7 @@ interface Employee {
   id: string;
   first_name: string;
   last_name: string;
+  is_private?: boolean;
 }
 
 interface TaskAssignee {
@@ -75,6 +76,7 @@ interface ContactOption {
   first_name: string;
   last_name: string | null;
   company: string | null;
+  is_private?: boolean;
 }
 
 interface TaskType {
@@ -151,6 +153,7 @@ const contactName = (c: { first_name: string; last_name: string | null }) =>
 interface ProjectOption {
   id: string;
   name: string;
+  is_private?: boolean;
 }
 
 interface BoardColumn {
@@ -630,7 +633,13 @@ export default function TaskBoardPage() {
                       </div>
                     </div>
                   </div>
-                  {projects.length > 0 && (
+                  {(() => {
+                    const visibleProjects = createForm.is_private ? projects.filter((p) => p.is_private) : projects;
+                    const visibleContacts = createForm.is_private ? contacts.filter((c) => c.is_private) : contacts;
+                    const visibleEmployees = createForm.is_private ? employees.filter((e) => e.is_private) : employees;
+                    return (
+                      <>
+                  {visibleProjects.length > 0 && (
                     <div className="grid gap-2">
                       <Label>Project</Label>
                       <Select
@@ -640,14 +649,14 @@ export default function TaskBoardPage() {
                         <SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">No project</SelectItem>
-                          {projects.map((p) => (
+                          {visibleProjects.map((p) => (
                             <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                   )}
-                  {contacts.length > 0 && (
+                  {visibleContacts.length > 0 && (
                     <div className="grid gap-2">
                       <Label>Contact</Label>
                       <Select
@@ -657,7 +666,7 @@ export default function TaskBoardPage() {
                         <SelectTrigger><SelectValue placeholder="No contact" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">No contact</SelectItem>
-                          {contacts.map((c) => (
+                          {visibleContacts.map((c) => (
                             <SelectItem key={c.id} value={c.id}>
                               {contactName(c)}{c.company ? ` (${c.company})` : ""}
                             </SelectItem>
@@ -676,11 +685,13 @@ export default function TaskBoardPage() {
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-64 p-2" align="start">
-                        {employees.length === 0 ? (
-                          <p className="text-sm text-muted-foreground p-2">No active employees found.</p>
+                        {visibleEmployees.length === 0 ? (
+                          <p className="text-sm text-muted-foreground p-2">
+                            {createForm.is_private ? "No private employees found." : "No active employees found."}
+                          </p>
                         ) : (
                           <div className="space-y-1 max-h-48 overflow-y-auto">
-                            {employees.map((emp) => (
+                            {visibleEmployees.map((emp) => (
                               <label key={emp.id} className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer">
                                 <Checkbox
                                   checked={createEmployees.includes(emp.id)}
@@ -698,6 +709,9 @@ export default function TaskBoardPage() {
                       </PopoverContent>
                     </Popover>
                   </div>
+                      </>
+                    );
+                  })()}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
                       <Label>Priority</Label>

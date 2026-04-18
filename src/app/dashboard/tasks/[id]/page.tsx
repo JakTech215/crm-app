@@ -87,6 +87,7 @@ interface Employee {
   id: string;
   first_name: string;
   last_name: string;
+  is_private?: boolean;
 }
 
 const employeeName = (e: { first_name: string; last_name: string }) =>
@@ -102,6 +103,7 @@ interface ContactOption {
   first_name: string;
   last_name: string | null;
   company: string | null;
+  is_private?: boolean;
 }
 
 const contactName = (c: { first_name: string; last_name: string | null }) =>
@@ -216,7 +218,7 @@ export default function TaskDetailPage() {
 
   // Linkages state
   const [linkedProjects, setLinkedProjects] = useState<{ id: string; name: string }[]>([]);
-  const [allProjects, setAllProjects] = useState<{ id: string; name: string }[]>([]);
+  const [allProjects, setAllProjects] = useState<{ id: string; name: string; is_private?: boolean }[]>([]);
   const [editSelectedProjects, setEditSelectedProjects] = useState<string[]>([]);
   const [parentTask, setParentTask] = useState<{ id: string; title: string } | null>(null);
   const [childTasks, setChildTasks] = useState<{ id: string; title: string; status: string }[]>([]);
@@ -780,7 +782,13 @@ export default function TaskDetailPage() {
                   }
                 />
               </div>
-              {allContacts.length > 0 && (
+              {(() => {
+                const visibleContacts = editForm.is_private ? allContacts.filter((c) => c.is_private) : allContacts;
+                const visibleEmployees = editForm.is_private ? allEmployees.filter((e) => e.is_private) : allEmployees;
+                const visibleProjects = editForm.is_private ? allProjects.filter((p) => p.is_private) : allProjects;
+                return (
+                  <>
+              {visibleContacts.length > 0 && (
                 <div className="grid gap-2">
                   <Label>Contact</Label>
                   <Select
@@ -794,7 +802,7 @@ export default function TaskDetailPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No contact</SelectItem>
-                      {allContacts.map((c) => (
+                      {visibleContacts.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
                           {contactDisplay(c)}
                         </SelectItem>
@@ -819,16 +827,16 @@ export default function TaskDetailPage() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-64 p-2" align="start">
-                    {allEmployees.length === 0 ? (
+                    {visibleEmployees.length === 0 ? (
                       <p className="text-sm text-muted-foreground p-2">
-                        No active employees found.
+                        {editForm.is_private ? "No private employees found." : "No active employees found."}
                       </p>
                     ) : (
                       <div
                         className="space-y-1 max-h-72 overflow-y-auto overscroll-contain"
                         onWheel={(e) => e.stopPropagation()}
                       >
-                        {allEmployees.map((emp) => (
+                        {visibleEmployees.map((emp) => (
                           <label
                             key={emp.id}
                             className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer"
@@ -845,7 +853,7 @@ export default function TaskDetailPage() {
                   </PopoverContent>
                 </Popover>
               </div>
-              {allProjects.length > 0 && (
+              {visibleProjects.length > 0 && (
                 <div className="grid gap-2">
                   <Label>Projects</Label>
                   <Popover>
@@ -863,7 +871,7 @@ export default function TaskDetailPage() {
                     </PopoverTrigger>
                     <PopoverContent className="w-64 p-2" align="start">
                       <div className="space-y-1 max-h-48 overflow-y-auto">
-                        {allProjects.map((p) => (
+                        {visibleProjects.map((p) => (
                           <label
                             key={p.id}
                             className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer"
@@ -880,6 +888,9 @@ export default function TaskDetailPage() {
                   </Popover>
                 </div>
               )}
+                  </>
+                );
+              })()}
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label>Priority</Label>

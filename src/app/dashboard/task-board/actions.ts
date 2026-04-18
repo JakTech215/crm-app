@@ -65,21 +65,26 @@ export async function fetchActiveEmployees() {
     ? sql`(is_private = false OR created_by = ${userId})`
     : sql`is_private = false`;
   const rows = await sql`
-    SELECT id, first_name, last_name
+    SELECT id, first_name, last_name, is_private
     FROM employees
     WHERE status = 'active' AND ${vis}
     ORDER BY first_name
   `;
-  return rows.map((r) => ({ id: r.id, first_name: r.first_name, last_name: r.last_name }));
+  return rows.map((r) => ({ id: r.id, first_name: r.first_name, last_name: r.last_name, is_private: !!r.is_private }));
 }
 
 export async function fetchAllContacts() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(is_private = false OR created_by = ${userId})`
+    : sql`is_private = false`;
   const rows = await sql`
-    SELECT id, first_name, last_name, company
+    SELECT id, first_name, last_name, company, is_private
     FROM contacts
+    WHERE ${vis}
     ORDER BY first_name
   `;
-  return rows.map((r) => ({ id: r.id, first_name: r.first_name, last_name: r.last_name, company: r.company }));
+  return rows.map((r) => ({ id: r.id, first_name: r.first_name, last_name: r.last_name, company: r.company, is_private: !!r.is_private }));
 }
 
 export async function fetchActiveTaskTypes() {
@@ -98,9 +103,9 @@ export async function fetchAllProjects() {
     ? sql`(p.is_private = false OR p.created_by = ${userId})`
     : sql`p.is_private = false`;
   const rows = await sql`
-    SELECT p.id, p.name FROM projects p WHERE ${vis} ORDER BY p.name
+    SELECT p.id, p.name, p.is_private FROM projects p WHERE ${vis} ORDER BY p.name
   `;
-  return rows.map((r) => ({ id: r.id, name: r.name }));
+  return rows.map((r) => ({ id: r.id, name: r.name, is_private: !!r.is_private }));
 }
 
 export async function completeTask(taskId: string, completedAt: string) {

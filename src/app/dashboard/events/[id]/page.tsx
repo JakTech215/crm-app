@@ -74,6 +74,7 @@ import {
   Calendar,
   X,
   ArrowRight,
+  Lock,
 } from "lucide-react";
 
 // --- Interfaces ---
@@ -109,6 +110,7 @@ interface EventRecord {
   status: string;
   project_id: string | null;
   contact_id: string | null;
+  is_private: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string | null;
@@ -204,6 +206,7 @@ export default function EventDetailPage() {
     status: "scheduled",
     project_id: "",
     contact_id: "",
+    is_private: false,
   });
   const [editSelectedEmployees, setEditSelectedEmployees] = useState<string[]>([]);
 
@@ -339,6 +342,7 @@ export default function EventDetailPage() {
       status: event.status || "scheduled",
       project_id: event.project_id || "",
       contact_id: event.contact_id || "",
+      is_private: !!event.is_private,
     });
     setEditSelectedEmployees(attendees.map((a) => a.employee_id));
     setEditError(null);
@@ -371,6 +375,7 @@ export default function EventDetailPage() {
           status: editForm.status,
           project_id: editForm.project_id || null,
           contact_id: editForm.contact_id || null,
+          is_private: editForm.is_private,
         },
         editSelectedEmployees
       );
@@ -722,6 +727,16 @@ export default function EventDetailPage() {
                   </PopoverContent>
                 </Popover>
               </div>
+              <label className="flex items-center gap-2 cursor-pointer col-span-2">
+                <Checkbox
+                  checked={editForm.is_private}
+                  onCheckedChange={(checked) => setEditForm({ ...editForm, is_private: !!checked })}
+                />
+                <div className="flex items-center gap-1.5">
+                  <Lock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Mark as private</span>
+                </div>
+              </label>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={savingEdit}>

@@ -2,6 +2,7 @@
 
 import sql from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { currentUserId } from "@/lib/visibility";
 
 // ─── Google Calendar Settings ───────────────────────────────────────────────
 
@@ -18,6 +19,10 @@ export async function checkGoogleCalendarConnection() {
 // ─── Quick Capture / Notes Standalone ───────────────────────────────────────
 
 export async function fetchStandaloneNotes() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(n.is_private = false OR n.created_by = ${userId})`
+    : sql`n.is_private = false`;
   const rows = await sql`
     SELECT
       n.*,
@@ -30,6 +35,7 @@ export async function fetchStandaloneNotes() {
     LEFT JOIN contacts c ON c.id = n.contact_id
     LEFT JOIN employees e ON e.id = n.employee_id
     LEFT JOIN events ev ON ev.id = n.event_id
+    WHERE ${vis}
     ORDER BY n.created_at DESC
   `;
   return rows.map((r: any) => ({
@@ -51,9 +57,10 @@ export async function createStandaloneNote(data: {
   contact_id: string | null;
   employee_id: string | null;
   event_id: string | null;
+  is_private?: boolean;
 }) {
   const user = await getSessionUser();
-  const row = { ...data, created_by: user?.id ?? null };
+  const row = { ...data, is_private: data.is_private ?? false, created_by: user?.id ?? null };
   await sql`INSERT INTO notes_standalone ${sql(row)}`;
 }
 
@@ -65,9 +72,11 @@ export async function updateStandaloneNote(
     contact_id: string | null;
     employee_id: string | null;
     event_id: string | null;
+    is_private?: boolean;
   }
 ) {
-  await sql`UPDATE notes_standalone SET ${sql(data)} WHERE id = ${id}`;
+  const row = { ...data, is_private: data.is_private ?? false };
+  await sql`UPDATE notes_standalone SET ${sql(row)} WHERE id = ${id}`;
 }
 
 export async function deleteStandaloneNote(id: string) {
@@ -77,11 +86,19 @@ export async function deleteStandaloneNote(id: string) {
 // ─── Shared option lists (projects, contacts, employees, events) ────────────
 
 export async function fetchProjectOptions() {
-  return await sql`SELECT id, name FROM projects WHERE status = 'active' ORDER BY name`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
+  return await sql`SELECT p.id, p.name FROM projects p WHERE p.status = 'active' AND ${vis} ORDER BY p.name`;
 }
 
 export async function fetchAllProjectOptions() {
-  return await sql`SELECT id, name FROM projects ORDER BY name`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
+  return await sql`SELECT p.id, p.name FROM projects p WHERE ${vis} ORDER BY p.name`;
 }
 
 export async function fetchContactOptions() {
@@ -97,12 +114,20 @@ export async function fetchEmployeeOptions() {
 }
 
 export async function fetchEventOptions() {
-  return await sql`SELECT id, title FROM events ORDER BY event_date DESC LIMIT 50`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(e.is_private = false OR e.created_by = ${userId})`
+    : sql`e.is_private = false`;
+  return await sql`SELECT e.id, e.title FROM events e WHERE ${vis} ORDER BY e.event_date DESC LIMIT 50`;
 }
 
 // ─── Meeting Notes ──────────────────────────────────────────────────────────
 
 export async function fetchMeetingNotes() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(mn.is_private = false OR mn.created_by = ${userId})`
+    : sql`mn.is_private = false`;
   const rows = await sql`
     SELECT
       mn.*,
@@ -115,6 +140,7 @@ export async function fetchMeetingNotes() {
     LEFT JOIN contacts c ON c.id = mn.contact_id
     LEFT JOIN employees e ON e.id = mn.employee_id
     LEFT JOIN events ev ON ev.id = mn.event_id
+    WHERE ${vis}
     ORDER BY mn.meeting_date DESC
   `;
   return rows.map((r: any) => ({
@@ -137,6 +163,7 @@ export async function createMeetingNote(data: {
   contact_id: string | null;
   employee_id: string | null;
   event_id: string | null;
+  is_private?: boolean;
   attendees: Array<{ contact_id: string | null; employee_id: string | null }>;
   discussion_points: Array<{ content: string; sort_order: number }>;
   action_items: Array<{ content: string; sort_order: number }>;
@@ -151,6 +178,7 @@ export async function createMeetingNote(data: {
       contact_id: data.contact_id,
       employee_id: data.employee_id,
       event_id: data.event_id,
+      is_private: data.is_private ?? false,
       created_by: user?.id ?? null,
     })} RETURNING *
   `;
@@ -199,9 +227,11 @@ export async function updateMeetingNote(
     contact_id: string | null;
     employee_id: string | null;
     event_id: string | null;
+    is_private?: boolean;
   }
 ) {
-  await sql`UPDATE meeting_notes SET ${sql(data)} WHERE id = ${id}`;
+  const row = { ...data, is_private: data.is_private ?? false };
+  await sql`UPDATE meeting_notes SET ${sql(row)} WHERE id = ${id}`;
 }
 
 // ─── Meeting Note Card (details, link task) ─────────────────────────────────

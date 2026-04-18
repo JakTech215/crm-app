@@ -2,12 +2,18 @@
 
 import sql from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { currentUserId } from "@/lib/visibility";
 
 export async function fetchEvents() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(e.is_private = false OR e.created_by = ${userId})`
+    : sql`e.is_private = false`;
   const rows = await sql`
     SELECT e.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM events e
     LEFT JOIN contacts c ON e.contact_id = c.id
+    WHERE ${vis}
     ORDER BY e.event_date DESC
   `;
   return rows.map((r) => ({
@@ -43,7 +49,11 @@ export async function fetchActiveEmployees() {
 }
 
 export async function fetchProjects() {
-  const rows = await sql`SELECT id, name FROM projects ORDER BY name`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
+  const rows = await sql`SELECT p.id, p.name FROM projects p WHERE ${vis} ORDER BY p.name`;
   return [...rows] as any;
 }
 
@@ -67,13 +77,14 @@ export async function createEvent(
     status: string;
     project_id: string | null;
     contact_id: string | null;
+    is_private?: boolean;
   },
   selectedEmployees: string[]
 ) {
   const user = await getSessionUser();
   if (!user) throw new Error("You must be logged in.");
 
-  const dataObj = { ...payload, created_by: user.id };
+  const dataObj = { ...payload, is_private: payload.is_private ?? false, created_by: user.id };
   const rows = await sql`INSERT INTO events ${sql(dataObj)} RETURNING *`;
   const newEvent = rows[0];
 
@@ -100,10 +111,11 @@ export async function updateEvent(
     status: string;
     project_id: string | null;
     contact_id: string | null;
+    is_private?: boolean;
   },
   selectedEmployees: string[]
 ) {
-  const dataObj = { ...payload, updated_at: new Date().toISOString() };
+  const dataObj = { ...payload, is_private: payload.is_private ?? false, updated_at: new Date().toISOString() };
   await sql`UPDATE events SET ${sql(dataObj)} WHERE id = ${eventId}`;
 
   // Replace attendees

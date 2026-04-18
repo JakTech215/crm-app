@@ -1,6 +1,7 @@
 "use server";
 
 import sql from "@/lib/db";
+import { currentUserId } from "@/lib/visibility";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchEmployee(employeeId: string): Promise<any | null> {
@@ -9,17 +10,22 @@ export async function fetchEmployee(employeeId: string): Promise<any | null> {
 }
 
 export async function fetchEmployeeTasks(employeeId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
+
   const assignments = await sql`SELECT task_id FROM task_assignees WHERE employee_id = ${employeeId}`;
   if (assignments.length === 0) return [];
 
   const taskIds = assignments.map((a) => a.task_id);
 
   const tasks = await sql`
-    SELECT t.id, t.title, t.status, t.priority, t.start_date, t.due_date, t.contact_id,
+    SELECT t.id, t.title, t.status, t.priority, t.start_date, t.due_date, t.is_private, t.contact_id,
            c.first_name as contact_first_name, c.last_name as contact_last_name, c.company as contact_company
     FROM tasks t
     LEFT JOIN contacts c ON t.contact_id = c.id
-    WHERE t.id = ANY(${taskIds})
+    WHERE t.id = ANY(${taskIds}) AND ${vis}
     ORDER BY t.due_date ASC
   `;
 
@@ -56,7 +62,11 @@ export async function fetchEmployeeTasks(employeeId: string) {
 }
 
 export async function fetchAllNonCompletedTasks(): Promise<{ id: string; title: string }[]> {
-  const rows = await sql`SELECT id, title FROM tasks WHERE status != 'completed' ORDER BY title`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
+  const rows = await sql`SELECT t.id, t.title FROM tasks t WHERE t.status != 'completed' AND ${vis} ORDER BY t.title`;
   return rows as unknown as { id: string; title: string }[];
 }
 
@@ -73,6 +83,10 @@ export async function updateTaskField(taskId: string, field: string, value: stri
 }
 
 export async function fetchEmployeeEvents(employeeId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(e.is_private = false OR e.created_by = ${userId})`
+    : sql`e.is_private = false`;
   const attendeeData = await sql`
     SELECT ea.event_id, e.*, p.id as project_id_ref, p.name as project_name,
            c.first_name as contact_first_name, c.last_name as contact_last_name
@@ -80,7 +94,7 @@ export async function fetchEmployeeEvents(employeeId: string) {
     JOIN events e ON ea.event_id = e.id
     LEFT JOIN projects p ON e.project_id = p.id
     LEFT JOIN contacts c ON e.contact_id = c.id
-    WHERE ea.employee_id = ${employeeId}
+    WHERE ea.employee_id = ${employeeId} AND ${vis}
   `;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,7 +113,11 @@ export async function updateEventStatus(eventId: string, newStatus: string) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchEmployeeNotes(employeeId: string): Promise<any[]> {
-  const rows = await sql`SELECT * FROM notes_standalone WHERE employee_id = ${employeeId} ORDER BY created_at DESC`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(n.is_private = false OR n.created_by = ${userId})`
+    : sql`n.is_private = false`;
+  const rows = await sql`SELECT n.* FROM notes_standalone n WHERE n.employee_id = ${employeeId} AND ${vis} ORDER BY n.created_at DESC`;
   return rows as unknown as any[];
 }
 

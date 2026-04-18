@@ -159,10 +159,14 @@ export async function fetchActiveTaskTypes() {
 }
 
 export async function fetchTaskNotes(taskId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(n.is_private = false OR n.created_by = ${userId})`
+    : sql`n.is_private = false`;
   const rows = await sql`
-    SELECT * FROM notes_standalone
-    WHERE task_id = ${taskId}
-    ORDER BY created_at DESC
+    SELECT n.* FROM notes_standalone n
+    WHERE n.task_id = ${taskId} AND ${vis}
+    ORDER BY n.created_at DESC
   `;
   return rows.map((r) => ({ ...r }));
 }

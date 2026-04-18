@@ -2,6 +2,7 @@
 
 import sql from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { currentUserId } from "@/lib/visibility";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchEmployees(): Promise<any[]> {
@@ -10,18 +11,24 @@ export async function fetchEmployees(): Promise<any[]> {
 }
 
 export async function fetchEmployeeTasksMap(today: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
+
   const assignments = await sql`SELECT task_id, employee_id FROM task_assignees`;
   if (assignments.length === 0) return {};
 
   const taskIds = [...new Set(assignments.map((a) => a.task_id))];
 
   const tasks = await sql`
-    SELECT id, title, due_date FROM tasks
-    WHERE id = ANY(${taskIds})
-      AND status != 'completed'
-      AND status != 'cancelled'
-      AND due_date >= ${today}
-    ORDER BY due_date ASC
+    SELECT t.id, t.title, t.due_date FROM tasks t
+    WHERE t.id = ANY(${taskIds})
+      AND t.status != 'completed'
+      AND t.status != 'cancelled'
+      AND t.due_date >= ${today}
+      AND ${vis}
+    ORDER BY t.due_date ASC
   `;
 
   const taskById: Record<string, { id: string; title: string; due_date: string | null }> = {};

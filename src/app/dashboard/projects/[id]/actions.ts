@@ -188,7 +188,11 @@ export async function updateEventStatus(eventId: string, newStatus: string) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchProjectNotes(projectId: string): Promise<any[]> {
-  const rows = await sql`SELECT * FROM notes_standalone WHERE project_id = ${projectId} ORDER BY created_at DESC`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(n.is_private = false OR n.created_by = ${userId})`
+    : sql`n.is_private = false`;
+  const rows = await sql`SELECT n.* FROM notes_standalone n WHERE n.project_id = ${projectId} AND ${vis} ORDER BY n.created_at DESC`;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return rows as unknown as any[];
 }

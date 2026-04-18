@@ -75,6 +75,7 @@ import {
   Loader2,
   Check,
   Calendar,
+  Lock,
 } from "lucide-react";
 import { FilterPanel, FilterDef, FilterValues, parseFilterParams, defaultFilterValues } from "@/components/filter-panel";
 
@@ -121,6 +122,7 @@ interface EventRow {
   status: string;
   project_id: string | null;
   contact_id: string | null;
+  is_private: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string | null;
@@ -172,6 +174,7 @@ const defaultForm = {
   status: "scheduled",
   project_id: "",
   contact_id: "",
+  is_private: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -325,6 +328,7 @@ export default function EventsPage() {
       status: ev.status,
       project_id: ev.project_id || "",
       contact_id: ev.contact_id || "",
+      is_private: !!ev.is_private,
     });
     setSelectedEmployees(ev.attendees.map((a) => a.employee_id));
     setError(null);
@@ -346,6 +350,7 @@ export default function EventsPage() {
       status: form.status,
       project_id: form.project_id || null,
       contact_id: form.contact_id || null,
+      is_private: form.is_private,
     };
 
     try {
@@ -695,6 +700,17 @@ export default function EventsPage() {
                   </Popover>
                 </div>
               </div>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={form.is_private}
+                  onCheckedChange={(checked) => setForm({ ...form, is_private: !!checked })}
+                />
+                <div className="flex items-center gap-1.5">
+                  <Lock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Mark as private</span>
+                </div>
+              </label>
 
               <DialogFooter>
                 <Button type="submit" disabled={saving}>

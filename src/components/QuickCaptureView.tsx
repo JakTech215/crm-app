@@ -12,7 +12,7 @@ import {
   fetchEventOptions,
 } from './actions';
 import TaskCreationModal from './TaskCreationModal';
-import { X, Edit2 } from 'lucide-react';
+import { X, Edit2, Lock } from 'lucide-react';
 
 export default function QuickCaptureView() {
   const [content, setContent] = useState('');
@@ -20,6 +20,7 @@ export default function QuickCaptureView() {
   const [contactId, setContactId] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [eventId, setEventId] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [notes, setNotes] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
@@ -79,6 +80,7 @@ export default function QuickCaptureView() {
       contact_id: contactId || null,
       employee_id: employeeId || null,
       event_id: eventId || null,
+      is_private: isPrivate,
     };
 
     if (editingNote) {
@@ -93,6 +95,7 @@ export default function QuickCaptureView() {
     setContactId('');
     setEmployeeId('');
     setEventId('');
+    setIsPrivate(false);
     setSaving(false);
     loadNotes();
   };
@@ -111,6 +114,7 @@ export default function QuickCaptureView() {
     setContactId(note.contact_id || '');
     setEmployeeId(note.employee_id || '');
     setEventId(note.event_id || '');
+    setIsPrivate(!!note.is_private);
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -122,6 +126,7 @@ export default function QuickCaptureView() {
     setContactId('');
     setEmployeeId('');
     setEventId('');
+    setIsPrivate(false);
   };
 
   const handleDelete = async (noteId: string) => {
@@ -227,6 +232,17 @@ export default function QuickCaptureView() {
             {saving ? 'Saving...' : editingNote ? 'Update Note' : 'Save Note'}
           </button>
         </div>
+
+        <label className="flex items-center gap-2 cursor-pointer text-sm">
+          <input
+            type="checkbox"
+            checked={isPrivate}
+            onChange={(e) => setIsPrivate(e.target.checked)}
+            className="h-4 w-4"
+          />
+          <Lock className="h-4 w-4 text-gray-500" />
+          <span>Mark as private — only you will see this note</span>
+        </label>
       </div>
 
       {/* Saved Notes List */}
@@ -241,7 +257,10 @@ export default function QuickCaptureView() {
               className="bg-white p-4 rounded-lg border hover:border-blue-300 transition-colors cursor-pointer"
               onClick={() => handleEdit(note)}
             >
-              <p className="text-gray-800 mb-2">{note.content}</p>
+              <p className="text-gray-800 mb-2 flex items-start gap-2">
+                {note.is_private && <Lock className="h-4 w-4 text-gray-500 shrink-0 mt-0.5" />}
+                <span>{note.content}</span>
+              </p>
 
               <div className="flex items-center justify-between">
                 <div className="flex gap-2 flex-wrap">

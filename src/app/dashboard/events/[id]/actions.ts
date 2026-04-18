@@ -2,13 +2,18 @@
 
 import sql from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { currentUserId } from "@/lib/visibility";
 
 export async function fetchEvent(eventId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(e.is_private = false OR e.created_by = ${userId})`
+    : sql`e.is_private = false`;
   const rows = await sql`
     SELECT e.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM events e
     LEFT JOIN contacts c ON e.contact_id = c.id
-    WHERE e.id = ${eventId}
+    WHERE e.id = ${eventId} AND ${vis}
   `;
   if (rows.length === 0) return null;
   const r = rows[0];
@@ -38,10 +43,14 @@ export async function fetchAttendees(eventId: string) {
 }
 
 export async function fetchNotes(eventId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(n.is_private = false OR n.created_by = ${userId})`
+    : sql`n.is_private = false`;
   const rows = await sql`
-    SELECT * FROM notes_standalone
-    WHERE event_id = ${eventId}
-    ORDER BY created_at DESC
+    SELECT n.* FROM notes_standalone n
+    WHERE n.event_id = ${eventId} AND ${vis}
+    ORDER BY n.created_at DESC
   `;
   return [...rows] as any;
 }
@@ -57,7 +66,11 @@ export async function fetchActiveEmployees() {
 }
 
 export async function fetchAllProjects() {
-  const rows = await sql`SELECT id, name FROM projects ORDER BY name`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
+  const rows = await sql`SELECT p.id, p.name FROM projects p WHERE ${vis} ORDER BY p.name`;
   return [...rows] as any;
 }
 
@@ -103,10 +116,12 @@ export async function updateEventFull(
     status: string;
     project_id: string | null;
     contact_id: string | null;
+    is_private?: boolean;
   },
   selectedEmployees: string[]
 ) {
-  await sql`UPDATE events SET ${sql(payload)} WHERE id = ${eventId}`;
+  const dataObj = { ...payload, is_private: payload.is_private ?? false };
+  await sql`UPDATE events SET ${sql(dataObj)} WHERE id = ${eventId}`;
 
   // Replace attendees
   await sql`DELETE FROM event_attendees WHERE event_id = ${eventId}`;

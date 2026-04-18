@@ -23,6 +23,7 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
   const [contactId, setContactId] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [eventId, setEventId] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [attendees, setAttendees] = useState<Array<{id: string; name: string; type: 'contact' | 'employee'}>>([]);
@@ -65,6 +66,7 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
       setContactId(editingNote.contact_id || '');
       setEmployeeId(editingNote.employee_id || '');
       setEventId(editingNote.event_id || '');
+      setIsPrivate(!!editingNote.is_private);
     }
   }, [editingNote]);
 
@@ -122,6 +124,7 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
         contact_id: contactId || null,
         employee_id: employeeId || null,
         event_id: eventId || null,
+        is_private: isPrivate,
       });
 
       // Reset form
@@ -131,6 +134,7 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
       setContactId('');
       setEmployeeId('');
       setEventId('');
+      setIsPrivate(false);
       setAttendees([]);
       setDiscussionPoints([]);
       setActionItems([]);
@@ -148,6 +152,7 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
       contact_id: contactId || null,
       employee_id: employeeId || null,
       event_id: eventId || null,
+      is_private: isPrivate,
       attendees: attendees.map(a => ({
         contact_id: a.type === 'contact' ? a.id : null,
         employee_id: a.type === 'employee' ? a.id : null,
@@ -169,6 +174,7 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
     setContactId('');
     setEmployeeId('');
     setEventId('');
+    setIsPrivate(false);
     setAttendees([]);
     setDiscussionPoints([]);
     setActionItems([]);
@@ -394,6 +400,16 @@ export default function MeetingNoteForm({ onSave, editingNote, onCancelEdit }: M
           </div>
         </div>
       )}
+
+      <label className="flex items-center gap-2 cursor-pointer text-sm">
+        <input
+          type="checkbox"
+          checked={isPrivate}
+          onChange={(e) => setIsPrivate(e.target.checked)}
+          className="h-4 w-4"
+        />
+        <span>🔒 Mark as private — only you will see this meeting note</span>
+      </label>
 
       <button
         type="submit"

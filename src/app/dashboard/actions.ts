@@ -2,12 +2,20 @@
 
 import sql from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { currentUserId } from "@/lib/visibility";
 
 export async function getDashboardStats() {
+  const userId = await currentUserId();
+  const taskVis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
+  const projVis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
   const [contactsRes, projectsRes, tasksRes, employeesRes] = await Promise.all([
     sql`SELECT COUNT(*) as count FROM contacts`,
-    sql`SELECT COUNT(*) as count FROM projects`,
-    sql`SELECT COUNT(*) as count FROM tasks WHERE status != 'completed'`,
+    sql`SELECT COUNT(*) as count FROM projects p WHERE ${projVis}`,
+    sql`SELECT COUNT(*) as count FROM tasks t WHERE t.status != 'completed' AND ${taskVis}`,
     sql`SELECT COUNT(*) as count FROM employees WHERE status = 'active'`,
   ]);
   return {
@@ -19,12 +27,16 @@ export async function getDashboardStats() {
 }
 
 export async function getOverdueTasks(today: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
   const rows = await sql`
     SELECT t.id, t.title, t.due_date, t.priority, t.status, t.contact_id,
            c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM tasks t
     LEFT JOIN contacts c ON c.id = t.contact_id
-    WHERE t.status != 'completed' AND t.due_date < ${today}
+    WHERE t.status != 'completed' AND t.due_date < ${today} AND ${vis}
     ORDER BY t.due_date ASC
     LIMIT 10
   `;
@@ -40,12 +52,16 @@ export async function getOverdueTasks(today: string) {
 }
 
 export async function getUpcomingTasks(dateFrom: string, dateTo: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
   const rows = await sql`
     SELECT t.id, t.title, t.due_date, t.priority, t.status, t.contact_id,
            c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM tasks t
     LEFT JOIN contacts c ON c.id = t.contact_id
-    WHERE t.status != 'completed' AND t.due_date >= ${dateFrom} AND t.due_date <= ${dateTo}
+    WHERE t.status != 'completed' AND t.due_date >= ${dateFrom} AND t.due_date <= ${dateTo} AND ${vis}
     ORDER BY t.due_date ASC
     LIMIT 25
   `;
@@ -63,12 +79,17 @@ export async function getUpcomingTasks(dateFrom: string, dateTo: string) {
 export async function enrichTasksWithProjectsAndAssignees(taskIds: string[]) {
   if (taskIds.length === 0) return { projectMap: {}, assigneeMap: {} };
 
+  const userId = await currentUserId();
+  const projVis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
+
   const [ptLinks, assignees] = await Promise.all([
     sql`
       SELECT pt.task_id, pt.project_id, p.name as project_name
       FROM project_tasks pt
       JOIN projects p ON p.id = pt.project_id
-      WHERE pt.task_id = ANY(${taskIds})
+      WHERE pt.task_id = ANY(${taskIds}) AND ${projVis}
     `,
     sql`
       SELECT ta.task_id, e.first_name, e.last_name
@@ -94,11 +115,15 @@ export async function enrichTasksWithProjectsAndAssignees(taskIds: string[]) {
 }
 
 export async function getCalendarTasks(start: string, end: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
   const rows = await sql`
-    SELECT id, title, due_date, priority, is_milestone, status
-    FROM tasks
-    WHERE status != 'completed' AND due_date >= ${start} AND due_date <= ${end}
-    ORDER BY due_date ASC
+    SELECT t.id, t.title, t.due_date, t.priority, t.is_milestone, t.status
+    FROM tasks t
+    WHERE t.status != 'completed' AND t.due_date >= ${start} AND t.due_date <= ${end} AND ${vis}
+    ORDER BY t.due_date ASC
   `;
   return rows.map((r) => ({
     id: r.id,
@@ -110,11 +135,15 @@ export async function getCalendarTasks(start: string, end: string) {
 }
 
 export async function getCalendarEvents(start: string, end: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(e.is_private = false OR e.created_by = ${userId})`
+    : sql`e.is_private = false`;
   const rows = await sql`
-    SELECT id, title, event_date, event_type, event_time
-    FROM events
-    WHERE event_date >= ${start} AND event_date <= ${end}
-    ORDER BY event_time ASC
+    SELECT e.id, e.title, e.event_date, e.event_type, e.event_time
+    FROM events e
+    WHERE e.event_date >= ${start} AND e.event_date <= ${end} AND ${vis}
+    ORDER BY e.event_time ASC
   `;
   return rows.map((r) => ({
     id: r.id,
@@ -126,11 +155,15 @@ export async function getCalendarEvents(start: string, end: string) {
 }
 
 export async function getUpcomingEvents(today: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(e.is_private = false OR e.created_by = ${userId})`
+    : sql`e.is_private = false`;
   const rows = await sql`
-    SELECT id, title, event_date, event_type
-    FROM events
-    WHERE event_date >= ${today}
-    ORDER BY event_date ASC
+    SELECT e.id, e.title, e.event_date, e.event_type
+    FROM events e
+    WHERE e.event_date >= ${today} AND ${vis}
+    ORDER BY e.event_date ASC
     LIMIT 5
   `;
   return rows.map((r) => ({
@@ -142,10 +175,15 @@ export async function getUpcomingEvents(today: string) {
 }
 
 export async function getRecentNotes() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(n.is_private = false OR n.created_by = ${userId})`
+    : sql`n.is_private = false`;
   const rows = await sql`
-    SELECT id, content, created_at
-    FROM notes_standalone
-    ORDER BY created_at DESC
+    SELECT n.id, n.content, n.created_at
+    FROM notes_standalone n
+    WHERE ${vis}
+    ORDER BY n.created_at DESC
     LIMIT 5
   `;
   return rows.map((r) => ({

@@ -470,7 +470,7 @@ export default function GanttPage() {
       const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
       let scrollTarget = 0;
       if (zoom === "day") scrollTarget = diffDays * colWidth;
-      else if (zoom === "5day") scrollTarget = (diffDays / 5) * colWidth;
+      else if (zoom === "5day") scrollTarget = (diffDays / 7) * colWidth;
       else if (zoom === "week") scrollTarget = (diffDays / 7) * colWidth;
       else if (zoom === "month") scrollTarget = (diffDays / 30) * colWidth;
       else scrollTarget = (diffDays / 90) * colWidth;
@@ -564,7 +564,9 @@ export default function GanttPage() {
     for (let i = 0; i < numCols; i++) {
       const d = new Date(start);
       if (zoom === "day") d.setDate(start.getDate() + i);
-      else if (zoom === "5day") d.setDate(start.getDate() + i * 5);
+      // 5day columns step one week at a time — each column shows Mon–Fri
+      // of that week; weekends are folded out of the visible timeline.
+      else if (zoom === "5day") d.setDate(start.getDate() + i * 7);
       else if (zoom === "week") d.setDate(start.getDate() + i * 7);
       else if (zoom === "month") d.setMonth(start.getMonth() + i);
       else d.setMonth(start.getMonth() + i * 3);
@@ -587,10 +589,21 @@ export default function GanttPage() {
   const dateToX = (dateStr: string | Date) => {
     const parsed = parseForDisplay(dateStr);
     const d = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-    if (zoom === "day" || zoom === "week" || zoom === "5day") {
+    if (zoom === "day" || zoom === "week") {
       const totalMs = rangeEnd.getTime() - rangeStart.getTime();
       const elapsedMs = d.getTime() - rangeStart.getTime();
       return (elapsedMs / totalMs) * totalWidth;
+    }
+    if (zoom === "5day") {
+      // Each column represents 5 weekdays (Mon–Fri); weekends fold into the
+      // seam at the start of the following week's column.
+      const msInDay = 86400000;
+      const calendarDaysElapsed = (d.getTime() - rangeStart.getTime()) / msInDay;
+      const weeks = Math.floor(calendarDaysElapsed / 7);
+      const dayInWeek = calendarDaysElapsed - weeks * 7;
+      const weekdayOffset = Math.min(dayInWeek, 5);
+      const weekdaysElapsed = weeks * 5 + weekdayOffset;
+      return (weekdaysElapsed / (dates.length * 5)) * totalWidth;
     }
     // month / quarter: columns are equal width but months vary in length —
     // find the containing column and interpolate proportionally within it.
@@ -677,7 +690,7 @@ export default function GanttPage() {
   const navigate = (dir: number) => {
     const d = new Date(startDate);
     if (zoom === "day") d.setDate(d.getDate() + dir * 14);
-    else if (zoom === "5day") d.setDate(d.getDate() + dir * 20);
+    else if (zoom === "5day") d.setDate(d.getDate() + dir * 28);
     else if (zoom === "week") d.setDate(d.getDate() + dir * 28);
     else if (zoom === "quarter") d.setMonth(d.getMonth() + dir * 6);
     else d.setMonth(d.getMonth() + dir * 3);

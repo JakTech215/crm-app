@@ -47,6 +47,7 @@ import {
   UserCog,
   Loader2,
   Search,
+  Lock,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -186,6 +187,7 @@ export default function TaskBoardPage() {
     start_date: "",
     due_date: "",
     is_milestone: false,
+    is_private: false,
   });
 
   const [statusFilter, setStatusFilter] = useState<string[]>(["pending", "in_progress", "blocked"]);
@@ -289,6 +291,7 @@ export default function TaskBoardPage() {
           start_date: createForm.start_date || null,
           due_date: createForm.due_date || null,
           is_milestone: createForm.is_milestone,
+          is_private: createForm.is_private,
         },
         createEmployees,
         createForm.project_id || null,
@@ -305,6 +308,7 @@ export default function TaskBoardPage() {
         start_date: "",
         due_date: "",
         is_milestone: false,
+        is_private: false,
       });
       setCreateEmployees([]);
       setCreateOpen(false);
@@ -720,6 +724,16 @@ export default function TaskBoardPage() {
                     <div className="flex items-center gap-1.5">
                       <Diamond className="h-4 w-4 text-amber-500" />
                       <span className="text-sm font-medium">Mark as milestone</span>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={createForm.is_private}
+                      onCheckedChange={(checked) => setCreateForm({ ...createForm, is_private: !!checked })}
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <Lock className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Mark as private</span>
                     </div>
                   </label>
                 </div>

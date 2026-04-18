@@ -80,7 +80,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, X, FolderKanban, RefreshCw, Loader2, Check, StickyNote } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Diamond, Pencil, Users, X, FolderKanban, RefreshCw, Loader2, Check, StickyNote, Lock } from "lucide-react";
 import { todayCST, formatDate, formatDateTime, nowUTC, isBeforeToday, addDaysToDate, getTimeframeDate } from "@/lib/dates";
 
 interface Employee {
@@ -122,6 +122,7 @@ interface Task {
   start_date: string | null;
   due_date: string | null;
   is_milestone: boolean;
+  is_private: boolean;
   task_type_id: string | null;
   is_recurring: boolean;
   recurrence_frequency: number | null;
@@ -205,6 +206,7 @@ export default function TaskDetailPage() {
     start_date: "",
     due_date: "",
     is_milestone: false,
+    is_private: false,
     task_type_id: "",
     is_recurring: false,
     recurrence_frequency: "",
@@ -421,6 +423,7 @@ export default function TaskDetailPage() {
       start_date: toDateInput(task.start_date as string | Date | null),
       due_date: toDateInput(task.due_date as string | Date | null),
       is_milestone: task.is_milestone,
+      is_private: task.is_private ?? false,
       task_type_id: task.task_type_id || "",
       is_recurring: task.is_recurring || false,
       recurrence_frequency: task.recurrence_frequency?.toString() || "",
@@ -447,6 +450,7 @@ export default function TaskDetailPage() {
         start_date: editForm.start_date || null,
         due_date: editForm.due_date || null,
         is_milestone: editForm.is_milestone,
+        is_private: editForm.is_private,
         task_type_id: editForm.task_type_id || null,
         is_recurring: editForm.is_recurring,
         recurrence_frequency: editForm.is_recurring && editForm.recurrence_frequency ? parseInt(editForm.recurrence_frequency) : null,
@@ -666,6 +670,12 @@ export default function TaskDetailPage() {
                 <Badge className="bg-amber-100 text-amber-800">
                   <Diamond className="mr-1 h-3 w-3" />
                   Milestone
+                </Badge>
+              )}
+              {task.is_private && (
+                <Badge variant="outline" className="text-muted-foreground">
+                  <Lock className="mr-1 h-3 w-3" />
+                  Private
                 </Badge>
               )}
             </div>
@@ -965,6 +975,18 @@ export default function TaskDetailPage() {
                 <div className="flex items-center gap-1.5">
                   <Diamond className="h-4 w-4 text-amber-500" />
                   <span className="text-sm font-medium">Mark as milestone</span>
+                </div>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={editForm.is_private}
+                  onCheckedChange={(checked) =>
+                    setEditForm({ ...editForm, is_private: !!checked })
+                  }
+                />
+                <div className="flex items-center gap-1.5">
+                  <Lock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Mark as private</span>
                 </div>
               </label>
               <div className="grid gap-2">

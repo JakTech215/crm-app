@@ -2,14 +2,20 @@
 
 import sql from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { currentUserId } from "@/lib/visibility";
 
 export async function fetchAllTasks() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
   const rows = await sql`
     SELECT t.*,
            c.id as contact_id_ref, c.first_name as contact_first_name,
            c.last_name as contact_last_name, c.company as contact_company
     FROM tasks t
     LEFT JOIN contacts c ON c.id = t.contact_id
+    WHERE ${vis}
     ORDER BY t.created_at DESC
   `;
   return rows.map((r) => ({
@@ -22,6 +28,7 @@ export async function fetchAllTasks() {
     start_date: r.start_date,
     due_date: r.due_date,
     is_milestone: r.is_milestone,
+    is_private: r.is_private,
     is_recurring: r.is_recurring,
     template_id: r.template_id,
     recurrence_source_task_id: r.recurrence_source_task_id,
@@ -150,6 +157,7 @@ export async function createTask(data: {
   start_date: string | null;
   due_date: string | null;
   is_milestone: boolean;
+  is_private?: boolean;
   task_type_id?: string | null;
   template_id?: string | null;
   is_recurring?: boolean;

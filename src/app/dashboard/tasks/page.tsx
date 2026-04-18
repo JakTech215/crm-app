@@ -75,7 +75,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Users, Diamond, Search, RefreshCw, Loader2, Check, Trash2, Upload, Download, ChevronRight, ChevronDown } from "lucide-react";
+import { Plus, Users, Diamond, Search, RefreshCw, Loader2, Check, Trash2, Upload, Download, ChevronRight, ChevronDown, Lock } from "lucide-react";
 import Papa from "papaparse";
 import { todayCST, formatDate, formatDateLong, formatRelativeTime as formatRelativeTimeUtil, nowUTC, isBeforeToday, getTimeframeDate } from "@/lib/dates";
 import { FilterPanel, FilterDef, FilterValues, defaultFilterValues } from "@/components/filter-panel";
@@ -128,6 +128,7 @@ interface Task {
   start_date: string | null;
   due_date: string | null;
   is_milestone: boolean;
+  is_private: boolean;
   is_recurring: boolean;
   template_id: string | null;
   recurrence_source_task_id: string | null;
@@ -230,6 +231,7 @@ export default function TasksPage() {
     start_date: "",
     due_date: "",
     is_milestone: false,
+    is_private: false,
   });
 
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -462,6 +464,7 @@ export default function TasksPage() {
         start_date: form.start_date || null,
         due_date: form.due_date || null,
         is_milestone: form.is_milestone,
+        is_private: form.is_private,
         task_type_id: selectedTaskTypeId || null,
         template_id: selectedTemplateId || null,
       });
@@ -509,6 +512,7 @@ export default function TasksPage() {
                 start_date: recurringDates[i],
                 due_date: recurringDates[i],
                 is_milestone: form.is_milestone,
+                is_private: form.is_private,
                 task_type_id: selectedTaskTypeId || null,
                 template_id: selectedTemplateId,
                 is_recurring: true,
@@ -552,6 +556,7 @@ export default function TasksPage() {
         start_date: "",
         due_date: "",
         is_milestone: false,
+        is_private: false,
       });
       setSelectedTemplateId("");
       setSelectedEmployees([]);
@@ -893,6 +898,11 @@ export default function TasksPage() {
                 </button>
               ) : null}
               {task.is_milestone && <Diamond className="h-4 w-4 text-amber-500 shrink-0" />}
+              {task.is_private && (
+                <span title="Private — only visible to you">
+                  <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </span>
+              )}
               {(task.is_recurring || task.recurrence_source_task_id) && (
                 <span title={isSource ? "Recurring series" : "Occurrence in recurring series"}>
                   <RefreshCw className="h-3.5 w-3.5 text-blue-500 shrink-0" />
@@ -1497,6 +1507,16 @@ export default function TasksPage() {
                   <div className="flex items-center gap-1.5">
                     <Diamond className="h-4 w-4 text-amber-500" />
                     <span className="text-sm font-medium">Mark as milestone</span>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={form.is_private}
+                    onCheckedChange={(checked) => setForm({ ...form, is_private: !!checked })}
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <Lock className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Mark as private</span>
                   </div>
                 </label>
               </div>

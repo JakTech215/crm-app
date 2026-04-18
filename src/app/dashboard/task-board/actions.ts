@@ -2,14 +2,20 @@
 
 import sql from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { currentUserId } from "@/lib/visibility";
 
 export async function fetchBoardTasks() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
   const rows = await sql`
     SELECT t.*,
            c.id as contact_id_ref, c.first_name as contact_first_name,
            c.last_name as contact_last_name, c.company as contact_company
     FROM tasks t
     LEFT JOIN contacts c ON c.id = t.contact_id
+    WHERE ${vis}
     ORDER BY t.due_date ASC NULLS LAST
   `;
   return rows.map((r) => ({
@@ -22,6 +28,7 @@ export async function fetchBoardTasks() {
     start_date: r.start_date,
     due_date: r.due_date,
     is_milestone: r.is_milestone,
+    is_private: r.is_private,
     is_recurring: r.is_recurring,
     task_type_id: r.task_type_id,
     created_at: r.created_at,
@@ -81,8 +88,12 @@ export async function fetchActiveTaskTypes() {
 }
 
 export async function fetchAllProjects() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
   const rows = await sql`
-    SELECT id, name FROM projects ORDER BY name
+    SELECT p.id, p.name FROM projects p WHERE ${vis} ORDER BY p.name
   `;
   return rows.map((r) => ({ id: r.id, name: r.name }));
 }
@@ -112,6 +123,7 @@ export async function createTask(data: {
   start_date: string | null;
   due_date: string | null;
   is_milestone: boolean;
+  is_private?: boolean;
 }, employeeIds: string[], projectId: string | null) {
   const user = await getSessionUser();
   if (!user) throw new Error("You must be logged in.");

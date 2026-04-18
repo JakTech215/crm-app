@@ -2,15 +2,20 @@
 
 import sql from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { currentUserId } from "@/lib/visibility";
 
 export async function fetchTaskById(taskId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
   const rows = await sql`
     SELECT t.*,
            c.id as contact_id_ref, c.first_name as contact_first_name,
            c.last_name as contact_last_name, c.company as contact_company
     FROM tasks t
     LEFT JOIN contacts c ON c.id = t.contact_id
-    WHERE t.id = ${taskId}
+    WHERE t.id = ${taskId} AND ${vis}
   `;
   if (rows.length === 0) return null;
   const r = rows[0];
@@ -26,6 +31,7 @@ export async function fetchTaskById(taskId: string) {
     start_date: r.start_date,
     due_date: r.due_date,
     is_milestone: r.is_milestone,
+    is_private: r.is_private,
     task_type_id: r.task_type_id,
     is_recurring: r.is_recurring,
     recurrence_frequency: r.recurrence_frequency,
@@ -77,8 +83,12 @@ export async function fetchDependencies(taskId: string) {
 }
 
 export async function fetchAllTasksExcept(taskId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
   const rows = await sql`
-    SELECT id, title FROM tasks WHERE id != ${taskId} ORDER BY title
+    SELECT t.id, t.title FROM tasks t WHERE t.id != ${taskId} AND ${vis} ORDER BY t.title
   `;
   return rows.map((r) => ({ id: r.id, title: r.title }));
 }
@@ -103,25 +113,37 @@ export async function fetchAllContacts() {
 }
 
 export async function fetchAllProjects() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
   const rows = await sql`
-    SELECT id, name FROM projects ORDER BY name
+    SELECT p.id, p.name FROM projects p WHERE ${vis} ORDER BY p.name
   `;
   return rows.map((r) => ({ id: r.id, name: r.name }));
 }
 
 export async function fetchLinkedProjects(taskId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
   const links = await sql`
     SELECT pt.project_id, p.id, p.name
     FROM project_tasks pt
     JOIN projects p ON p.id = pt.project_id
-    WHERE pt.task_id = ${taskId}
+    WHERE pt.task_id = ${taskId} AND ${vis}
   `;
   return links.map((r) => ({ id: r.id, name: r.name }));
 }
 
 export async function fetchChildTasks(taskId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
   const rows = await sql`
-    SELECT id, title, status FROM tasks WHERE parent_task_id = ${taskId}
+    SELECT t.id, t.title, t.status FROM tasks t WHERE t.parent_task_id = ${taskId} AND ${vis}
   `;
   return rows.map((r) => ({ id: r.id, title: r.title, status: r.status }));
 }
@@ -146,11 +168,15 @@ export async function fetchTaskNotes(taskId: string) {
 }
 
 export async function fetchSeriesTasks(sourceId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
   const rows = await sql`
-    SELECT id, title, status, due_date
-    FROM tasks
-    WHERE recurrence_source_task_id = ${sourceId} OR id = ${sourceId}
-    ORDER BY due_date ASC
+    SELECT t.id, t.title, t.status, t.due_date
+    FROM tasks t
+    WHERE (t.recurrence_source_task_id = ${sourceId} OR t.id = ${sourceId}) AND ${vis}
+    ORDER BY t.due_date ASC
   `;
   return rows.map((r) => ({ id: r.id, title: r.title, status: r.status, due_date: r.due_date }));
 }
@@ -192,8 +218,12 @@ export async function fetchWorkflowChain(templateId: string) {
 }
 
 export async function fetchParentTask(parentTaskId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
   const rows = await sql`
-    SELECT id, title FROM tasks WHERE id = ${parentTaskId}
+    SELECT t.id, t.title FROM tasks t WHERE t.id = ${parentTaskId} AND ${vis}
   `;
   return rows[0] ? { id: rows[0].id, title: rows[0].title } : null;
 }

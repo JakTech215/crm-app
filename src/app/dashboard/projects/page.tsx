@@ -53,7 +53,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Users } from "lucide-react";
+import { Plus, Search, Users, Lock } from "lucide-react";
 import { todayCST, formatDate } from "@/lib/dates";
 
 interface Contact {
@@ -142,6 +142,7 @@ export default function ProjectsPage() {
     status: "active",
     start_date: "",
     due_date: "",
+    is_private: false,
   });
 
   const fetchProjects = async () => {
@@ -207,6 +208,7 @@ export default function ProjectsPage() {
       status: "active",
       start_date: "",
       due_date: "",
+      is_private: false,
     });
     setSelectedEmployees([]);
     setOpen(false);
@@ -391,6 +393,16 @@ export default function ProjectsPage() {
                     )}
                   </div>
                 </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={form.is_private}
+                    onCheckedChange={(checked) => setForm({ ...form, is_private: !!checked })}
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <Lock className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Mark as private</span>
+                  </div>
+                </label>
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={saving}>

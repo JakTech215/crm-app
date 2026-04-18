@@ -73,7 +73,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Pencil, Trash2, Plus, Diamond, Search, X, Loader2, Check, Calendar, StickyNote, Users } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, Plus, Diamond, Search, X, Loader2, Check, Calendar, StickyNote, Users, Lock } from "lucide-react";
 import Link from "next/link";
 import { todayCST, formatDate, formatDateTime, isBeforeToday } from "@/lib/dates";
 
@@ -94,6 +94,7 @@ interface Project {
   status: string;
   start_date: string | null;
   due_date: string | null;
+  is_private: boolean;
   created_at: string;
   contacts: Contact | null;
 }
@@ -225,6 +226,7 @@ export default function ProjectDetailPage() {
     status: "planning",
     start_date: "",
     due_date: "",
+    is_private: false,
   });
 
   // Delete state
@@ -407,6 +409,7 @@ export default function ProjectDetailPage() {
       status: project.status,
       start_date: project.start_date || "",
       due_date: project.due_date || "",
+      is_private: project.is_private ?? false,
     });
     setEditError(null);
     setEditOpen(true);
@@ -525,7 +528,10 @@ export default function ProjectDetailPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+              {project.is_private && <Lock className="h-5 w-5 text-muted-foreground" />}
+              {project.name}
+            </h1>
             <p className="text-muted-foreground">Project details and linked tasks</p>
           </div>
         </div>
@@ -716,6 +722,16 @@ export default function ProjectDetailPage() {
                   )}
                 </div>
               </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={editForm.is_private}
+                  onCheckedChange={(checked) => setEditForm({ ...editForm, is_private: !!checked })}
+                />
+                <div className="flex items-center gap-1.5">
+                  <Lock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Mark as private</span>
+                </div>
+              </label>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={savingEdit}>

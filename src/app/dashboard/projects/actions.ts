@@ -2,12 +2,18 @@
 
 import sql from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { currentUserId } from "@/lib/visibility";
 
 export async function fetchProjects() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
   const rows = await sql`
     SELECT p.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM projects p
     LEFT JOIN contacts c ON p.contact_id = c.id
+    WHERE ${vis}
     ORDER BY p.created_at DESC
   `;
   return rows.map((r) => ({
@@ -18,6 +24,7 @@ export async function fetchProjects() {
     status: r.status,
     start_date: r.start_date,
     due_date: r.due_date,
+    is_private: r.is_private,
     created_at: r.created_at,
     contacts: r.contact_id
       ? { id: r.contact_id_ref, first_name: r.contact_first_name, last_name: r.contact_last_name }
@@ -36,10 +43,16 @@ export async function fetchActiveEmployees(): Promise<{ id: string; first_name: 
 }
 
 export async function fetchProjectEmployeesMap() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
   const rows = await sql`
     SELECT pe.project_id, e.id, e.first_name, e.last_name
     FROM project_employees pe
     JOIN employees e ON pe.employee_id = e.id
+    JOIN projects p ON p.id = pe.project_id
+    WHERE ${vis}
   `;
   const map: Record<string, { id: string; first_name: string; last_name: string }[]> = {};
   for (const r of rows) {
@@ -55,18 +68,33 @@ export async function fetchProjectStatuses(): Promise<{ id: string; name: string
 }
 
 export async function fetchProjectTasksMap(today: string) {
-  const links = await sql`SELECT task_id, project_id FROM project_tasks`;
+  const userId = await currentUserId();
+  const projVis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
+  const taskVis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
+
+  // Only consider project_tasks rows whose project is visible to the user.
+  const links = await sql`
+    SELECT pt.task_id, pt.project_id
+    FROM project_tasks pt
+    JOIN projects p ON p.id = pt.project_id
+    WHERE ${projVis}
+  `;
   if (links.length === 0) return {};
 
   const taskIds = [...new Set(links.map((l) => l.task_id))];
 
   const tasks = await sql`
-    SELECT id, title, due_date FROM tasks
-    WHERE id = ANY(${taskIds})
-      AND status != 'completed'
-      AND status != 'cancelled'
-      AND due_date >= ${today}
-    ORDER BY due_date ASC
+    SELECT t.id, t.title, t.due_date FROM tasks t
+    WHERE t.id = ANY(${taskIds})
+      AND t.status != 'completed'
+      AND t.status != 'cancelled'
+      AND t.due_date >= ${today}
+      AND ${taskVis}
+    ORDER BY t.due_date ASC
   `;
 
   const taskById: Record<string, { id: string; title: string; due_date: string | null }> = {};
@@ -101,6 +129,7 @@ export async function createProject(
     status: string;
     start_date: string;
     due_date: string;
+    is_private?: boolean;
   },
   selectedEmployees: string[]
 ) {
@@ -113,6 +142,7 @@ export async function createProject(
     status: form.status || "active",
     start_date: form.start_date || null,
     due_date: form.due_date || null,
+    is_private: form.is_private ?? false,
     created_by: user?.id,
   };
 

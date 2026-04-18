@@ -1,13 +1,18 @@
 "use server";
 
 import sql from "@/lib/db";
+import { currentUserId } from "@/lib/visibility";
 
 export async function fetchProject(projectId: string) {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
   const rows = await sql`
     SELECT p.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM projects p
     LEFT JOIN contacts c ON p.contact_id = c.id
-    WHERE p.id = ${projectId}
+    WHERE p.id = ${projectId} AND ${vis}
   `;
   if (rows.length === 0) return null;
   const r = rows[0];
@@ -20,17 +25,22 @@ export async function fetchProject(projectId: string) {
 }
 
 export async function fetchProjectTasks(projectId: string) {
+  const userId = await currentUserId();
+  const taskVis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
+
   const links = await sql`SELECT task_id FROM project_tasks WHERE project_id = ${projectId}`;
   if (links.length === 0) return { tasks: [], taskProjectMap: {} };
 
   const taskIds = links.map((l) => l.task_id);
 
   const tasks = await sql`
-    SELECT t.id, t.title, t.priority, t.status, t.due_date, t.start_date, t.is_milestone, t.contact_id,
+    SELECT t.id, t.title, t.priority, t.status, t.due_date, t.start_date, t.is_milestone, t.is_private, t.contact_id,
            c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM tasks t
     LEFT JOIN contacts c ON t.contact_id = c.id
-    WHERE t.id = ANY(${taskIds})
+    WHERE t.id = ANY(${taskIds}) AND ${taskVis}
     ORDER BY t.due_date ASC
   `;
 
@@ -58,6 +68,7 @@ export async function fetchProjectTasks(projectId: string) {
     due_date: t.due_date,
     start_date: t.start_date,
     is_milestone: t.is_milestone,
+    is_private: t.is_private,
     contact_id: t.contact_id,
     contacts: t.contact_id
       ? { first_name: t.contact_first_name, last_name: t.contact_last_name }
@@ -65,10 +76,16 @@ export async function fetchProjectTasks(projectId: string) {
     task_assignees: assigneeMap[t.id] || [],
   }));
 
-  // Fetch other project links for these tasks (excluding current project)
+  // Fetch other project links for these tasks (excluding current project,
+  // and limited to projects the user can see).
+  const projVis = userId
+    ? sql`(p.is_private = false OR p.created_by = ${userId})`
+    : sql`p.is_private = false`;
   const allPtLinks = await sql`
-    SELECT task_id, project_id FROM project_tasks
-    WHERE task_id = ANY(${taskIds}) AND project_id != ${projectId}
+    SELECT pt.task_id, pt.project_id
+    FROM project_tasks pt
+    JOIN projects p ON p.id = pt.project_id
+    WHERE pt.task_id = ANY(${taskIds}) AND pt.project_id != ${projectId} AND ${projVis}
   `;
 
   const taskProjectMap: Record<string, { id: string; name: string }[]> = {};
@@ -91,7 +108,11 @@ export async function fetchProjectTasks(projectId: string) {
 }
 
 export async function fetchAllNonCompletedTasks(): Promise<{ id: string; title: string }[]> {
-  const rows = await sql`SELECT id, title FROM tasks WHERE status != 'completed' ORDER BY title`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(t.is_private = false OR t.created_by = ${userId})`
+    : sql`t.is_private = false`;
+  const rows = await sql`SELECT t.id, t.title FROM tasks t WHERE t.status != 'completed' AND ${vis} ORDER BY t.title`;
   return rows as unknown as { id: string; title: string }[];
 }
 
@@ -189,6 +210,7 @@ export async function updateProject(
     status: string;
     start_date: string;
     due_date: string;
+    is_private?: boolean;
   },
   selectedEmployees: string[]
 ) {
@@ -199,6 +221,7 @@ export async function updateProject(
     status: form.status,
     start_date: form.start_date || null,
     due_date: form.due_date || null,
+    is_private: form.is_private ?? false,
   };
 
   await sql`UPDATE projects SET ${sql(data)} WHERE id = ${projectId}`;

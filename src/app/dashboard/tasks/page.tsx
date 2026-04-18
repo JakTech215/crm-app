@@ -1513,26 +1513,28 @@ export default function TasksPage() {
                     </Select>
                   </div>
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={form.is_milestone}
-                    onCheckedChange={(checked) => setForm({ ...form, is_milestone: !!checked })}
-                  />
-                  <div className="flex items-center gap-1.5">
-                    <Diamond className="h-4 w-4 text-amber-500" />
-                    <span className="text-sm font-medium">Mark as milestone</span>
-                  </div>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={form.is_private}
-                    onCheckedChange={(checked) => setForm({ ...form, is_private: !!checked })}
-                  />
-                  <div className="flex items-center gap-1.5">
-                    <Lock className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Mark as private</span>
-                  </div>
-                </label>
+                <div className="flex items-center gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={form.is_milestone}
+                      onCheckedChange={(checked) => setForm({ ...form, is_milestone: !!checked })}
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <Diamond className="h-4 w-4 text-amber-500" />
+                      <span className="text-sm font-medium">Mark as milestone</span>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={form.is_private}
+                      onCheckedChange={(checked) => setForm({ ...form, is_private: !!checked })}
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <Lock className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Mark as private</span>
+                    </div>
+                  </label>
+                </div>
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={saving}>

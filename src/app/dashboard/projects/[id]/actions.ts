@@ -2,39 +2,24 @@
 
 import sql from "@/lib/db";
 
-async function logOnError<T>(label: string, ctx: Record<string, unknown>, fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    console.error(`[${label}] failed`, { ...ctx, err });
-    throw err;
-  }
-}
-
 export async function fetchProject(projectId: string) {
-  try {
-    const rows = await sql`
-      SELECT p.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
-      FROM projects p
-      LEFT JOIN contacts c ON p.contact_id = c.id
-      WHERE p.id = ${projectId}
-    `;
-    if (rows.length === 0) return null;
-    const r = rows[0];
-    return {
-      ...r,
-      contacts: r.contact_id
-        ? { id: r.contact_id_ref, first_name: r.contact_first_name, last_name: r.contact_last_name }
-        : null,
-    };
-  } catch (err) {
-    console.error("[fetchProject] failed", { projectId, err });
-    throw err;
-  }
+  const rows = await sql`
+    SELECT p.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
+    FROM projects p
+    LEFT JOIN contacts c ON p.contact_id = c.id
+    WHERE p.id = ${projectId}
+  `;
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    ...r,
+    contacts: r.contact_id
+      ? { id: r.contact_id_ref, first_name: r.contact_first_name, last_name: r.contact_last_name }
+      : null,
+  };
 }
 
 export async function fetchProjectTasks(projectId: string) {
-  try {
   const links = await sql`SELECT task_id FROM project_tasks WHERE project_id = ${projectId}`;
   if (links.length === 0) return { tasks: [], taskProjectMap: {} };
 
@@ -103,10 +88,6 @@ export async function fetchProjectTasks(projectId: string) {
   }
 
   return { tasks: enriched, taskProjectMap };
-  } catch (err) {
-    console.error("[fetchProjectTasks] failed", { projectId, err });
-    throw err;
-  }
 }
 
 export async function fetchAllNonCompletedTasks(): Promise<{ id: string; title: string }[]> {
@@ -127,35 +108,26 @@ export async function updateTaskField(taskId: string, field: string, value: stri
 }
 
 export async function fetchContacts(): Promise<{ id: string; first_name: string; last_name: string | null }[]> {
-  return logOnError("fetchContacts(projects/[id])", {}, async () => {
-    const rows = await sql`SELECT id, first_name, last_name FROM contacts ORDER BY first_name`;
-    return rows as unknown as { id: string; first_name: string; last_name: string | null }[];
-  });
+  const rows = await sql`SELECT id, first_name, last_name FROM contacts ORDER BY first_name`;
+  return rows as unknown as { id: string; first_name: string; last_name: string | null }[];
 }
 
 export async function fetchActiveEmployees(): Promise<{ id: string; first_name: string; last_name: string }[]> {
-  return logOnError("fetchActiveEmployees(projects/[id])", {}, async () => {
-    const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
-    return rows as unknown as { id: string; first_name: string; last_name: string }[];
-  });
+  const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
+  return rows as unknown as { id: string; first_name: string; last_name: string }[];
 }
 
 export async function fetchProjectEmployeeIds(projectId: string) {
-  return logOnError("fetchProjectEmployeeIds", { projectId }, async () => {
-    const rows = await sql`SELECT employee_id FROM project_employees WHERE project_id = ${projectId}`;
-    return rows.map((r) => r.employee_id);
-  });
+  const rows = await sql`SELECT employee_id FROM project_employees WHERE project_id = ${projectId}`;
+  return rows.map((r) => r.employee_id);
 }
 
 export async function fetchProjectStatuses(): Promise<{ id: string; name: string; color: string }[]> {
-  return logOnError("fetchProjectStatuses", {}, async () => {
-    const rows = await sql`SELECT id, name, color FROM project_statuses ORDER BY name`;
-    return rows as unknown as { id: string; name: string; color: string }[];
-  });
+  const rows = await sql`SELECT id, name, color FROM project_statuses ORDER BY name`;
+  return rows as unknown as { id: string; name: string; color: string }[];
 }
 
 export async function fetchProjectEvents(projectId: string) {
-  return logOnError("fetchProjectEvents", { projectId }, async () => {
   const events = await sql`
     SELECT e.*, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM events e
@@ -187,7 +159,6 @@ export async function fetchProjectEvents(projectId: string) {
   }));
 
   return { events: enrichedEvents, attendeeMap };
-  });
 }
 
 export async function updateEventStatus(eventId: string, newStatus: string) {
@@ -196,11 +167,9 @@ export async function updateEventStatus(eventId: string, newStatus: string) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchProjectNotes(projectId: string): Promise<any[]> {
-  return logOnError("fetchProjectNotes", { projectId }, async () => {
-    const rows = await sql`SELECT * FROM notes_standalone WHERE project_id = ${projectId} ORDER BY created_at DESC`;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return rows as unknown as any[];
-  });
+  const rows = await sql`SELECT * FROM notes_standalone WHERE project_id = ${projectId} ORDER BY created_at DESC`;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return rows as unknown as any[];
 }
 
 export async function addProjectNote(projectId: string, content: string) {

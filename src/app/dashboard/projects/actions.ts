@@ -55,7 +55,6 @@ export async function fetchProjectStatuses(): Promise<{ id: string; name: string
 }
 
 export async function fetchProjectTasksMap(today: string) {
-  try {
   const links = await sql`SELECT task_id, project_id FROM project_tasks`;
   if (links.length === 0) return {};
 
@@ -92,10 +91,6 @@ export async function fetchProjectTasksMap(today: string) {
       .slice(0, 3);
   }
   return map;
-  } catch (err) {
-    console.error("[fetchProjectTasksMap] failed", { today, err });
-    throw err;
-  }
 }
 
 export async function createProject(

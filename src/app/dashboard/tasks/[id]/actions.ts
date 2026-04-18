@@ -218,12 +218,7 @@ export async function deleteDependency(depId: string) {
 }
 
 export async function updateTask(taskId: string, data: Record<string, unknown>) {
-  try {
-    await sql`UPDATE tasks SET ${sql(data as Record<string, string>)} WHERE id = ${taskId}`;
-  } catch (err) {
-    console.error("[updateTask] failed", { taskId, data, err });
-    throw err;
-  }
+  await sql`UPDATE tasks SET ${sql(data as Record<string, string>)} WHERE id = ${taskId}`;
 }
 
 export async function replaceTaskAssignees(taskId: string, employeeIds: string[]) {

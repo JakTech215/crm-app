@@ -228,6 +228,10 @@ export default function EventsPage() {
     { type: "multi-select", key: "projects", label: "Project", options: projects.map(p => ({ value: p.id, label: p.name })) },
     { type: "multi-select", key: "contacts", label: "Contact", options: contacts.map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` })) },
     { type: "multi-select", key: "employees", label: "Employee", options: employees.map(e => ({ value: e.id, label: `${e.first_name} ${e.last_name}` })) },
+    { type: "single-select", key: "privacy", label: "Privacy", allLabel: "All", options: [
+      { value: "private", label: "Private only" },
+      { value: "public", label: "Non-private only" },
+    ] },
     { type: "date-range", keyFrom: "dateFrom", keyTo: "dateTo", labelFrom: "Date From", labelTo: "Date To" },
   ], [projects, contacts, employees]);
 
@@ -427,6 +431,11 @@ export default function EventsPage() {
     const dateTo = filterValues.dateTo;
     if (typeof dateFrom === "string" && dateFrom && ev.event_date < dateFrom) return false;
     if (typeof dateTo === "string" && dateTo && ev.event_date > dateTo) return false;
+
+    // Privacy filter
+    const privacy = filterValues.privacy;
+    if (privacy === "private" && !ev.is_private) return false;
+    if (privacy === "public" && ev.is_private) return false;
 
     // Search
     if (search) {
@@ -820,6 +829,9 @@ export default function EventsPage() {
                     {/* Title */}
                     <TableCell>
                       <div className="flex items-center gap-1.5">
+                        {ev.is_private && (
+                          <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        )}
                         <span
                           className="font-medium text-primary hover:underline cursor-pointer"
                           onClick={() =>

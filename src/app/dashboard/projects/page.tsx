@@ -82,6 +82,7 @@ interface Project {
   status: string;
   start_date: string | null;
   due_date: string | null;
+  is_private: boolean;
   created_at: string;
   contacts: Contact | null;
 }
@@ -133,6 +134,9 @@ export default function ProjectsPage() {
     const raw = searchParams.get("status");
     return raw ? raw.split(",") : ["active"];
   });
+  const [privacyFilter, setPrivacyFilter] = useState<string>(
+    () => searchParams.get("privacy") || "all"
+  );
   const [projectTasksMap, setProjectTasksMap] = useState<Record<string, UpcomingTask[]>>({});
   const [projectEmployeesMap, setProjectEmployeesMap] = useState<Record<string, Employee[]>>({});
   const [form, setForm] = useState({
@@ -452,6 +456,16 @@ export default function ProjectsPage() {
                   </div>
                 </PopoverContent>
               </Popover>
+              <Select value={privacyFilter} onValueChange={setPrivacyFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Privacy" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Privacy</SelectItem>
+                  <SelectItem value="private">Private only</SelectItem>
+                  <SelectItem value="public">Non-private only</SelectItem>
+                </SelectContent>
+              </Select>
               <div className="relative w-64">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -486,6 +500,8 @@ export default function ProjectsPage() {
                 </TableRow>
               ) : projects.filter((p) => {
                 if (statusFilter.length > 0 && !statusFilter.includes(p.status)) return false;
+                if (privacyFilter === "private" && !p.is_private) return false;
+                if (privacyFilter === "public" && p.is_private) return false;
                 const q = search.toLowerCase();
                 return !q || p.name.toLowerCase().includes(q) ||
                   (p.contacts ? contactName(p.contacts).toLowerCase().includes(q) : false);
@@ -502,6 +518,8 @@ export default function ProjectsPage() {
               ) : (
                 projects.filter((p) => {
                   if (statusFilter.length > 0 && !statusFilter.includes(p.status)) return false;
+                  if (privacyFilter === "private" && !p.is_private) return false;
+                  if (privacyFilter === "public" && p.is_private) return false;
                   const q = search.toLowerCase();
                   return !q || p.name.toLowerCase().includes(q) ||
                     (p.contacts ? contactName(p.contacts).toLowerCase().includes(q) : false);
@@ -512,7 +530,12 @@ export default function ProjectsPage() {
                     onClick={() => router.push(`/dashboard/projects/${project.id}`)}
                   >
                     <TableCell className="font-medium">
-                      {project.name}
+                      <span className="flex items-center gap-2">
+                        {project.is_private && (
+                          <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        )}
+                        {project.name}
+                      </span>
                     </TableCell>
                     <TableCell>
                       {project.contacts ? contactName(project.contacts) : "—"}

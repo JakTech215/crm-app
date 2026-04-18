@@ -466,6 +466,7 @@ export default function EventDetailPage() {
           </Button>
           <div>
             <div className="flex items-center gap-2">
+              {event.is_private && <Lock className="h-5 w-5 text-muted-foreground" />}
               <h2 className="text-3xl font-bold tracking-tight">{event.title}</h2>
               <Badge className={eventTypeColors[event.event_type] || eventTypeColors.other}>
                 {event.event_type}

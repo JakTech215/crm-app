@@ -93,6 +93,7 @@ interface Task {
   start_date: string | null;
   due_date: string | null;
   is_milestone: boolean;
+  is_private: boolean;
   is_recurring: boolean;
   task_type_id: string | null;
   created_at: string;
@@ -192,6 +193,7 @@ export default function TaskBoardPage() {
 
   const [statusFilter, setStatusFilter] = useState<string[]>(["pending", "in_progress", "blocked"]);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
+  const [privacyFilter, setPrivacyFilter] = useState<string>("all");
   const [taskTypeFilter, setTaskTypeFilter] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -347,9 +349,11 @@ export default function TaskBoardPage() {
     if (dateTo) {
       filtered = filtered.filter((t) => t.due_date && t.due_date <= dateTo);
     }
+    if (privacyFilter === "private") filtered = filtered.filter((t) => t.is_private);
+    else if (privacyFilter === "public") filtered = filtered.filter((t) => !t.is_private);
 
     return filtered;
-  }, [tasks, search, statusFilter, priorityFilter, taskTypeFilter, dateFrom, dateTo]);
+  }, [tasks, search, statusFilter, priorityFilter, taskTypeFilter, dateFrom, dateTo, privacyFilter]);
 
   // Build columns: one per employee who has tasks, one per contact who has tasks
   const { columns, tasksByColumn, unassignedTasks } = useMemo(() => {
@@ -423,6 +427,9 @@ export default function TaskBoardPage() {
         <div className="flex items-start gap-1.5">
           {task.is_milestone && (
             <Diamond className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+          )}
+          {task.is_private && (
+            <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
           )}
           <p className="text-sm font-medium leading-tight line-clamp-2">
             {task.title}
@@ -823,6 +830,21 @@ export default function TaskBoardPage() {
 
         <Separator orientation="vertical" className="h-5" />
 
+        {/* Privacy */}
+        <span className="text-xs font-medium text-muted-foreground">Privacy</span>
+        <Select value={privacyFilter} onValueChange={setPrivacyFilter}>
+          <SelectTrigger className="h-7 w-32 text-xs px-2.5">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="private">Private only</SelectItem>
+            <SelectItem value="public">Non-private only</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Separator orientation="vertical" className="h-5" />
+
         {/* Date range */}
         <span className="text-xs font-medium text-muted-foreground">Due From</span>
         <Input
@@ -840,7 +862,7 @@ export default function TaskBoardPage() {
         />
 
         {/* Clear all */}
-        {(statusFilter.length > 0 || priorityFilter.length > 0 || taskTypeFilter.length > 0 || dateFrom || dateTo) && (
+        {(statusFilter.length > 0 || priorityFilter.length > 0 || taskTypeFilter.length > 0 || dateFrom || dateTo || privacyFilter !== "all") && (
           <Button
             variant="ghost"
             size="sm"
@@ -851,6 +873,7 @@ export default function TaskBoardPage() {
               setTaskTypeFilter([]);
               setDateFrom("");
               setDateTo("");
+              setPrivacyFilter("all");
             }}
           >
             Reset

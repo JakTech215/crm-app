@@ -295,6 +295,16 @@ export default function TasksPage() {
         defaultValue: ["pending", "in_progress", "blocked"],
       },
       {
+        type: "single-select" as const,
+        key: "privacy",
+        label: "Privacy",
+        allLabel: "All",
+        options: [
+          { value: "private", label: "Private only" },
+          { value: "public", label: "Non-private only" },
+        ],
+      },
+      {
         type: "date-range" as const,
         keyFrom: "dateFrom",
         keyTo: "dateTo",
@@ -850,6 +860,10 @@ export default function TasksPage() {
     if (typeof dateTo === "string" && dateTo) {
       filtered = filtered.filter((t) => t.due_date && t.due_date <= dateTo);
     }
+
+    const privacy = filterValues.privacy;
+    if (privacy === "private") filtered = filtered.filter((t) => t.is_private);
+    else if (privacy === "public") filtered = filtered.filter((t) => !t.is_private);
 
     return filtered;
   };

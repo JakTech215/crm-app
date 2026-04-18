@@ -28,7 +28,7 @@ export async function fetchEmployeeTasks(employeeId: string) {
     SELECT t.id, t.title, t.status, t.priority, t.start_date, t.due_date, t.is_private, t.contact_id,
            c.first_name as contact_first_name, c.last_name as contact_last_name, c.company as contact_company
     FROM tasks t
-    LEFT JOIN contacts c ON t.contact_id = c.id
+    LEFT JOIN contacts c ON t.contact_id = c.id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE t.id = ANY(${taskIds}) AND ${vis}
     ORDER BY t.due_date ASC
   `;
@@ -97,7 +97,7 @@ export async function fetchEmployeeEvents(employeeId: string) {
     FROM event_attendees ea
     JOIN events e ON ea.event_id = e.id
     LEFT JOIN projects p ON e.project_id = p.id
-    LEFT JOIN contacts c ON e.contact_id = c.id
+    LEFT JOIN contacts c ON e.contact_id = c.id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE ea.employee_id = ${employeeId} AND ${vis}
   `;
 

@@ -11,7 +11,7 @@ export async function fetchProject(projectId: string) {
   const rows = await sql`
     SELECT p.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM projects p
-    LEFT JOIN contacts c ON p.contact_id = c.id
+    LEFT JOIN contacts c ON p.contact_id = c.id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE p.id = ${projectId} AND ${vis}
   `;
   if (rows.length === 0) return null;
@@ -39,7 +39,7 @@ export async function fetchProjectTasks(projectId: string) {
     SELECT t.id, t.title, t.priority, t.status, t.due_date, t.start_date, t.is_milestone, t.is_private, t.contact_id,
            c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM tasks t
-    LEFT JOIN contacts c ON t.contact_id = c.id
+    LEFT JOIN contacts c ON t.contact_id = c.id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE t.id = ANY(${taskIds}) AND ${taskVis}
     ORDER BY t.due_date ASC
   `;
@@ -47,7 +47,7 @@ export async function fetchProjectTasks(projectId: string) {
   const assignees = await sql`
     SELECT ta.task_id, ta.employee_id, e.first_name, e.last_name
     FROM task_assignees ta
-    JOIN employees e ON ta.employee_id = e.id
+    JOIN employees e ON ta.employee_id = e.id AND (e.is_private = false OR e.created_by = ${userId})
     WHERE ta.task_id = ANY(${taskIds})
   `;
 
@@ -134,7 +134,11 @@ export async function fetchContacts(): Promise<{ id: string; first_name: string;
 }
 
 export async function fetchActiveEmployees(): Promise<{ id: string; first_name: string; last_name: string }[]> {
-  const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(is_private = false OR created_by = ${userId})`
+    : sql`is_private = false`;
+  const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' AND ${vis} ORDER BY first_name`;
   return rows as unknown as { id: string; first_name: string; last_name: string }[];
 }
 
@@ -149,10 +153,11 @@ export async function fetchProjectStatuses(): Promise<{ id: string; name: string
 }
 
 export async function fetchProjectEvents(projectId: string) {
+  const userId = await currentUserId();
   const events = await sql`
     SELECT e.*, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM events e
-    LEFT JOIN contacts c ON e.contact_id = c.id
+    LEFT JOIN contacts c ON e.contact_id = c.id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE e.project_id = ${projectId}
     ORDER BY e.event_date DESC
   `;
@@ -163,7 +168,7 @@ export async function fetchProjectEvents(projectId: string) {
     const attData = await sql`
       SELECT ea.event_id, e.id, e.first_name, e.last_name
       FROM event_attendees ea
-      JOIN employees e ON ea.employee_id = e.id
+      JOIN employees e ON ea.employee_id = e.id AND (e.is_private = false OR e.created_by = ${userId})
       WHERE ea.event_id = ANY(${eventIds})
     `;
     for (const a of attData) {

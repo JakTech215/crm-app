@@ -43,15 +43,24 @@ function noteVisFrag(userId: string | null, filter: PrivacyFilter) {
     : sql`n.is_private = false`;
 }
 
+function contactCountVis(userId: string | null, filter: PrivacyFilter) {
+  if (filter === "public") return sql`is_private = false`;
+  if (filter === "private") {
+    return userId ? sql`(is_private = true AND created_by = ${userId})` : sql`false`;
+  }
+  return userId ? sql`(is_private = false OR created_by = ${userId})` : sql`is_private = false`;
+}
+
 export async function getDashboardStats(filterPrivacy: PrivacyFilter = "all") {
   const userId = await currentUserId();
   const taskV = taskVisFrag(userId, filterPrivacy);
   const projV = projVisFrag(userId, filterPrivacy);
+  const peopleV = contactCountVis(userId, filterPrivacy);
   const [contactsRes, projectsRes, tasksRes, employeesRes] = await Promise.all([
-    sql`SELECT COUNT(*) as count FROM contacts`,
+    sql`SELECT COUNT(*) as count FROM contacts WHERE ${peopleV}`,
     sql`SELECT COUNT(*) as count FROM projects p WHERE ${projV}`,
     sql`SELECT COUNT(*) as count FROM tasks t WHERE t.status != 'completed' AND ${taskV}`,
-    sql`SELECT COUNT(*) as count FROM employees WHERE status = 'active'`,
+    sql`SELECT COUNT(*) as count FROM employees WHERE status = 'active' AND ${peopleV}`,
   ]);
   return {
     contacts: Number(contactsRes[0]?.count ?? 0),
@@ -68,7 +77,7 @@ export async function getOverdueTasks(today: string, filterPrivacy: PrivacyFilte
     SELECT t.id, t.title, t.due_date, t.priority, t.status, t.contact_id,
            c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM tasks t
-    LEFT JOIN contacts c ON c.id = t.contact_id
+    LEFT JOIN contacts c ON c.id = t.contact_id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE t.status != 'completed' AND t.due_date < ${today} AND ${vis}
     ORDER BY t.due_date ASC
     LIMIT 10
@@ -91,7 +100,7 @@ export async function getUpcomingTasks(dateFrom: string, dateTo: string, filterP
     SELECT t.id, t.title, t.due_date, t.priority, t.status, t.contact_id,
            c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM tasks t
-    LEFT JOIN contacts c ON c.id = t.contact_id
+    LEFT JOIN contacts c ON c.id = t.contact_id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE t.status != 'completed' AND t.due_date >= ${dateFrom} AND t.due_date <= ${dateTo} AND ${vis}
     ORDER BY t.due_date ASC
     LIMIT 25
@@ -125,7 +134,7 @@ export async function enrichTasksWithProjectsAndAssignees(taskIds: string[]) {
     sql`
       SELECT ta.task_id, e.first_name, e.last_name
       FROM task_assignees ta
-      JOIN employees e ON e.id = ta.employee_id
+      JOIN employees e ON e.id = ta.employee_id AND (e.is_private = false OR e.created_by = ${userId})
       WHERE ta.task_id = ANY(${taskIds})
     `,
   ]);

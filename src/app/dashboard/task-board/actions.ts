@@ -14,7 +14,7 @@ export async function fetchBoardTasks() {
            c.id as contact_id_ref, c.first_name as contact_first_name,
            c.last_name as contact_last_name, c.company as contact_company
     FROM tasks t
-    LEFT JOIN contacts c ON c.id = t.contact_id
+    LEFT JOIN contacts c ON c.id = t.contact_id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE ${vis}
     ORDER BY t.due_date ASC NULLS LAST
   `;
@@ -41,10 +41,11 @@ export async function fetchBoardTasks() {
 
 export async function fetchTaskAssignees(taskIds: string[]) {
   if (taskIds.length === 0) return {};
+  const userId = await currentUserId();
   const rows = await sql`
     SELECT ta.task_id, ta.employee_id, e.id as emp_id, e.first_name, e.last_name
     FROM task_assignees ta
-    JOIN employees e ON e.id = ta.employee_id
+    JOIN employees e ON e.id = ta.employee_id AND (e.is_private = false OR e.created_by = ${userId})
     WHERE ta.task_id = ANY(${taskIds})
   `;
   const map: Record<string, { employee_id: string; employees: { id: string; first_name: string; last_name: string } }[]> = {};
@@ -59,10 +60,14 @@ export async function fetchTaskAssignees(taskIds: string[]) {
 }
 
 export async function fetchActiveEmployees() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(is_private = false OR created_by = ${userId})`
+    : sql`is_private = false`;
   const rows = await sql`
     SELECT id, first_name, last_name
     FROM employees
-    WHERE status = 'active'
+    WHERE status = 'active' AND ${vis}
     ORDER BY first_name
   `;
   return rows.map((r) => ({ id: r.id, first_name: r.first_name, last_name: r.last_name }));

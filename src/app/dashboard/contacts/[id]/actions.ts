@@ -40,7 +40,7 @@ export async function fetchContactTasks(contactId: string) {
   const assignees = await sql`
     SELECT ta.task_id, ta.employee_id, e.first_name, e.last_name
     FROM task_assignees ta
-    JOIN employees e ON ta.employee_id = e.id
+    JOIN employees e ON ta.employee_id = e.id AND (e.is_private = false OR e.created_by = ${userId})
     WHERE ta.task_id = ANY(${taskIds})
   `;
 
@@ -116,7 +116,7 @@ export async function fetchContactEvents(contactId: string) {
     const attData = await sql`
       SELECT ea.event_id, emp.id, emp.first_name, emp.last_name
       FROM event_attendees ea
-      JOIN employees emp ON ea.employee_id = emp.id
+      JOIN employees emp ON ea.employee_id = emp.id AND (emp.is_private = false OR emp.created_by = ${userId})
       WHERE ea.event_id = ANY(${eventIds})
     `;
     for (const a of attData) {

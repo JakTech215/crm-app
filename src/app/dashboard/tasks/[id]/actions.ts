@@ -14,7 +14,7 @@ export async function fetchTaskById(taskId: string) {
            c.id as contact_id_ref, c.first_name as contact_first_name,
            c.last_name as contact_last_name, c.company as contact_company
     FROM tasks t
-    LEFT JOIN contacts c ON c.id = t.contact_id
+    LEFT JOIN contacts c ON c.id = t.contact_id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE t.id = ${taskId} AND ${vis}
   `;
   if (rows.length === 0) return null;
@@ -46,10 +46,11 @@ export async function fetchTaskById(taskId: string) {
 }
 
 export async function fetchTaskAssigneesForTask(taskId: string) {
+  const userId = await currentUserId();
   const rows = await sql`
     SELECT ta.employee_id, e.id as emp_id, e.first_name, e.last_name
     FROM task_assignees ta
-    JOIN employees e ON e.id = ta.employee_id
+    JOIN employees e ON e.id = ta.employee_id AND (e.is_private = false OR e.created_by = ${userId})
     WHERE ta.task_id = ${taskId}
   `;
   return rows.map((r) => ({
@@ -94,10 +95,14 @@ export async function fetchAllTasksExcept(taskId: string) {
 }
 
 export async function fetchActiveEmployees() {
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(is_private = false OR created_by = ${userId})`
+    : sql`is_private = false`;
   const rows = await sql`
     SELECT id, first_name, last_name
     FROM employees
-    WHERE status = 'active'
+    WHERE status = 'active' AND ${vis}
     ORDER BY first_name
   `;
   return rows.map((r) => ({ id: r.id, first_name: r.first_name, last_name: r.last_name }));

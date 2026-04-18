@@ -12,7 +12,7 @@ export async function fetchEvent(eventId: string) {
   const rows = await sql`
     SELECT e.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM events e
-    LEFT JOIN contacts c ON e.contact_id = c.id
+    LEFT JOIN contacts c ON e.contact_id = c.id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE e.id = ${eventId} AND ${vis}
   `;
   if (rows.length === 0) return null;
@@ -26,11 +26,12 @@ export async function fetchEvent(eventId: string) {
 }
 
 export async function fetchAttendees(eventId: string) {
+  const userId = await currentUserId();
   const rows = await sql`
     SELECT ea.id, ea.event_id, ea.employee_id, ea.attendance_status,
            e.id as emp_id, e.first_name, e.last_name
     FROM event_attendees ea
-    JOIN employees e ON ea.employee_id = e.id
+    JOIN employees e ON ea.employee_id = e.id AND (e.is_private = false OR e.created_by = ${userId})
     WHERE ea.event_id = ${eventId}
   `;
   return rows.map((r) => ({
@@ -61,7 +62,11 @@ export async function fetchProjectName(projectId: string) {
 }
 
 export async function fetchActiveEmployees() {
-  const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(is_private = false OR created_by = ${userId})`
+    : sql`is_private = false`;
+  const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' AND ${vis} ORDER BY first_name`;
   return [...rows] as any;
 }
 

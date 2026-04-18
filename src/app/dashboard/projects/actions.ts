@@ -12,7 +12,7 @@ export async function fetchProjects() {
   const rows = await sql`
     SELECT p.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM projects p
-    LEFT JOIN contacts c ON p.contact_id = c.id
+    LEFT JOIN contacts c ON p.contact_id = c.id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE ${vis}
     ORDER BY p.created_at DESC
   `;
@@ -38,7 +38,11 @@ export async function fetchContacts(): Promise<{ id: string; first_name: string;
 }
 
 export async function fetchActiveEmployees(): Promise<{ id: string; first_name: string; last_name: string }[]> {
-  const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(is_private = false OR created_by = ${userId})`
+    : sql`is_private = false`;
+  const rows = await sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' AND ${vis} ORDER BY first_name`;
   return rows as unknown as { id: string; first_name: string; last_name: string }[];
 }
 
@@ -50,7 +54,7 @@ export async function fetchProjectEmployeesMap() {
   const rows = await sql`
     SELECT pe.project_id, e.id, e.first_name, e.last_name
     FROM project_employees pe
-    JOIN employees e ON pe.employee_id = e.id
+    JOIN employees e ON pe.employee_id = e.id AND (e.is_private = false OR e.created_by = ${userId})
     JOIN projects p ON p.id = pe.project_id
     WHERE ${vis}
   `;

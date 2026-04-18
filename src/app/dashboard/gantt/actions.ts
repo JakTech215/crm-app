@@ -15,7 +15,7 @@ export async function fetchGanttData() {
 
   const [taskData, depData, projData, ptLinks, assigneeData, empData] = await Promise.all([
     sql`SELECT t.*, c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
-        FROM tasks t LEFT JOIN contacts c ON t.contact_id = c.id
+        FROM tasks t LEFT JOIN contacts c ON t.contact_id = c.id AND (c.is_private = false OR c.created_by = ${userId})
         WHERE ${taskVis}
         ORDER BY t.start_date`,
     sql`SELECT task_id, depends_on_task_id, dependency_type, lag_days FROM task_dependencies`,
@@ -26,7 +26,7 @@ export async function fetchGanttData() {
         JOIN tasks t ON t.id = pt.task_id
         WHERE ${projVis} AND ${taskVis}`,
     sql`SELECT task_id, employee_id FROM task_assignees`,
-    sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' ORDER BY first_name`,
+    sql`SELECT id, first_name, last_name FROM employees WHERE status = 'active' AND (is_private = false OR created_by = ${userId}) ORDER BY first_name`,
   ]);
 
   return { taskData: [...taskData] as any, depData: [...depData] as any, projData: [...projData] as any, ptLinks: [...ptLinks] as any, assigneeData: [...assigneeData] as any, empData: [...empData] as any };
@@ -41,7 +41,7 @@ export async function fetchGanttEvents() {
     SELECT e.id, e.title, e.event_date, e.event_type, e.status, e.project_id, e.contact_id, e.is_private,
            c.id as contact_id_ref, c.first_name as contact_first_name, c.last_name as contact_last_name
     FROM events e
-    LEFT JOIN contacts c ON e.contact_id = c.id
+    LEFT JOIN contacts c ON e.contact_id = c.id AND (c.is_private = false OR c.created_by = ${userId})
     WHERE ${vis}
     ORDER BY e.event_date
   `;

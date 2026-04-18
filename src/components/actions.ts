@@ -32,8 +32,8 @@ export async function fetchStandaloneNotes() {
       row_to_json(ev) AS events
     FROM notes_standalone n
     LEFT JOIN projects p ON p.id = n.project_id
-    LEFT JOIN contacts c ON c.id = n.contact_id
-    LEFT JOIN employees e ON e.id = n.employee_id
+    LEFT JOIN contacts c ON c.id = n.contact_id AND (c.is_private = false OR c.created_by = ${userId})
+    LEFT JOIN employees e ON e.id = n.employee_id AND (e.is_private = false OR e.created_by = ${userId})
     LEFT JOIN events ev ON ev.id = n.event_id
     WHERE ${vis}
     ORDER BY n.created_at DESC
@@ -110,7 +110,11 @@ export async function fetchAllContactOptions() {
 }
 
 export async function fetchEmployeeOptions() {
-  return await sql`SELECT id, first_name, last_name FROM employees ORDER BY first_name`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(is_private = false OR created_by = ${userId})`
+    : sql`is_private = false`;
+  return await sql`SELECT id, first_name, last_name FROM employees WHERE ${vis} ORDER BY first_name`;
 }
 
 export async function fetchEventOptions() {
@@ -137,8 +141,8 @@ export async function fetchMeetingNotes() {
       row_to_json(ev) AS events
     FROM meeting_notes mn
     LEFT JOIN projects p ON p.id = mn.project_id
-    LEFT JOIN contacts c ON c.id = mn.contact_id
-    LEFT JOIN employees e ON e.id = mn.employee_id
+    LEFT JOIN contacts c ON c.id = mn.contact_id AND (c.is_private = false OR c.created_by = ${userId})
+    LEFT JOIN employees e ON e.id = mn.employee_id AND (e.is_private = false OR e.created_by = ${userId})
     LEFT JOIN events ev ON ev.id = mn.event_id
     WHERE ${vis}
     ORDER BY mn.meeting_date DESC
@@ -237,14 +241,15 @@ export async function updateMeetingNote(
 // ─── Meeting Note Card (details, link task) ─────────────────────────────────
 
 export async function fetchMeetingNoteDetails(meetingNoteId: string) {
+  const userId = await currentUserId();
   const attendees = await sql`
     SELECT
       ma.*,
       row_to_json(c) AS contacts,
       row_to_json(e) AS employees
     FROM meeting_attendees ma
-    LEFT JOIN contacts c ON c.id = ma.contact_id
-    LEFT JOIN employees e ON e.id = ma.employee_id
+    LEFT JOIN contacts c ON c.id = ma.contact_id AND (c.is_private = false OR c.created_by = ${userId})
+    LEFT JOIN employees e ON e.id = ma.employee_id AND (e.is_private = false OR e.created_by = ${userId})
     WHERE ma.meeting_note_id = ${meetingNoteId}
   `;
 

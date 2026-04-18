@@ -89,9 +89,9 @@ export async function fetchAllTasksExcept(taskId: string) {
     ? sql`(t.is_private = false OR t.created_by = ${userId})`
     : sql`t.is_private = false`;
   const rows = await sql`
-    SELECT t.id, t.title FROM tasks t WHERE t.id != ${taskId} AND ${vis} ORDER BY t.title
+    SELECT t.id, t.title, t.is_private FROM tasks t WHERE t.id != ${taskId} AND ${vis} ORDER BY t.title
   `;
-  return rows.map((r) => ({ id: r.id, title: r.title }));
+  return rows.map((r) => ({ id: r.id, title: r.title, is_private: !!r.is_private }));
 }
 
 export async function fetchActiveEmployees() {

@@ -138,6 +138,7 @@ interface Task {
 interface TaskOption {
   id: string;
   title: string;
+  is_private?: boolean;
 }
 
 interface DependencyRow {
@@ -1228,9 +1229,12 @@ export default function TaskDetailPage() {
               <PopoverContent className="w-64 p-2" align="end">
                 {(() => {
                   const assignedIds = task.task_assignees.map((a) => a.employee_id);
-                  const available = allEmployees.filter((e) => !assignedIds.includes(e.id));
+                  const pool = task.is_private ? allEmployees.filter((e) => e.is_private) : allEmployees;
+                  const available = pool.filter((e) => !assignedIds.includes(e.id));
                   if (available.length === 0) {
-                    return <p className="text-sm text-muted-foreground p-2">No more employees to add.</p>;
+                    return <p className="text-sm text-muted-foreground p-2">
+                      {task.is_private ? "No more private employees to add." : "No more employees to add."}
+                    </p>;
                   }
                   return (
                     <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -1285,15 +1289,17 @@ export default function TaskDetailPage() {
               </PopoverTrigger>
               <PopoverContent className="w-64 p-2" align="end">
                 <div className="space-y-1 max-h-48 overflow-y-auto">
-                  {allContacts.filter((c) => c.id !== task.contact_id).map((c) => (
-                    <button
-                      key={c.id}
-                      className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
-                      onClick={() => handleInlineChangeContact(c.id)}
-                    >
-                      {contactDisplay(c)}
-                    </button>
-                  ))}
+                  {(task.is_private ? allContacts.filter((c) => c.is_private) : allContacts)
+                    .filter((c) => c.id !== task.contact_id)
+                    .map((c) => (
+                      <button
+                        key={c.id}
+                        className="flex items-center gap-2 rounded-md p-2 hover:bg-muted cursor-pointer w-full text-left text-sm"
+                        onClick={() => handleInlineChangeContact(c.id)}
+                      >
+                        {contactDisplay(c)}
+                      </button>
+                    ))}
                 </div>
               </PopoverContent>
             </Popover>
@@ -1359,7 +1365,7 @@ export default function TaskDetailPage() {
                           <SelectValue placeholder="Select a task..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {allTasks.map((t) => (
+                          {(task.is_private ? allTasks.filter((t) => t.is_private) : allTasks).map((t) => (
                             <SelectItem key={t.id} value={t.id}>
                               {t.title}
                             </SelectItem>
@@ -1471,9 +1477,12 @@ export default function TaskDetailPage() {
               <PopoverContent className="w-64 p-2" align="end">
                 {(() => {
                   const linkedIds = linkedProjects.map((p) => p.id);
-                  const available = allProjects.filter((p) => !linkedIds.includes(p.id));
+                  const pool = task.is_private ? allProjects.filter((p) => p.is_private) : allProjects;
+                  const available = pool.filter((p) => !linkedIds.includes(p.id));
                   if (available.length === 0) {
-                    return <p className="text-sm text-muted-foreground p-2">No more projects to add.</p>;
+                    return <p className="text-sm text-muted-foreground p-2">
+                      {task.is_private ? "No more private projects to add." : "No more projects to add."}
+                    </p>;
                   }
                   return (
                     <div className="space-y-1 max-h-48 overflow-y-auto">

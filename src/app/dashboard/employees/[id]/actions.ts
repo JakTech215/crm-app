@@ -5,7 +5,11 @@ import { currentUserId } from "@/lib/visibility";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchEmployee(employeeId: string): Promise<any | null> {
-  const rows = await sql`SELECT * FROM employees WHERE id = ${employeeId}`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(is_private = false OR created_by = ${userId})`
+    : sql`is_private = false`;
+  const rows = await sql`SELECT * FROM employees WHERE id = ${employeeId} AND ${vis}`;
   return (rows[0] as unknown) || null;
 }
 
@@ -138,6 +142,7 @@ export async function updateEmployee(
     role: string;
     department: string;
     status: string;
+    is_private?: boolean;
   }
 ) {
   const data = {
@@ -147,6 +152,7 @@ export async function updateEmployee(
     role: form.role || null,
     department: form.department || null,
     status: form.status,
+    is_private: !!form.is_private,
   };
   await sql`UPDATE employees SET ${sql(data)} WHERE id = ${employeeId}`;
 }

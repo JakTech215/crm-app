@@ -47,6 +47,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -81,6 +82,7 @@ interface Employee {
   role: string | null;
   department: string | null;
   status: string;
+  is_private: boolean;
   created_at: string;
 }
 
@@ -155,6 +157,7 @@ export default function EmployeeDetailPage() {
     role: "",
     department: "",
     status: "active",
+    is_private: false,
   });
 
   // Delete state
@@ -307,6 +310,7 @@ export default function EmployeeDetailPage() {
       role: employee.role || "",
       department: employee.department || "",
       status: employee.status,
+      is_private: employee.is_private ?? false,
     });
     setEditError(null);
     setEditOpen(true);
@@ -562,6 +566,15 @@ export default function EmployeeDetailPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={editForm.is_private}
+                  onCheckedChange={(checked) =>
+                    setEditForm({ ...editForm, is_private: !!checked })
+                  }
+                />
+                <span className="text-sm">Mark as private</span>
+              </label>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={savingEdit}>

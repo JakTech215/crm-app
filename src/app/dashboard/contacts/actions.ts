@@ -2,11 +2,23 @@
 
 import sql from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
-import { currentUserId } from "@/lib/visibility";
+import { currentUserId, type PrivacyFilter } from "@/lib/visibility";
+
+function contactVisFrag(userId: string | null, filter: PrivacyFilter) {
+  if (filter === "public") return sql`is_private = false`;
+  if (filter === "private") {
+    return userId ? sql`(is_private = true AND created_by = ${userId})` : sql`false`;
+  }
+  return userId
+    ? sql`(is_private = false OR created_by = ${userId})`
+    : sql`is_private = false`;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function fetchContacts(): Promise<any[]> {
-  const rows = await sql`SELECT * FROM contacts ORDER BY created_at DESC`;
+export async function fetchContacts(filterPrivacy: PrivacyFilter = "all"): Promise<any[]> {
+  const userId = await currentUserId();
+  const vis = contactVisFrag(userId, filterPrivacy);
+  const rows = await sql`SELECT * FROM contacts WHERE ${vis} ORDER BY created_at DESC`;
   return rows as unknown as any[];
 }
 
@@ -48,6 +60,7 @@ export async function createContact(form: {
   phone: string;
   company: string;
   status: string;
+  is_private?: boolean;
 }) {
   const user = await getSessionUser();
 
@@ -58,6 +71,7 @@ export async function createContact(form: {
     phone: form.phone || null,
     company: form.company || null,
     status: form.status || "active",
+    is_private: !!form.is_private,
     created_by: user?.id,
   };
 

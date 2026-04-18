@@ -2,11 +2,23 @@
 
 import sql from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
-import { currentUserId } from "@/lib/visibility";
+import { currentUserId, type PrivacyFilter } from "@/lib/visibility";
+
+function employeeVisFrag(userId: string | null, filter: PrivacyFilter) {
+  if (filter === "public") return sql`is_private = false`;
+  if (filter === "private") {
+    return userId ? sql`(is_private = true AND created_by = ${userId})` : sql`false`;
+  }
+  return userId
+    ? sql`(is_private = false OR created_by = ${userId})`
+    : sql`is_private = false`;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function fetchEmployees(): Promise<any[]> {
-  const rows = await sql`SELECT * FROM employees ORDER BY created_at DESC`;
+export async function fetchEmployees(filterPrivacy: PrivacyFilter = "all"): Promise<any[]> {
+  const userId = await currentUserId();
+  const vis = employeeVisFrag(userId, filterPrivacy);
+  const rows = await sql`SELECT * FROM employees WHERE ${vis} ORDER BY created_at DESC`;
   return rows as unknown as any[];
 }
 
@@ -62,6 +74,7 @@ export async function createEmployee(form: {
   role: string;
   department: string;
   status: string;
+  is_private?: boolean;
 }) {
   const user = await getSessionUser();
 
@@ -72,6 +85,7 @@ export async function createEmployee(form: {
     role: form.role || null,
     department: form.department || null,
     status: form.status,
+    is_private: !!form.is_private,
     created_by: user?.id,
   };
 

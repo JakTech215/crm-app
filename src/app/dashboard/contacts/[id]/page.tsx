@@ -104,6 +104,7 @@ interface Contact {
   status: string;
   email_notifications_enabled: boolean;
   sms_notifications_enabled: boolean;
+  is_private: boolean;
   created_at: string;
 }
 
@@ -225,6 +226,7 @@ export default function ContactDetailPage() {
     status: "active",
     email_notifications_enabled: true,
     sms_notifications_enabled: false,
+    is_private: false,
   });
 
   // Delete state
@@ -426,6 +428,7 @@ export default function ContactDetailPage() {
       status: contact.status,
       email_notifications_enabled: contact.email_notifications_enabled ?? true,
       sms_notifications_enabled: contact.sms_notifications_enabled ?? false,
+      is_private: contact.is_private ?? false,
     });
     setEditOpen(true);
   };
@@ -721,6 +724,15 @@ export default function ContactDetailPage() {
                   <span className="text-sm">SMS notifications</span>
                 </label>
               </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={editForm.is_private}
+                  onCheckedChange={(checked) =>
+                    setEditForm({ ...editForm, is_private: !!checked })
+                  }
+                />
+                <span className="text-sm">Mark as private</span>
+              </label>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={savingEdit}>

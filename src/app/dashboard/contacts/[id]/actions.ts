@@ -6,7 +6,11 @@ import { currentUserId } from "@/lib/visibility";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchContact(contactId: string): Promise<any | null> {
-  const rows = await sql`SELECT * FROM contacts WHERE id = ${contactId}`;
+  const userId = await currentUserId();
+  const vis = userId
+    ? sql`(is_private = false OR created_by = ${userId})`
+    : sql`is_private = false`;
+  const rows = await sql`SELECT * FROM contacts WHERE id = ${contactId} AND ${vis}`;
   return (rows[0] as unknown) || null;
 }
 
@@ -195,6 +199,7 @@ export async function updateContact(
     status: string;
     email_notifications_enabled: boolean;
     sms_notifications_enabled: boolean;
+    is_private?: boolean;
   }
 ) {
   const data = {
@@ -206,6 +211,7 @@ export async function updateContact(
     status: form.status || "active",
     email_notifications_enabled: form.email_notifications_enabled,
     sms_notifications_enabled: form.sms_notifications_enabled,
+    is_private: !!form.is_private,
   };
   await sql`UPDATE contacts SET ${sql(data)} WHERE id = ${contactId}`;
 }

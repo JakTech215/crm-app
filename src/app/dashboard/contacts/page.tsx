@@ -110,6 +110,7 @@ export default function ContactsPage() {
     return raw ? raw.split(",") : ["active"];
   });
   const [contactTasksMap, setContactTasksMap] = useState<Record<string, ContactUpcomingTask[]>>({});
+  const [filterPrivacy, setFilterPrivacy] = useState<"all" | "private" | "public">("all");
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -117,10 +118,11 @@ export default function ContactsPage() {
     phone: "",
     company: "",
     status: "active",
+    is_private: false,
   });
 
   const fetchContacts = async () => {
-    const data = await fetchContactsAction();
+    const data = await fetchContactsAction(filterPrivacy);
     setContacts(data || []);
     setLoading(false);
   };
@@ -144,7 +146,8 @@ export default function ContactsPage() {
     fetchContacts();
     fetchStatuses();
     fetchContactTasks();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterPrivacy]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,7 +162,7 @@ export default function ContactsPage() {
       return;
     }
 
-    setForm({ first_name: "", last_name: "", email: "", phone: "", company: "", status: "active" });
+    setForm({ first_name: "", last_name: "", email: "", phone: "", company: "", status: "active", is_private: false });
     setOpen(false);
     fetchContacts();
     setSaving(false);
@@ -266,6 +269,15 @@ export default function ContactsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={form.is_private}
+                    onCheckedChange={(checked) =>
+                      setForm({ ...form, is_private: !!checked })
+                    }
+                  />
+                  <span className="text-sm">Mark as private</span>
+                </label>
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={saving}>
@@ -287,6 +299,16 @@ export default function ContactsPage() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-3">
+              <Select value={filterPrivacy} onValueChange={(v) => setFilterPrivacy(v as "all" | "private" | "public")}>
+                <SelectTrigger className="h-9 w-[130px] text-xs" title="Privacy filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="private">Private only</SelectItem>
+                  <SelectItem value="public">Non-private</SelectItem>
+                </SelectContent>
+              </Select>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-40 justify-start text-sm">

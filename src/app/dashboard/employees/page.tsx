@@ -81,6 +81,7 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>(["active"]);
   const [employeeTasksMap, setEmployeeTasksMap] = useState<Record<string, UpcomingTask[]>>({});
+  const [filterPrivacy, setFilterPrivacy] = useState<"all" | "private" | "public">("all");
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -88,10 +89,11 @@ export default function EmployeesPage() {
     role: "",
     department: "",
     status: "active",
+    is_private: false,
   });
 
   const fetchEmployees = async () => {
-    const data = await fetchEmployeesAction();
+    const data = await fetchEmployeesAction(filterPrivacy);
     setEmployees(data || []);
     setLoading(false);
   };
@@ -105,7 +107,8 @@ export default function EmployeesPage() {
   useEffect(() => {
     fetchEmployees();
     fetchEmployeeTasks();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterPrivacy]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,6 +130,7 @@ export default function EmployeesPage() {
       role: "",
       department: "",
       status: "active",
+      is_private: false,
     });
     setOpen(false);
     fetchEmployees();
@@ -236,6 +240,15 @@ export default function EmployeesPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={form.is_private}
+                    onCheckedChange={(checked) =>
+                      setForm({ ...form, is_private: !!checked })
+                    }
+                  />
+                  <span className="text-sm">Mark as private</span>
+                </label>
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={saving}>
@@ -259,6 +272,16 @@ export default function EmployeesPage() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              <Select value={filterPrivacy} onValueChange={(v) => setFilterPrivacy(v as "all" | "private" | "public")}>
+                <SelectTrigger className="h-9 w-[130px] text-xs" title="Privacy filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="private">Private only</SelectItem>
+                  <SelectItem value="public">Non-private</SelectItem>
+                </SelectContent>
+              </Select>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-[140px] justify-start text-sm">

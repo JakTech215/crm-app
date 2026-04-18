@@ -1541,7 +1541,24 @@ export default function TasksPage() {
                   <label className="flex items-center gap-2 cursor-pointer">
                     <Checkbox
                       checked={form.is_private}
-                      onCheckedChange={(checked) => setForm({ ...form, is_private: !!checked })}
+                      onCheckedChange={(checked) => {
+                        const isPrivate = !!checked;
+                        if (isPrivate) {
+                          const keepContact = contacts.find((c) => c.id === form.contact_id)?.is_private;
+                          const keepProject = projects.find((p) => p.id === form.project_id)?.is_private;
+                          setForm({
+                            ...form,
+                            is_private: true,
+                            contact_id: keepContact ? form.contact_id : "",
+                            project_id: keepProject ? form.project_id : "",
+                          });
+                          setSelectedEmployees((prev) =>
+                            prev.filter((id) => employees.find((e) => e.id === id)?.is_private)
+                          );
+                        } else {
+                          setForm({ ...form, is_private: false });
+                        }
+                      }}
                     />
                     <div className="flex items-center gap-1.5">
                       <Lock className="h-4 w-4 text-muted-foreground" />

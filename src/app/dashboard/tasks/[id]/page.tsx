@@ -992,9 +992,25 @@ export default function TaskDetailPage() {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <Checkbox
                     checked={editForm.is_private}
-                    onCheckedChange={(checked) =>
-                      setEditForm({ ...editForm, is_private: !!checked })
-                    }
+                    onCheckedChange={(checked) => {
+                      const isPrivate = !!checked;
+                      if (isPrivate) {
+                        const keepContact = allContacts.find((c) => c.id === editForm.contact_id)?.is_private;
+                        setEditForm({
+                          ...editForm,
+                          is_private: true,
+                          contact_id: keepContact ? editForm.contact_id : "",
+                        });
+                        setEditSelectedEmployees((prev) =>
+                          prev.filter((id) => allEmployees.find((e) => e.id === id)?.is_private)
+                        );
+                        setEditSelectedProjects((prev) =>
+                          prev.filter((id) => allProjects.find((p) => p.id === id)?.is_private)
+                        );
+                      } else {
+                        setEditForm({ ...editForm, is_private: false });
+                      }
+                    }}
                   />
                   <div className="flex items-center gap-1.5">
                     <Lock className="h-4 w-4 text-muted-foreground" />

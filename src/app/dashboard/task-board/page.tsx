@@ -751,7 +751,24 @@ export default function TaskBoardPage() {
                     <label className="flex items-center gap-2 cursor-pointer">
                       <Checkbox
                         checked={createForm.is_private}
-                        onCheckedChange={(checked) => setCreateForm({ ...createForm, is_private: !!checked })}
+                        onCheckedChange={(checked) => {
+                          const isPrivate = !!checked;
+                          if (isPrivate) {
+                            const keepContact = contacts.find((c) => c.id === createForm.contact_id)?.is_private;
+                            const keepProject = projects.find((p) => p.id === createForm.project_id)?.is_private;
+                            setCreateForm({
+                              ...createForm,
+                              is_private: true,
+                              contact_id: keepContact ? createForm.contact_id : "",
+                              project_id: keepProject ? createForm.project_id : "",
+                            });
+                            setCreateEmployees((prev) =>
+                              prev.filter((id) => employees.find((e) => e.id === id)?.is_private)
+                            );
+                          } else {
+                            setCreateForm({ ...createForm, is_private: false });
+                          }
+                        }}
                       />
                       <div className="flex items-center gap-1.5">
                         <Lock className="h-4 w-4 text-muted-foreground" />
